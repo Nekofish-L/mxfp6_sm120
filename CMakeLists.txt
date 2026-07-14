@@ -63,7 +63,8 @@ if(MXFP6_BUILD_STANDALONE)
       -arch=sm_120a
       --expt-relaxed-constexpr
       -O3
-      -lineinfo
+      -Xcompiler=-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=.
+      -Xcompiler=-fmacro-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=.
       -Xcudafe=--diag_suppress=20012
       -Xcudafe=--diag_suppress=20013
       -Xcudafe=--diag_suppress=20015
@@ -95,7 +96,8 @@ target_compile_options(mxfp6_torch PRIVATE
     -arch=sm_120a
     --expt-relaxed-constexpr
     -O3
-    -lineinfo
+    -Xcompiler=-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=.
+    -Xcompiler=-fmacro-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=.
     -Xcudafe=--diag_suppress=20012
     -Xcudafe=--diag_suppress=20013
     -Xcudafe=--diag_suppress=20015
@@ -127,7 +129,8 @@ if(BUILD_TESTING AND MXFP6_BUILD_STANDALONE)
   add_test(NAME mxfp6_torch_python
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/benchmark.py"
             --library=$<TARGET_FILE:mxfp6_torch>
-            --shapes=1x128x128,16x128x128,32x128x128 --warmup=1 --iterations=2
+            --shapes=1x8x128,17x136x128,96x136x128,112x136x128,129x128x128
+            --warmup=1 --iterations=2
             --flush-l2-mb=0 --no-compare-fp8 --check-all)
   add_test(NAME mxfp6_torch_tools
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ops.py"

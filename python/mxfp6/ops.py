@@ -39,10 +39,10 @@ def _require_sm120(device: torch.device) -> None:
 
 
 def _validate_problem(m: int, n: int, k: int) -> None:
-    if not (1 <= m <= 32 or m == 2048):
-        raise ValueError(f"m must be in [1, 32] or equal to 2048; got {m}")
-    if n <= 0 or n % 128:
-        raise ValueError(f"n must be a positive multiple of 128; got {n}")
+    if m <= 0:
+        raise ValueError(f"m must be positive; got {m}")
+    if n <= 0 or n % 8:
+        raise ValueError(f"n must be a positive multiple of 8; got {n}")
     if k <= 0 or k % 128:
         raise ValueError(f"k must be a positive multiple of 128; got {k}")
 
@@ -213,7 +213,7 @@ def gemm_from_codes(
 
 
 def is_tuned_shape(m: int, n: int, k: int) -> bool:
-    """Return whether a problem is one of the 20 profiler-tuned shapes."""
+    """Return whether a problem has an exact target-shape override."""
     return m in (1, 16, 32, 2048) and (n, k) in TUNED_NK
 
 

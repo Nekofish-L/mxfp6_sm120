@@ -35,6 +35,7 @@ wheelhouse/
 /benchmarks/results/*
 !/benchmarks/results/README.md
 !/benchmarks/results/target_shapes.json
+!/benchmarks/results/general_policy.json
 /autotune_results/
 /autotune_*.csv
 /profiler_*.csv

@@ -51,9 +51,9 @@ def decode_e3m2(codes: torch.Tensor) -> torch.Tensor:
 def make_inputs(
     m: int, n: int, k: int, seed: int
 ) -> tuple[torch.Tensor, ...]:
-    if not ((1 <= m <= 32) or m == 2048) or n % 128 or k % 128:
+    if m <= 0 or n <= 0 or n % 8 or k <= 0 or k % 128:
         raise ValueError(
-            "M must be in [1,32] or 2048; N and K must be multiples of 128"
+            "M must be positive, N a multiple of 8, and K a multiple of 128"
         )
     generator = torch.Generator(device="cpu").manual_seed(seed)
 

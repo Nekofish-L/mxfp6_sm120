@@ -2,7 +2,7 @@
 
 #include "mxfp6_gemm/kernel.hpp"
 
-namespace mxfp6_gemm::swap_m32 {
+namespace mxfp6_gemm::swapped {
 
 // Compute D.T = B @ A.T. This turns the small batch dimension into the MMA N
 // dimension and stores column-major [N,M] directly into row-major [M,N].
@@ -87,30 +87,68 @@ struct KernelConfig {
       cute::is_same_v<TileScheduler_, cutlass::gemm::StreamKScheduler>;
 };
 
-using KernelM128N8Cooperative = KernelConfig<
+using Kernel128x8Stage2Cooperative = KernelConfig<
     cute::_128, cute::_8, cute::_128,
-    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120>;
-using KernelM128N16Cooperative = KernelConfig<
-    cute::_128, cute::_16, cute::_128,
-    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120>;
-using KernelM128N8StreamK = KernelConfig<
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    void, cutlass::gemm::collective::StageCount<2>>;
+using Kernel128x8Stage4Cooperative = KernelConfig<
+    cute::_128, cute::_8, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    void, cutlass::gemm::collective::StageCount<4>>;
+using Kernel128x8StreamK = KernelConfig<
     cute::_128, cute::_8, cute::_128,
     cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
     cutlass::epilogue::collective::EpilogueTileAuto,
     cutlass::gemm::StreamKScheduler>;
-using KernelM128N16StreamK = KernelConfig<
+using Kernel128x16StreamK = KernelConfig<
     cute::_128, cute::_16, cute::_128,
     cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
     cutlass::epilogue::collective::EpilogueTileAuto,
     cutlass::gemm::StreamKScheduler>;
-using KernelM64N16Pingpong = KernelConfig<
+using Kernel128x32Stage3StreamK = KernelConfig<
+    cute::_128, cute::_32, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    cutlass::gemm::StreamKScheduler,
+    cutlass::gemm::collective::StageCount<3>>;
+using Kernel128x64StreamK = KernelConfig<
+    cute::_128, cute::_64, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    cutlass::gemm::StreamKScheduler>;
+using Kernel64x16x128Stage3Pingpong = KernelConfig<
     cute::_64, cute::_16, cute::_128,
-    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120>;
-using KernelM64N16K256Pingpong = KernelConfig<
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    void, cutlass::gemm::collective::StageCount<3>>;
+using Kernel64x16x256Stage3Pingpong = KernelConfig<
     cute::_64, cute::_16, cute::_256,
-    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120>;
-using KernelM64N16K512Pingpong = KernelConfig<
-    cute::_64, cute::_16, cute::_512,
-    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120>;
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    void, cutlass::gemm::collective::StageCount<3>>;
+using Kernel64x32x128Stage3Pingpong = KernelConfig<
+    cute::_64, cute::_32, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    void, cutlass::gemm::collective::StageCount<3>>;
 
-}  // namespace mxfp6_gemm::swap_m32
+// Exact target-shape winners retained alongside the general portfolio.
+using TargetKernel128x8Cooperative = KernelConfig<
+    cute::_128, cute::_8, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120>;
+using TargetKernel128x16Cooperative = KernelConfig<
+    cute::_128, cute::_16, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120>;
+using TargetKernel128x8StreamK = KernelConfig<
+    cute::_128, cute::_8, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    cutlass::gemm::StreamKScheduler>;
+using TargetKernel128x16StreamK = KernelConfig<
+    cute::_128, cute::_16, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    cutlass::gemm::StreamKScheduler>;
+}  // namespace mxfp6_gemm::swapped

@@ -106,8 +106,24 @@ def reference_gemm(
 
 
 def test_random_scale_gemm(mxfp6) -> None:
-    for m in (1, 16, 32, 2048):
-        n, k = 128, 128
+    shapes = (
+        (1, 8, 128),
+        (16, 128, 128),
+        (17, 136, 128),
+        (32, 128, 128),
+        (48, 136, 128),
+        (64, 128, 256),
+        (96, 136, 128),
+        (97, 128, 128),
+        (112, 136, 128),
+        (127, 128, 128),
+        (128, 136, 128),
+        (129, 128, 128),
+        (255, 136, 128),
+        (512, 128, 128),
+        (2048, 128, 128),
+    )
+    for m, n, k in shapes:
         a_codes, b_codes, sfa, sfb = make_problem(m, n, k, 1000 + m)
         a = mxfp6.pack_operand(a_codes, sfa)
         b = mxfp6.pack_operand(b_codes, sfb)
@@ -115,7 +131,7 @@ def test_random_scale_gemm(mxfp6) -> None:
         reference = reference_gemm(a_codes, b_codes, sfa, sfb)
         torch.testing.assert_close(actual, reference, rtol=2e-3, atol=0.25)
         max_abs = (actual - reference).abs().max().item()
-        print(f"PASS random-scale GEMM M={m}: max_abs={max_abs:g}")
+        print(f"PASS random-scale GEMM {m}x{n}x{k}: max_abs={max_abs:g}")
 
 
 def test_nondefault_stream(mxfp6) -> None:

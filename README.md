@@ -15,6 +15,20 @@ The implementation uses the CUTLASS C++ CollectiveBuilder API. CUTLASS is a
 pinned upstream submodule; the small-tile SM120 fixes required by this project
 are maintained as an explicit patch queue.
 
+The public operator supports every shape satisfying:
+
+- `M > 0`
+- `N > 0` and `N % 8 == 0`
+- `K > 0` and `K % 128 == 0`
+
+Twenty inference shapes retain exact cold-cache profiler overrides. All other
+shapes use an 18-kernel portfolio derived from a representative exhaustive
+search. The dispatcher swaps operands for `M <= 96`, then selects tile width,
+pipeline depth, ping-pong/cooperative schedule, and Stream-K from K depth and
+the number of output elements. On the sampled grid, operation selection is
+within `1.038x` geometric mean and `1.106x` P90 of the per-shape profiler
+oracle.
+
 ## Requirements
 
 - NVIDIA compute capability 12.0 GPU
@@ -156,8 +170,16 @@ python3 benchmarks/autotune.py \
 The script defaults to GPUs `4,5,6,7`, serializes work assigned to each GPU,
 and uses CUTLASS exhaustive fixed-shape search with top-k ranking. Raw CSV files
 and exploratory outputs under `benchmarks/results/` are ignored. The curated
-target-shape manifest is retained as
-`benchmarks/results/target_shapes.json`.
+target-shape and general-policy manifests are retained under
+`benchmarks/results/`.
+
+Analyze one or more profiler result directories and reproduce the orientation
+summary, rule quality, and greedy portfolio selection with:
+
+```bash
+python3 benchmarks/analyze.py benchmarks/results/latest \
+  --swap-max-m=96 --portfolio-size=18
+```
 
 ## CUTLASS patches
 

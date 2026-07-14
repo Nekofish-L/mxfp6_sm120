@@ -2,10 +2,10 @@
 
 #include "mxfp6_gemm/kernel.hpp"
 
-namespace mxfp6_gemm::large_m {
+namespace mxfp6_gemm::normal {
 
 template <class TileM_, class TileN_, class TileK_, class MainloopSchedule_,
-          class TileScheduler_ = void>
+          class TileScheduler_ = void, class StageCount_ = void>
 struct KernelConfig {
   using ElementPairA = mxfp6_gemm::ElementPairA;
   using ElementPairB = mxfp6_gemm::ElementPairB;
@@ -61,8 +61,11 @@ struct KernelConfig {
       ElementAccumulator,
       TileShape,
       ClusterShape,
-      cutlass::gemm::collective::StageCountAutoCarveout<
-          static_cast<int>(sizeof(typename CollectiveEpilogue::SharedStorage))>,
+      cute::conditional_t<
+          cute::is_void_v<StageCount_>,
+          cutlass::gemm::collective::StageCountAutoCarveout<
+              static_cast<int>(sizeof(typename CollectiveEpilogue::SharedStorage))>,
+          StageCount_>,
       MainloopSchedule_>::CollectiveOp;
 
   using GemmKernel = cutlass::gemm::kernel::GemmUniversal<
@@ -80,17 +83,47 @@ struct KernelConfig {
       cute::is_same_v<TileScheduler_, cutlass::gemm::StreamKScheduler>;
 };
 
-using Kernel64x128x128Pingpong = KernelConfig<
-    cute::_64, cute::_128, cute::_128,
+using Kernel64x16x256Pingpong = KernelConfig<
+    cute::_64, cute::_16, cute::_256,
     cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120>;
+using Kernel64x32x128Stage3Pingpong = KernelConfig<
+    cute::_64, cute::_32, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    void, cutlass::gemm::collective::StageCount<3>>;
+using Kernel64x64x128Stage2Pingpong = KernelConfig<
+    cute::_64, cute::_64, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    void, cutlass::gemm::collective::StageCount<2>>;
+using Kernel64x64x128Stage4Pingpong = KernelConfig<
+    cute::_64, cute::_64, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    void, cutlass::gemm::collective::StageCount<4>>;
 using Kernel128x128x128Pingpong = KernelConfig<
     cute::_128, cute::_128, cute::_128,
     cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120>;
-using Kernel128x128x128Cooperative = KernelConfig<
-    cute::_128, cute::_128, cute::_128,
-    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120>;
+using Kernel128x16x128Stage3StreamK = KernelConfig<
+    cute::_128, cute::_16, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
+    cutlass::gemm::StreamKScheduler,
+    cutlass::gemm::collective::StageCount<3>>;
+using Kernel128x32x128StreamK = KernelConfig<
+    cute::_128, cute::_32, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
+    cutlass::gemm::StreamKScheduler>;
+using Kernel128x64x128StreamK = KernelConfig<
+    cute::_128, cute::_64, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
+    cutlass::gemm::StreamKScheduler>;
 using Kernel128x128x128StreamK = KernelConfig<
     cute::_128, cute::_128, cute::_128,
     cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
     cutlass::gemm::StreamKScheduler>;
-}  // namespace mxfp6_gemm::large_m
+
+// Exact target-shape winners retained alongside the general portfolio.
+using TargetKernel64x128x128Pingpong = KernelConfig<
+    cute::_64, cute::_128, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120>;
+using TargetKernel128x128x128Cooperative = KernelConfig<
+    cute::_128, cute::_128, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120>;
+}  // namespace mxfp6_gemm::normal
