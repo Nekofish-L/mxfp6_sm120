@@ -1,0 +1,2 @@
+# Patch files preserve upstream context verbatim, including whitespace.
+patches/cutlass/*.patch whitespace=-blank-at-eol,-blank-at-eof

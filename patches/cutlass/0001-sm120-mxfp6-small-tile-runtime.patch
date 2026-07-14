@@ -1,0 +1,130 @@
+diff --git a/include/cutlass/gemm/collective/builders/sm120_blockscaled_mma_builder.inl b/include/cutlass/gemm/collective/builders/sm120_blockscaled_mma_builder.inl
+index 2835751f4179972f938ec5008c544248e111becf..08dab124cb32687d2cf8b91be1a71e9bb03ff97e 100755
+--- a/include/cutlass/gemm/collective/builders/sm120_blockscaled_mma_builder.inl
++++ b/include/cutlass/gemm/collective/builders/sm120_blockscaled_mma_builder.inl
+@@ -196,12 +196,18 @@ struct CollectiveBuilder<
+   using kBasicBlockShape  = Shape<Int<(int)SFVectorSize>, Int<MMA_NSF>>;
+   using kBasicBlockStride = Stride<_0, _1>;
+   
+-  using sSFA_shapeM       = decltype(prepend(size<0>(TileShape_MNK{}) / Blk_MN{},   mnBasicBlockShape{}));
+-  using sSF_strideMN      = decltype(prepend(                        Blk_Elems{},  mnBasicBlockStride{}));
++  // TMA transfers the global interleaved scale-factor atom at its indivisible
++  // 128-row granularity. A 32- or 64-row CTA selects its portion after the
++  // transfer, mirroring the existing SFB treatment for TileN < 128.
++  static constexpr int TileM = size<0>(TileShape_MNK{});
++  static_assert(TileM % 32 == 0, "SM120 block-scaled TileM must be a multiple of 32");
++  using sSFATileShape_M = Int<cute::max(TileM, 128)>;
++  using sSF_strideMN = decltype(prepend(Blk_Elems{}, mnBasicBlockStride{}));
++  using sSFA_shapeM       = decltype(prepend(sSFATileShape_M{} / Blk_MN{}, mnBasicBlockShape{}));
+   using sSFA_strideM      = sSF_strideMN;
+   using sSF_shapeK        = decltype(prepend(make_shape( Blk_SF{}/Int<MMA_NSF>{},   size<2>(TileShape_MNK{}) / Int<(int)SFVectorSize>{} / Blk_SF{}),  kBasicBlockShape{}));
+   
+-  using sSFA_strideK      = decltype(prepend(make_stride(         Int<MMA_NSF>{},   size<0>(TileShape_MNK{}) / Blk_MN{} * Blk_Elems{}), kBasicBlockStride{}));
++  using sSFA_strideK      = decltype(prepend(make_stride(         Int<MMA_NSF>{},   sSFATileShape_M{} / Blk_MN{} * Blk_Elems{}), kBasicBlockStride{}));
+   using sSFA_shape        = decltype(make_shape(  sSFA_shapeM{},   sSF_shapeK{}));
+   using sSFA_stride       = decltype(make_stride(sSFA_strideM{}, sSFA_strideK{}));
+   using SmemLayoutAtomSFA = decltype(make_layout(  sSFA_shape{},  sSFA_stride{}));
+diff --git a/include/cutlass/gemm/collective/builders/sm120_common.inl b/include/cutlass/gemm/collective/builders/sm120_common.inl
+index 7a8172cadd350a7ddd830157e656d0b5d3a61d7c..0276ff676695da3ee1423fb26ce1c6a8262dd25f 100644
+--- a/include/cutlass/gemm/collective/builders/sm120_common.inl
++++ b/include/cutlass/gemm/collective/builders/sm120_common.inl
+@@ -81,7 +81,15 @@ auto
+ sm120_rr_smem_copy_selector_B() {
+   if constexpr (UseF8f6f4) {
+     if constexpr (sizeof_bits_v<ElementB> == 6) {
+-      return SM100_SU6_DU8x16_x4_LDSM_N{};
++      if constexpr (TileShapeN < 16) {
++        return SM100_SU6_DU8x16_x1_LDSM_N{};
++      }
++      else if constexpr (TileShapeN < 32) {
++        return SM100_SU6_DU8x16_x2_LDSM_N{};
++      }
++      else {
++        return SM100_SU6_DU8x16_x4_LDSM_N{};
++      }
+     }
+     else if constexpr (sizeof_bits_v<ElementB> == 4) {
+       if constexpr (TileShapeN < 16) {
+diff --git a/include/cutlass/gemm/collective/sm120_blockscaled_mma_tma.hpp b/include/cutlass/gemm/collective/sm120_blockscaled_mma_tma.hpp
+index 6a8f9ec8b1cfc8bc8bf9eb6f78a725453fa0f292..3f98bbc914420e00804c581ab69a681c72e53f53 100755
+--- a/include/cutlass/gemm/collective/sm120_blockscaled_mma_tma.hpp
++++ b/include/cutlass/gemm/collective/sm120_blockscaled_mma_tma.hpp
+@@ -193,11 +193,22 @@ struct CollectiveMma<
+ 
+   // SmemLayoutAtomSFA and SmemLayoutAtomSFB are for whole CTA tiles. We add the number of pipeline stages here.
+   // The number of pipeline stages is the same as the number of pipeline stages from AB Load <-> MainLoop
+-  using SmemLayoutSFA = decltype(make_layout(
++  using SmemLayoutSFA_ = decltype(make_layout(
+     append(shape(SmemLayoutAtomSFA{}), Int<DispatchPolicy::Stages>{}),
+     append(stride(SmemLayoutAtomSFA{}), size(filter_zeros(SmemLayoutAtomSFA{})))
+   ));
+ 
++  using TileShapeSFA = cute::conditional_t<size<0>(TileShape{}) < 128,
++    decltype(cute::make_shape(
++      Int<128>{},
++      shape<1>(TileShape{}),
++      shape<2>(TileShape{}))),
++    TileShape>;
++
++  using SmemLayoutSFA = cute::conditional_t<size<0>(TileShape{}) < 128,
++    decltype(cute::logical_divide(SmemLayoutSFA_{}, select<0,2>(TileShape{}))),
++    SmemLayoutSFA_>;
++
+   using SmemLayoutSFB_ = decltype(make_layout(
+     append(shape(SmemLayoutAtomSFB{}), Int<DispatchPolicy::Stages>{}),
+     append(stride(SmemLayoutAtomSFB{}), size(filter_zeros(SmemLayoutAtomSFB{})))
+@@ -310,7 +321,7 @@ struct CollectiveMma<
+         GmemTiledCopySFA{},
+         make_tensor(static_cast<ElementSF const*>(nullptr), LayoutSFA{}),
+         SmemLayoutSFA{}(_,_,cute::Int<0>{}),
+-        make_shape(shape<0>(TileShape{}), shape<2>(TileShape{})),
++        make_shape(shape<0>(TileShapeSFA{}), shape<2>(TileShapeSFA{})),
+         _1{}));  // No programmatic multicast
+ 
+ 
+@@ -371,7 +382,7 @@ struct CollectiveMma<
+         GmemTiledCopySFA{},
+         tensor_sfa,
+         SmemLayoutSFA{}(_,_,cute::Int<0>{}),
+-        make_shape(shape<0>(TileShape{}), shape<2>(TileShape{})),
++        make_shape(shape<0>(TileShapeSFA{}), shape<2>(TileShapeSFA{})),
+         _1{}); // No programmatic multicast
+ 
+     typename Params::TMA_SFB tma_load_sfb = make_tma_copy<uint16_t>(
+@@ -638,13 +649,17 @@ struct CollectiveMma<
+       // Partition the inputs based on the current block coordinates.
+       auto [m_coord, n_coord, k_coord, l_coord] = blk_coord;
+ 
++      auto broadcast_m = make_layout(
++        make_shape(Int<size<0>(TileShapeSFA{}) / size<0>(TileShape{})>{},
++                   Int<cute::numeric_limits<int>::max()>{}),
++        make_stride(_0{}, size<0>(TileShapeSFA{}) / size<0>(TileShape{})));
+       auto broadcast_n = make_layout(
+         make_shape(Int<size<1>(TileShapeSFB{}) / size<1>(TileShape{})>{},
+                    Int<cute::numeric_limits<int>::max()>{}),
+         make_stride(_0{}, size<1>(TileShapeSFB{}) / size<1>(TileShape{})));
+       Tensor gA =   gA_mkl(_,_,m_coord,_,l_coord);                                                    // (BLK_M,BLK_K,k)
+       Tensor gB =   gB_nkl(_,_,n_coord,_,l_coord);                                                    // (BLK_N,BLK_K,k)
+-      Tensor gSFA = gSFA_mkl(_,_,m_coord,_,l_coord);                                                  // (BLK_M,BLK_K,k)
++      Tensor gSFA = gSFA_mkl(_,_,broadcast_m(m_coord),_,l_coord);                                     // (BLK_M,BLK_K,k)
+       Tensor gSFB = gSFB_nkl(_,_,broadcast_n(n_coord),_,l_coord);                                     // (BLK_N,BLK_K,k)
+ 
+       // Partition source and destination tensors for tma copies
+@@ -728,7 +743,16 @@ struct CollectiveMma<
+ 
+     Tensor sA = make_tensor(make_smem_ptr(shared_tensors.smem_A.begin()), SmemLayoutA{});         // (BLK_M,BLK_K,PIPE)
+     Tensor sB = make_tensor(make_smem_ptr(shared_tensors.smem_B.begin()), SmemLayoutB{});         // (BLK_N,BLK_K,PIPE)
+-    Tensor sSFA = make_tensor(make_smem_ptr(shared_tensors.smem_SFA.begin()), SmemLayoutSFA{});  // (BLK_M,BLK_K,PIPE)
++    Tensor sSFA = [&]() {
++      if constexpr (size<0>(TileShape{}) >= 128) {
++        return make_tensor(make_smem_ptr(shared_tensors.smem_SFA.begin()), SmemLayoutSFA{});  // (BLK_M,BLK_K,PIPE)
++      }
++      else {
++        Tensor temp = make_tensor(make_smem_ptr(shared_tensors.smem_SFA.begin()), SmemLayoutSFA{});  // (BLK_SFA_M,BLK_K,PIPE)
++        auto m = get<0>(blk_coord);
++        return temp(make_coord(_,m % (size<0>(TileShapeSFA{}) / size<0>(TileShape{}))), _, _);
++      }
++    }();
+     Tensor sSFB = [&]() {
+       if constexpr (size<1>(TileShape{}) >= 128) {
+         return make_tensor(make_smem_ptr(shared_tensors.smem_SFB.begin()), SmemLayoutSFB{});  // (BLK_N,BLK_K,PIPE)

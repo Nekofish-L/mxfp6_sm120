@@ -1,0 +1,276 @@
+diff --git a/include/cutlass/gemm/kernel/tile_scheduler.hpp b/include/cutlass/gemm/kernel/tile_scheduler.hpp
+index be96227695b21119af4c915349a1b841b6423451..4fcd3550fa98504fb9363ae748cf1a65bc51e01b 100644
+--- a/include/cutlass/gemm/kernel/tile_scheduler.hpp
++++ b/include/cutlass/gemm/kernel/tile_scheduler.hpp
+@@ -383,6 +383,24 @@ struct TileSchedulerSelector<
+   using Scheduler = PersistentTileSchedulerSm100<ClusterShape, SchedulerPipelineStageCount>;
+ };
+ 
++// A fixed-shape SM120 GEMM can use the same arithmetic tile traversal as
++// SM100 without issuing CLC fetches. StaticPersistentTileScheduler100 exposes
++// the scheduler interface consumed by the SM120 universal kernel and is useful
++// for profiler-driven fixed-shape inference dispatch.
++template <
++  class TileShape,
++  class ClusterShape,
++  uint32_t SchedulerPipelineStageCount
++>
++struct TileSchedulerSelector<
++    StaticPersistentScheduler,
++    arch::Sm120,
++    TileShape,
++    ClusterShape,
++    SchedulerPipelineStageCount> {
++  using Scheduler = StaticPersistentTileScheduler100;
++};
++
+ 
+ // StreamKScheduler for Sm120 maps to PersistentTileSchedulerSm100StreamK
+ template <class TileShape, class ClusterShape, uint32_t SchedulerPipelineStageCount>
+diff --git a/python/cutlass_library/generator.py b/python/cutlass_library/generator.py
+index fa68104a4db3b94de20be9151f0d8258cbd813ae..6a8253a5246b49f345d34c81a9e0716a37dee4ab 100644
+--- a/python/cutlass_library/generator.py
++++ b/python/cutlass_library/generator.py
+@@ -11207,30 +11207,79 @@ def GenerateSM120_TensorOp_mixed_8bits_UMMA_gemm_with_block_scaled(manifest, cud
+   grouped = is_grouped(gemm_kind)
+ 
+   layouts = [
+-    [[LayoutType.RowMajor,    128], [LayoutType.ColumnMajor, 128], [LayoutType.RowMajor,    0]]
++    [[LayoutType.RowMajor,    128], [LayoutType.ColumnMajor, 128], [LayoutType.RowMajor,    0]],
++    [[LayoutType.RowMajor,    128], [LayoutType.ColumnMajor, 128], [LayoutType.ColumnMajor, 0]]
+   ]
+ 
+   instruction_sizes = [
+     [16, 8, 32]
+   ]
+ 
+-  # Cooperative supports TileN >= 8 (see sm120_blockscaled_mma_builder.inl AtomLayoutMNK).
+-  # Pingpong uses AtomLayout Shape<_2,_2,_1>, giving a natural TiledMma N of 16,
+-  # so pingpong tiles start at N = 16.
++  # Include the legal 64-row ping-pong tiles used by vLLM's blockwise FP8
++  # kernel. Cooperative kernels require TileM >= 128. The profiler should
++  # decide whether reduced M-side overfetch outweighs lower occupancy.
++  # Cooperative supports TileN >= 8. Pingpong starts at N=16.
+   tile_sizes_cooperative = [
+     [128,   8, 128],
+     [128,  16, 128],
+     [128,  32, 128],
+     [128,  64, 128],
+-    [128, 128, 128]
++    [128, 128, 128],
++    # K=256 joins two 96-byte packed-FP6 K=128 transfers. Keep only shapes
++    # whose two-stage mainloop plus epilogue fits in SM120 shared memory.
++    [128,   8, 256],
++    [128,  16, 256],
++    [128,  32, 256],
++    # SM120 also supports a 256-row cooperative CTA tile. This is already
++    # part of CUTLASS's native FP4 search space and is legal for MXF8/F6/F4;
++    # retain all useful N extents so fixed-shape profiler ranking can decide
++    # whether the reduced CTA wave count offsets the larger per-CTA work.
++    [256,   8, 128],
++    [256,  16, 128],
++    [256,  32, 128],
++    [256,  64, 128]
+   ]
+ 
+   tile_sizes_pingpong = [
++    [ 64,  16, 128],
++    [ 64,  32, 128],
++    [ 64,  64, 128],
++    [ 64, 128, 128],
++    [ 64,  16, 256],
++    [ 64,  32, 256],
++    [ 64,  64, 256],
++    [ 64,  16, 512],
+     [128,  16, 128],
+     [128,  32, 128],
+     [128,  64, 128],
+-    [128, 128, 128]
+-  ]
++    [128, 128, 128],
++    [128,  16, 256],
++    [128,  32, 256]
++  ]
++
++  # StageCountAutoCarveout always selects the largest mainloop stage count
++  # that fits in shared memory. On SM120 that often consumes nearly 100 KiB
++  # per CTA and can reduce residency to one CTA per SM. Generate the smaller
++  # legal alternatives as distinct profiler operations so fixed-shape search
++  # can trade pipeline depth for occupancy. The upper (auto-equivalent) stage
++  # is intentionally omitted because stage 0 already represents it.
++  explicit_stages_cooperative = {
++    (128,   8, 128): [2, 3, 4],
++    (128,  16, 128): [2, 3],
++    (128,  32, 128): [2, 3],
++    (128,  64, 128): [2],
++  }
++  explicit_stages_pingpong = {
++    ( 64,  16, 128): [2, 3, 4, 5, 6, 7],
++    ( 64,  32, 128): [2, 3, 4, 5, 6],
++    ( 64,  64, 128): [2, 3, 4],
++    ( 64, 128, 128): [2],
++    ( 64,  16, 256): [2, 3],
++    ( 64,  32, 256): [2],
++    (128,  16, 128): [2, 3],
++    (128,  32, 128): [2, 3],
++    (128,  64, 128): [2],
++  }
+ 
+   cluster_shape = [1,1,1]
+ 
+@@ -11255,12 +11304,14 @@ def GenerateSM120_TensorOp_mixed_8bits_UMMA_gemm_with_block_scaled(manifest, cud
+     # Pingpong kernel schedule doesn't support stream-K.
+     # Only use the stream-K scheduler for non-void SFD to limit kernel count. When SFD is void,
+     # the epilogue is the traditional linear combination, for which we already have tests with stream-K
+-    if grouped or is_pingpong(kernel_schedule):
++    if grouped:
+       return [TileSchedulerType.Default]
++    elif is_pingpong(kernel_schedule):
++      return [TileSchedulerType.Default, TileSchedulerType.StaticPersistent]
+     elif sfdtype["type"] == DataType.void:
+-      return [TileSchedulerType.Default]
++      return [TileSchedulerType.Default, TileSchedulerType.StaticPersistent]
+     else:
+-      return [TileSchedulerType.Default, TileSchedulerType.StreamK]
++      return [TileSchedulerType.Default, TileSchedulerType.StreamK, TileSchedulerType.StaticPersistent]
+ 
+   min_cc = 120
+   max_cc = 121
+@@ -11286,6 +11337,16 @@ def GenerateSM120_TensorOp_mixed_8bits_UMMA_gemm_with_block_scaled(manifest, cud
+ 
+   for math_inst in math_instructions:
+     data_types = [
++      {
++        "a_type"   : math_inst.element_a,
++        "b_type"   : math_inst.element_b,
++        "c_type"   : DataType.void,
++        "d_type"   : DataType.f16,
++        "acc_type" : math_inst.element_accumulator,
++        "epi_type" : epi_type,
++        "sf_type"  : math_inst.element_scale_factor,
++        "sfd_type" : {"type": DataType.void, "vector_size": None, "layout" : None}
++      },
+       {
+         "a_type"   : math_inst.element_a,
+         "b_type"   : math_inst.element_b,
+@@ -11328,21 +11389,27 @@ def GenerateSM120_TensorOp_mixed_8bits_UMMA_gemm_with_block_scaled(manifest, cud
+       }
+     ]
+ 
+-    # Set alignment d based on Destination format.
+-    for layout in layouts:
+-      layout[2][1] = 128 // DataTypeSize[data_types[0]["d_type"]]
+-
+     for kernel_schedule in kernel_schedules:
+       tile_sizes = tile_sizes_pingpong if is_pingpong(kernel_schedule) else tile_sizes_cooperative
+       tile_descriptions = []
+       for tile_size in tile_sizes:
+-        tile_descriptions.append(
+-          TileDescription(tile_size, 0, [4, 1, 1], math_inst, min_cc, max_cc, cluster_shape))
++        stage_map = explicit_stages_pingpong if is_pingpong(kernel_schedule) else explicit_stages_cooperative
++        for stages in [0] + stage_map.get(tuple(tile_size), []):
++          tile_descriptions.append(
++            TileDescription(tile_size, stages, [4, 1, 1], math_inst, min_cc, max_cc, cluster_shape))
+ 
+       for data_type in data_types:
++        # Set alignment D based on the destination format of this operation.
++        for layout in layouts:
++          layout[2][1] = 128 // DataTypeSize[data_type["d_type"]]
++        schedulers = tile_schedulers(data_type["sfd_type"], kernel_schedule)
++        if not grouped and not is_pingpong(kernel_schedule) and \
++           data_type["d_type"] == DataType.f16:
++          schedulers = [TileSchedulerType.Default, TileSchedulerType.StreamK,
++                        TileSchedulerType.StaticPersistent]
+         CreateGemmUniversal3xOperator(manifest, layouts, tile_descriptions, data_type,
+           [[kernel_schedule, EpilogueScheduleType.ScheduleAuto]],
+-          tile_schedulers = tile_schedulers(data_type["sfd_type"], kernel_schedule),
++          tile_schedulers = schedulers,
+           gemm_kind = gemm_kind
+           )
+ 
+diff --git a/python/cutlass_library/library.py b/python/cutlass_library/library.py
+index 9c8891809f0a606a5a67ff4dc42c8d993b18c6da..7bc6b502d61336fe0068e2e72badf8915bb2b505 100644
+--- a/python/cutlass_library/library.py
++++ b/python/cutlass_library/library.py
+@@ -1059,11 +1059,13 @@ def to_grouped_schedule(schedule, grouped):
+ class TileSchedulerType(enum.Enum):
+   Default = enum_auto()
+   Persistent = enum_auto()
++  StaticPersistent = enum_auto()
+   StreamK = enum_auto()
+ #
+ TileSchedulerTag = {
+   TileSchedulerType.Default: 'void',
+   TileSchedulerType.Persistent: 'cutlass::gemm::PersistentScheduler',
++  TileSchedulerType.StaticPersistent: 'cutlass::gemm::StaticPersistentScheduler',
+   TileSchedulerType.StreamK: 'cutlass::gemm::StreamKScheduler',
+ }
+ 
+@@ -1071,6 +1073,7 @@ TileSchedulerTag = {
+ TileSchedulerSuffixes = {
+   TileSchedulerType.Default: '',
+   TileSchedulerType.Persistent: '',
++  TileSchedulerType.StaticPersistent: '_static',
+   TileSchedulerType.StreamK: '_stream_k',
+ }
+ 
+diff --git a/tools/library/CMakeLists.txt b/tools/library/CMakeLists.txt
+index 39676ca4dbc860493795822db55586b963a64ab7..5a0ecd902a1097939b5c64949204f20749b08e62 100644
+--- a/tools/library/CMakeLists.txt
++++ b/tools/library/CMakeLists.txt
+@@ -237,7 +237,24 @@ endfunction()
+ 
+ ################################################################################
+ 
+-cutlass_add_cutlass_library(
++option(CUTLASS_LIBRARY_MINIMAL_MXFP6_PROFILER
++  "Build only the library pieces needed by the SM120 MXFP6 profiler" OFF)
++
++if(CUTLASS_LIBRARY_MINIMAL_MXFP6_PROFILER)
++  add_compile_definitions(CUTLASS_LIBRARY_MINIMAL_MXFP6_PROFILER=1)
++  cutlass_add_cutlass_library(
++    src/handle.cu
++    src/manifest.cpp
++    src/operation_table.cu
++    src/singleton.cu
++    src/util.cu
++    src/reference/block_scaled_gemm_mixed8bitsa.cu
++    src/reference/initialize_reference_operations.cu
++    src/reduction/reduction_device.cu
++    src/reduction/init_reduction_operations.cu
++  )
++else()
++  cutlass_add_cutlass_library(
+ 
+   src/handle.cu
+   src/manifest.cpp
+@@ -292,6 +309,7 @@ cutlass_add_cutlass_library(
+   src/reference/conv3d.cu
+ 
+   )
++endif()
+ 
+ # For backward compatibility with the old name
+ if(CUTLASS_BUILD_SHARED_LIBS)
+diff --git a/tools/library/src/reference/initialize_reference_operations.cu b/tools/library/src/reference/initialize_reference_operations.cu
+index 9ba9b8d740d2bf1afbc2d5c3e2749a05babc1b0d..7f16b68c21543d7e4067201f78203fa97726a7f2 100644
+--- a/tools/library/src/reference/initialize_reference_operations.cu
++++ b/tools/library/src/reference/initialize_reference_operations.cu
+@@ -82,6 +82,9 @@ void initialize_conv3d_reference_operations(Manifest &manifest);
+ ///////////////////////////////////////////////////////////////////////////////////////////////////
+ 
+ void initialize_reference_operations(Manifest &manifest) {
++#if defined(CUTLASS_LIBRARY_MINIMAL_MXFP6_PROFILER)
++  initialize_block_scaled_gemm_reference_operations_mixed8bitsa(manifest);
++#else
+   initialize_conv2d_reference_operations(manifest);
+   initialize_conv3d_reference_operations(manifest);
+ 
+@@ -120,6 +123,7 @@ void initialize_reference_operations(Manifest &manifest) {
+   initialize_blockwise_gemm_reference_operations_fp32out(manifest);
+   initialize_blockwise_gemm_reference_operations_fp16out(manifest);
+   initialize_blockwise_gemm_reference_operations_bf16out(manifest);
++#endif
+ }
+ 
+ ///////////////////////////////////////////////////////////////////////////////////////////////////

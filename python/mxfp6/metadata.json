@@ -1,0 +1,11 @@
+{
+  "name": "mxfp6-sm120",
+  "version": "0.1.0",
+  "gpu_architecture": "sm_120a",
+  "input_format": "OCP E3M2",
+  "scale_format": "UE8M0",
+  "scale_vector_size": 32,
+  "accumulator_dtype": "float32",
+  "output_dtype": "float16",
+  "cutlass_commit": "e6233cbac5d7c7a865c19c91cd684ceece19513c"
+}

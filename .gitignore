@@ -1,0 +1,53 @@
+# Python bytecode, environments, and test caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.venv/
+venv/
+
+# Native/CMake build products
+build*/
+cmake-build-*/
+_skbuild/
+CMakeCache.txt
+CMakeFiles/
+CTestTestfile.cmake
+cmake_install.cmake
+compile_commands.json
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+
+# Python packaging outputs
+dist/
+wheelhouse/
+*.whl
+
+# CUTLASS profiler and autotuning output. Keep only curated manifests.
+/benchmarks/results/*
+!/benchmarks/results/README.md
+!/benchmarks/results/target_shapes.json
+/autotune_results/
+/autotune_*.csv
+/profiler_*.csv
+
+# GPU profiler reports and logs
+*.ncu-rep
+*.nsys-rep
+*.sqlite
+*.log
+
+# Editor and OS metadata
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store

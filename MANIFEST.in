@@ -1,0 +1,6 @@
+include CMakeLists.txt README.md LICENSE
+include scripts/build_wheel.sh scripts/apply_cutlass_patches.sh
+recursive-include csrc *.hpp *.h *.cu *.cpp
+recursive-include patches *.patch *.md
+recursive-include third_party/cutlass/include *
+recursive-include third_party/cutlass/tools/util/include *
