@@ -50,6 +50,14 @@ def test_fp6_tools(mxfp6) -> None:
     print("PASS FP6 CUDA pack/unpack and CPU bitstream compatibility")
 
 
+def test_fp6_to_fp8(mxfp6) -> None:
+    codes = torch.arange(64, dtype=torch.uint8, device="cuda").repeat(4, 2)
+    packed = mxfp6.pack_fp6(codes)
+    expanded = mxfp6.expand_fp6_to_fp8(packed, *codes.shape)
+    torch.testing.assert_close(expanded.float(), decode_e3m2(codes))
+    print("PASS lossless E3M2-to-E4M3 expansion for all 64 encodings")
+
+
 def test_scale_tools(mxfp6) -> None:
     for rows, k in (
         (1, 128),
@@ -134,6 +142,45 @@ def test_random_scale_gemm(mxfp6) -> None:
         print(f"PASS random-scale GEMM {m}x{n}x{k}: max_abs={max_abs:g}")
 
 
+def test_large_m_mixed_gemm(mxfp6) -> None:
+    """Exercise the profiler-selected E4M3-by-E3M2 large-M dispatch."""
+    m, n, k = 2048, 5120, 3072
+    a_codes, b_codes, sfa, sfb = make_problem(m, n, k, 1208)
+    a = mxfp6.pack_operand(a_codes, sfa)
+    b = mxfp6.pack_operand(b_codes, sfb)
+    assert a.values.numel() == m * k * 6 // 8
+    assert b.values.numel() == n * k * 6 // 8
+    actual = mxfp6.gemm(a, b)
+    reference = reference_gemm(a_codes, b_codes, sfa, sfb)
+    torch.testing.assert_close(actual, reference, rtol=2e-3, atol=0.25)
+    max_abs = (actual - reference).abs().max().item()
+    print(
+        "PASS packed-W6 large-M mixed GEMM "
+        f"{m}x{n}x{k}: max_abs={max_abs:g}"
+    )
+
+
+def test_tuned_transition_gemm(mxfp6) -> None:
+    """Exercise native and mixed exact dispatch at M=32, 64, and 96."""
+    shapes = (
+        (32, 8192, 5120),
+        (64, 5120, 3072),
+        (64, 5120, 8704),
+        (96, 7168, 5120),
+        (96, 17408, 5120),
+    )
+    for index, (m, n, k) in enumerate(shapes):
+        a_codes, b_codes, sfa, sfb = make_problem(m, n, k, 3200 + index)
+        actual = mxfp6.gemm(
+            mxfp6.pack_operand(a_codes, sfa),
+            mxfp6.pack_operand(b_codes, sfb),
+        )
+        reference = reference_gemm(a_codes, b_codes, sfa, sfb)
+        torch.testing.assert_close(actual, reference, rtol=2e-3, atol=0.25)
+        max_abs = (actual - reference).abs().max().item()
+        print(f"PASS tuned transition GEMM {m}x{n}x{k}: max_abs={max_abs:g}")
+
+
 def test_nondefault_stream(mxfp6) -> None:
     m, n, k = 16, 128, 128
     a_codes, b_codes, sfa, sfb = make_problem(m, n, k, 2026)
@@ -146,9 +193,28 @@ def test_nondefault_stream(mxfp6) -> None:
     print("PASS CUDA non-default current-stream semantics")
 
 
+def test_humming_backend(mxfp6) -> None:
+    m, n, k = 512, 256, 128
+    a_codes, b_codes, sfa, sfb = make_problem(m, n, k, 1206)
+    a = mxfp6.pack_operand(a_codes, sfa)
+    b = mxfp6.pack_operand(b_codes, sfb)
+    humming_b = mxfp6.prepare_humming_weight(b)
+    assert (
+        humming_b.values.numel() * humming_b.values.element_size()
+        == n * k * 6 // 8
+    )
+    actual = mxfp6.gemm(a, humming_b)
+    expected = mxfp6.gemm(a, b)
+    torch.testing.assert_close(actual, expected, rtol=2e-3, atol=0.5)
+    print("PASS Humming W6A8 bridge correctness and six-bit weight storage")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--library", type=Path)
+    parser.add_argument(
+        "--humming", action="store_true", help="also JIT and test the Humming backend"
+    )
     options = parser.parse_args()
     if options.library is not None:
         os.environ["MXFP6_LIBRARY_PATH"] = str(options.library.resolve())
@@ -162,9 +228,14 @@ def main() -> None:
 
     print(f"Library: {mxfp6.load_library()}")
     test_fp6_tools(mxfp6)
+    test_fp6_to_fp8(mxfp6)
     test_scale_tools(mxfp6)
     test_random_scale_gemm(mxfp6)
+    test_tuned_transition_gemm(mxfp6)
+    test_large_m_mixed_gemm(mxfp6)
     test_nondefault_stream(mxfp6)
+    if options.humming:
+        test_humming_backend(mxfp6)
     print("All MXFP6 tool tests passed")
 
 

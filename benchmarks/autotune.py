@@ -13,22 +13,26 @@ from dataclasses import dataclass
 from itertools import product
 from pathlib import Path
 
+from model_shapes import DEFAULT_BATCH_SIZES, QWEN35_27B_TP2_NK
+
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_PROFILER = ROOT / "build_profiler/tools/profiler/cutlass_profiler"
+DEFAULT_PROFILERS = {
+    "w6a6": ROOT / "build_profiler/tools/profiler/cutlass_profiler",
+    "w6a8": ROOT / "build_profiler_a8b6/tools/profiler/cutlass_profiler",
+}
 DEFAULT_OUTPUT = ROOT / "benchmarks/results/latest"
-BENCHMARK_NK = (
-    (5120, 8192),
-    (3072, 5120),
-    (5120, 7168),
-    (5120, 17408),
-    (8704, 5120),
-)
-BENCHMARK_M = (1, 16, 32, 2048)
-KERNEL_PREFIX = (
-    "cutlass3x_sm120_bstensorop_gemm_ue8m0xe3m2_ue8m0xe3m2_"
-    "f32_void_f16_"
-)
+MAX_LLC_CAPACITY_KIB = ((1 << 31) - 1) >> 10
+KERNEL_PREFIXES = {
+    "w6a6": (
+        "cutlass3x_sm120_bstensorop_gemm_ue8m0xe3m2_ue8m0xe3m2_"
+        "f32_void_f16_"
+    ),
+    "w6a8": (
+        "cutlass3x_sm120_bstensorop_gemm_ue8m0xe4m3_ue8m0xe3m2_"
+        "f32_void_f16_"
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -107,15 +111,17 @@ def run_job(
     warmup: int,
     iterations: int,
     workspace_count: int,
+    llc_capacity_kib: int,
     kernel_suffix_glob: str,
     split_k_slices: str,
     kernel_glob: str | None,
+    kernel_prefix: str,
 ) -> None:
     m, n, layout = job.profiler_shape
     selected_kernels = (
-        kernel_glob.format(prefix=KERNEL_PREFIX, layout=layout)
+        kernel_glob.format(prefix=kernel_prefix, layout=layout)
         if kernel_glob is not None
-        else f"{KERNEL_PREFIX}{kernel_suffix_glob}_{layout}_*"
+        else f"{kernel_prefix}{kernel_suffix_glob}_{layout}_*"
     )
     command = [
         str(profiler),
@@ -136,6 +142,8 @@ def run_job(
         "--verbose=false",
         f"--output={job.output_base}",
     ]
+    if llc_capacity_kib > 0:
+        command.append(f"--llc-capacity={llc_capacity_kib}")
     environment = os.environ.copy()
     environment["CUDA_VISIBLE_DEVICES"] = str(device)
     subprocess.run(command, cwd=ROOT, env=environment, check=True)
@@ -159,7 +167,13 @@ def read_top(job: Job, count: int) -> list[dict[str, str]]:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--profiler", type=Path, default=DEFAULT_PROFILER)
+    parser.add_argument("--profiler", type=Path)
+    parser.add_argument(
+        "--mma",
+        choices=("w6a6", "w6a8"),
+        default="w6a6",
+        help="profile native E3M2xE3M2 or mixed E4M3xE3M2 compute",
+    )
     parser.add_argument(
         "--output-dir", type=Path, default=DEFAULT_OUTPUT
     )
@@ -190,6 +204,15 @@ def main() -> None:
         default=8,
         help="rotate independent inputs to make profiler ranking cold-cache",
     )
+    parser.add_argument(
+        "--llc-capacity-kib",
+        type=int,
+        default=0,
+        help=(
+            "profiler cache-rotation capacity in KiB; use with "
+            "--workspace-count=0 for strict cold-cache ranking"
+        ),
+    )
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument(
         "--split-k-slices",
@@ -212,14 +235,28 @@ def main() -> None:
     )
     parser.add_argument("--parse-only", action="store_true")
     options = parser.parse_args()
+    if options.profiler is None:
+        options.profiler = DEFAULT_PROFILERS[options.mma]
 
     devices = [int(item) for item in options.devices.split(",")]
     if not devices:
         raise ValueError("at least one CUDA device is required")
-    if min(options.warmup, options.iterations, options.workspace_count) < 1:
-        raise ValueError("warmup, iterations, and workspace-count must be positive")
+    if min(options.warmup, options.iterations) < 1:
+        raise ValueError("warmup and iterations must be positive")
+    if options.workspace_count < 0 or options.llc_capacity_kib < 0:
+        raise ValueError("workspace-count and llc-capacity-kib must be nonnegative")
+    if options.llc_capacity_kib > MAX_LLC_CAPACITY_KIB:
+        raise ValueError(
+            "llc-capacity-kib exceeds the CUTLASS profiler's signed "
+            f"32-bit byte limit ({MAX_LLC_CAPACITY_KIB} KiB)"
+        )
     if options.top_k < 1:
         raise ValueError("top-k must be positive")
+    if options.mma == "w6a8" and options.orientations in ("both", "swapped"):
+        raise ValueError(
+            "mixed W6A8 profiling requires --orientations=normal (or auto "
+            "for large-M-only shape lists)"
+        )
     if not options.parse_only and not options.profiler.is_file():
         raise FileNotFoundError(options.profiler)
 
@@ -235,8 +272,8 @@ def main() -> None:
     else:
         shapes = tuple(
             (m, n, k)
-            for m in BENCHMARK_M
-            for n, k in BENCHMARK_NK
+            for m in DEFAULT_BATCH_SIZES
+            for _, n, k in QWEN35_27B_TP2_NK
         )
 
     options.output_dir.mkdir(parents=True, exist_ok=True)
@@ -258,9 +295,11 @@ def main() -> None:
                     options.warmup,
                     options.iterations,
                     options.workspace_count,
+                    options.llc_capacity_kib,
                     options.kernel_suffix_glob,
                     options.split_k_slices,
                     options.kernel_glob,
+                    KERNEL_PREFIXES[options.mma],
                 )
 
         with ThreadPoolExecutor(max_workers=len(devices)) as executor:

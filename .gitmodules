@@ -2,3 +2,6 @@
 	path = third_party/cutlass
 	url = https://github.com/NVIDIA/cutlass.git
 	shallow = true
+[submodule "third_party/humming"]
+	path = third_party/humming
+	url = https://github.com/inclusionAI/humming.git

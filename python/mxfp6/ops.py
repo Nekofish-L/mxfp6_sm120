@@ -1,20 +1,24 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import torch
 
 from ._loader import load_library
 
+if TYPE_CHECKING:
+    from .humming_backend import HummingMXFP6Weight
+
 
 SCALE_VECTOR_SIZE = 32
 TUNED_NK = frozenset(
     {
-        (5120, 8192),
-        (3072, 5120),
-        (5120, 7168),
-        (5120, 17408),
-        (8704, 5120),
+        (8192, 5120),
+        (5120, 3072),
+        (7168, 5120),
+        (17408, 5120),
+        (5120, 8704),
     }
 )
 
@@ -55,6 +59,7 @@ class PackedMXFP6Tensor:
     scales: torch.Tensor
     rows: int
     k: int
+    logical_scales: torch.Tensor | None = None
 
     @property
     def device(self) -> torch.device:
@@ -86,6 +91,18 @@ def unpack_fp6(packed: torch.Tensor, rows: int, k: int) -> torch.Tensor:
         raise ValueError("rows must be positive and k must be divisible by four")
     load_library()
     return torch.ops.mxfp6.unpack_fp6(packed, rows, k)
+
+
+def expand_fp6_to_fp8(
+    packed: torch.Tensor, rows: int, k: int
+) -> torch.Tensor:
+    """Losslessly expand packed E3M2 to a ``torch.float8_e4m3fn`` matrix."""
+    _require_cuda_uint8_contiguous(packed, "packed")
+    if rows <= 0 or k <= 0 or k % 16:
+        raise ValueError("rows must be positive and k must be divisible by 16")
+    load_library()
+    output = torch.ops.mxfp6.expand_fp6_to_fp8(packed, rows, k)
+    return output.view(torch.float8_e4m3fn)
 
 
 def pack_scales(logical: torch.Tensor) -> torch.Tensor:
@@ -138,7 +155,11 @@ def pack_operand(
     if codes.device != logical_scales.device:
         raise ValueError("codes and logical_scales must be on the same device")
     return PackedMXFP6Tensor(
-        pack_fp6(codes), pack_scales(logical_scales), rows, k
+        pack_fp6(codes),
+        pack_scales(logical_scales),
+        rows,
+        k,
+        logical_scales,
     )
 
 
@@ -146,9 +167,14 @@ def unpack_operand(
     operand: PackedMXFP6Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Return logical E3M2 codes and logical UE8M0 scales for an operand."""
+    logical_scales = operand.logical_scales
+    if logical_scales is None:
+        logical_scales = unpack_scales(
+            operand.scales, operand.rows, operand.k
+        )
     return (
         unpack_fp6(operand.values, operand.rows, operand.k),
-        unpack_scales(operand.scales, operand.rows, operand.k),
+        logical_scales,
     )
 
 
@@ -176,12 +202,29 @@ def gemm_packed(
 
 def gemm(
     a: PackedMXFP6Tensor,
-    b: PackedMXFP6Tensor,
+    b: PackedMXFP6Tensor | HummingMXFP6Weight,
     alpha: float = 1.0,
 ) -> torch.Tensor:
-    """Compute ``A @ B.T`` from two prepacked MXFP6 operands."""
-    if not isinstance(a, PackedMXFP6Tensor) or not isinstance(b, PackedMXFP6Tensor):
-        raise TypeError("a and b must be PackedMXFP6Tensor instances")
+    """Compute ``A @ B.T`` from prepacked MXFP6 operands.
+
+    A :class:`~mxfp6.HummingMXFP6Weight` selects the optional Humming reference
+    backend. Ordinary :class:`PackedMXFP6Tensor` operands use the CUTLASS
+    dispatcher, which selects native W6A6 or lossless mixed W6A8 compute while
+    retaining six-bit storage at the API boundary.
+    """
+    if not isinstance(a, PackedMXFP6Tensor):
+        raise TypeError("a must be a PackedMXFP6Tensor instance")
+
+    # Keep Humming optional and lazily imported. This also avoids starting its
+    # background JIT launcher for users of the native W6A6 path.
+    from .humming_backend import HummingMXFP6Weight, gemm_humming
+
+    if isinstance(b, HummingMXFP6Weight):
+        return gemm_humming(a, b, alpha)
+    if not isinstance(b, PackedMXFP6Tensor):
+        raise TypeError(
+            "b must be a PackedMXFP6Tensor or HummingMXFP6Weight instance"
+        )
     if a.k != b.k:
         raise ValueError(f"a.k and b.k must match; got {a.k} and {b.k}")
     if a.device != b.device:

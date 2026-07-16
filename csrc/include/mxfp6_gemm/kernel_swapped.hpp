@@ -135,20 +135,45 @@ using Kernel64x32x128Stage3Pingpong = KernelConfig<
     void, cutlass::gemm::collective::StageCount<3>>;
 
 // Exact target-shape winners retained alongside the general portfolio.
-using TargetKernel128x8Cooperative = KernelConfig<
-    cute::_128, cute::_8, cute::_128,
-    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120>;
-using TargetKernel128x16Cooperative = KernelConfig<
-    cute::_128, cute::_16, cute::_128,
-    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120>;
-using TargetKernel128x8StreamK = KernelConfig<
+using TargetKernel128x8Stage4StaticCooperative = KernelConfig<
     cute::_128, cute::_8, cute::_128,
     cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
     cutlass::epilogue::collective::EpilogueTileAuto,
-    cutlass::gemm::StreamKScheduler>;
-using TargetKernel128x16StreamK = KernelConfig<
-    cute::_128, cute::_16, cute::_128,
+    cutlass::gemm::StaticPersistentScheduler,
+    cutlass::gemm::collective::StageCount<4>>;
+using TargetKernel128x8StaticCooperative = KernelConfig<
+    cute::_128, cute::_8, cute::_128,
     cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
     cutlass::epilogue::collective::EpilogueTileAuto,
-    cutlass::gemm::StreamKScheduler>;
+    cutlass::gemm::StaticPersistentScheduler>;
+using TargetKernel128x32Cooperative = KernelConfig<
+    cute::_128, cute::_32, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120>;
+using TargetKernel128x32StaticCooperative = KernelConfig<
+    cute::_128, cute::_32, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    cutlass::gemm::StaticPersistentScheduler>;
+using TargetKernel64x16x128Stage6StaticPingpong = KernelConfig<
+    cute::_64, cute::_16, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    cutlass::gemm::StaticPersistentScheduler,
+    cutlass::gemm::collective::StageCount<6>>;
+using TargetKernel64x16x256Pingpong = KernelConfig<
+    cute::_64, cute::_16, cute::_256,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    cutlass::gemm::StaticPersistentScheduler>;
+using TargetKernel64x16x256Stage3StaticPingpong = KernelConfig<
+    cute::_64, cute::_16, cute::_256,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    cutlass::gemm::StaticPersistentScheduler,
+    cutlass::gemm::collective::StageCount<3>>;
+using TargetKernel64x16x512Pingpong = KernelConfig<
+    cute::_64, cute::_16, cute::_512,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    cutlass::gemm::StaticPersistentScheduler>;
 }  // namespace mxfp6_gemm::swapped

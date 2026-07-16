@@ -17,6 +17,7 @@ namespace {
 constexpr int kThreads = 256;
 constexpr int kScaleVectorSize = 32;
 constexpr uint8_t kUe8m0One = 0x7f;
+constexpr int kExpandVectorsPerThread = 1;
 
 int64_t ceil_div(int64_t value, int64_t divisor) {
   return (value + divisor - 1) / divisor;
@@ -54,6 +55,36 @@ __device__ __forceinline__ uint32_t unpack_four_codes(uint32_t packed) {
       (((packed >> 6) & 0x3fu) << 8) |
       (((packed >> 12) & 0x3fu) << 16) |
       (((packed >> 18) & 0x3fu) << 24);
+}
+
+__device__ __forceinline__ uint32_t expand_four_codes(uint32_t packed) {
+  // Work on four independent byte lanes. The packed-byte comparisons avoid
+  // divergent handling of E3M2 subnormals.
+  uint32_t const codes = unpack_four_codes(packed);
+  uint32_t const mantissas = codes & 0x03030303u;
+  uint32_t const exponents = codes & 0x1c1c1c1cu;
+  uint32_t const signs = (codes & 0x20202020u) << 2;
+
+  uint32_t const exponent_zero = __vcmpeq4(exponents, 0);
+  uint32_t const mantissa_zero = __vcmpeq4(mantissas, 0);
+  uint32_t const mantissa_three =
+      __vcmpeq4(mantissas, 0x03030303u);
+
+  // Normal numbers: rebias E3M2 exponent 3 -> E4M3 exponent 7 and append a
+  // zero mantissa bit. All byte lanes stay below 0x80, so scalar addition
+  // cannot carry between lanes.
+  uint32_t const normal =
+      (exponents << 1) + 0x20202020u | (mantissas << 1);
+
+  // E3M2 subnormal magnitudes {0, 2^-4, 2^-3, 1.5*2^-3} map to E4M3
+  // encodings {0x00, 0x18, 0x20, 0x24}.
+  uint32_t subnormal =
+      0x10101010u + (mantissas << 3) -
+      (mantissa_three & 0x04040404u);
+  subnormal &= ~mantissa_zero;
+
+  return signs | (normal & ~exponent_zero) |
+      (subnormal & exponent_zero);
 }
 
 // One thread converts 16 input bytes to 12 output bytes. The input uses one
@@ -126,6 +157,38 @@ __global__ void unpack_fp6_vector_kernel(
       unpack_four_codes(p2),
       unpack_four_codes(p3)};
   reinterpret_cast<uint4*>(output)[vector] = result;
+}
+
+// Each thread consumes three aligned words (16 packed FP6 values) and emits
+// one aligned 128-bit FP8 store.
+__global__ void expand_fp6_to_fp8_vector_kernel(
+    uint8_t const* input, uint8_t* output, int64_t vectors) {
+  int64_t const first_vector =
+      (static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x) *
+      kExpandVectorsPerThread;
+
+#pragma unroll
+  for (int item = 0; item < kExpandVectorsPerThread; ++item) {
+    int64_t const vector = first_vector + item;
+    if (vector >= vectors) {
+      return;
+    }
+    uint32_t const* source =
+        reinterpret_cast<uint32_t const*>(input + vector * 12);
+    uint32_t const i0 = source[0];
+    uint32_t const i1 = source[1];
+    uint32_t const i2 = source[2];
+    uint32_t const p0 = i0 & 0x00ffffffu;
+    uint32_t const p1 = (i0 >> 24) | ((i1 & 0x0000ffffu) << 8);
+    uint32_t const p2 = (i1 >> 16) | ((i2 & 0x000000ffu) << 16);
+    uint32_t const p3 = i2 >> 8;
+    uint4 const result{
+        expand_four_codes(p0),
+        expand_four_codes(p1),
+        expand_four_codes(p2),
+        expand_four_codes(p3)};
+    reinterpret_cast<uint4*>(output)[vector] = result;
+  }
 }
 
 __global__ void unpack_fp6_scalar_kernel(
@@ -257,6 +320,31 @@ at::Tensor unpack_fp6_cuda(
   launch_1d(tail_groups, stream.stream(), unpack_fp6_scalar_kernel,
             packed.data_ptr<uint8_t>(), output.data_ptr<uint8_t>(),
             first_group, tail_groups);
+  return output;
+}
+
+at::Tensor expand_fp6_to_fp8_cuda(
+    at::Tensor const& packed, int64_t rows, int64_t k) {
+  check_cuda_byte_tensor(packed, "packed");
+  check_matrix_shape(rows, k);
+  TORCH_CHECK(k % 16 == 0, "k must be divisible by 16; got ", k);
+  TORCH_CHECK(rows <= std::numeric_limits<int64_t>::max() / k,
+              "rows * k overflows int64");
+  int64_t const values = rows * k;
+  TORCH_CHECK(packed.numel() == values * 3 / 4,
+              "packed must contain exactly ", values * 3 / 4,
+              " bytes; got ", packed.numel());
+  TORCH_CHECK(reinterpret_cast<uintptr_t>(packed.data_ptr()) %
+                  alignof(uint32_t) == 0,
+              "packed must be at least 4-byte aligned");
+
+  c10::cuda::CUDAGuard guard(packed.device());
+  auto output = at::empty({rows, k}, packed.options());
+  auto stream = c10::cuda::getCurrentCUDAStream(packed.get_device());
+  int64_t const vectors = values / 16;
+  launch_1d(ceil_div(vectors, kExpandVectorsPerThread), stream.stream(),
+            expand_fp6_to_fp8_vector_kernel,
+            packed.data_ptr<uint8_t>(), output.data_ptr<uint8_t>(), vectors);
   return output;
 }
 

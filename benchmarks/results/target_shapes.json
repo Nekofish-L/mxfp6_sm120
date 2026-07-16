@@ -1,222 +1,52 @@
-[
-  {
-    "m": 1,
-    "n": 5120,
-    "k": 8192,
-    "orientation": "swapped",
-    "operation": "cutlass3x_sm120_bstensorop_gemm_ue8m0xe3m2_ue8m0xe3m2_f32_void_f16_64x16x512_1x1x1_0_tnn_align128_static_pingpong_q",
-    "runtime_us": 22.0928,
-    "split_k_slices": 16,
-    "raster_order": "along_m",
-    "swizzle_size": 1
-  },
-  {
-    "m": 1,
-    "n": 3072,
-    "k": 5120,
-    "orientation": "swapped",
-    "operation": "cutlass3x_sm120_bstensorop_gemm_ue8m0xe3m2_ue8m0xe3m2_f32_void_f16_64x16x256_1x1x1_0_tnn_align128_static_pingpong_q",
-    "runtime_us": 6.9368,
-    "split_k_slices": 16,
-    "raster_order": "along_m",
-    "swizzle_size": 4
-  },
-  {
-    "m": 1,
-    "n": 5120,
-    "k": 7168,
-    "orientation": "swapped",
-    "operation": "cutlass3x_sm120_bstensorop_gemm_ue8m0xe3m2_ue8m0xe3m2_f32_void_f16_64x16x256_1x1x1_0_tnn_align128_static_pingpong_q",
-    "runtime_us": 19.0456,
-    "split_k_slices": 16,
-    "raster_order": "along_m",
-    "swizzle_size": 4
-  },
-  {
-    "m": 1,
-    "n": 5120,
-    "k": 17408,
-    "orientation": "swapped",
-    "operation": "cutlass3x_sm120_bstensorop_gemm_ue8m0xe3m2_ue8m0xe3m2_f32_void_f16_64x16x512_1x1x1_0_tnn_align128_static_pingpong_q",
-    "runtime_us": 45.3888,
-    "split_k_slices": 4,
-    "raster_order": "along_n",
-    "swizzle_size": 2
-  },
-  {
-    "m": 1,
-    "n": 8704,
-    "k": 5120,
-    "orientation": "swapped",
-    "operation": "cutlass3x_sm120_bstensorop_gemm_ue8m0xe3m2_ue8m0xe3m2_f32_void_f16_128x8x128_1x1x1_4_tnn_align128_static_cooperative_q",
-    "runtime_us": 22.272,
-    "split_k_slices": 1,
-    "raster_order": "along_n",
-    "swizzle_size": 2
-  },
-  {
-    "m": 16,
-    "n": 5120,
-    "k": 8192,
-    "orientation": "swapped",
-    "operation": "cutlass3x_sm120_bstensorop_gemm_ue8m0xe3m2_ue8m0xe3m2_f32_void_f16_64x16x512_1x1x1_0_tnn_align128_static_pingpong_q",
-    "runtime_us": 22.630399999999998,
-    "split_k_slices": 1,
-    "raster_order": "along_n",
-    "swizzle_size": 1
-  },
-  {
-    "m": 16,
-    "n": 3072,
-    "k": 5120,
-    "orientation": "swapped",
-    "operation": "cutlass3x_sm120_bstensorop_gemm_ue8m0xe3m2_ue8m0xe3m2_f32_void_f16_64x16x256_1x1x1_0_tnn_align128_static_pingpong_q",
-    "runtime_us": 6.8096,
-    "split_k_slices": 1,
-    "raster_order": "along_m",
-    "swizzle_size": 1
-  },
-  {
-    "m": 16,
-    "n": 5120,
-    "k": 7168,
-    "orientation": "swapped",
-    "operation": "cutlass3x_sm120_bstensorop_gemm_ue8m0xe3m2_ue8m0xe3m2_f32_void_f16_64x16x512_1x1x1_0_tnn_align128_static_pingpong_q",
-    "runtime_us": 19.6608,
-    "split_k_slices": 1,
-    "raster_order": "along_m",
-    "swizzle_size": 2
-  },
-  {
-    "m": 16,
-    "n": 5120,
-    "k": 17408,
-    "orientation": "swapped",
-    "operation": "cutlass3x_sm120_bstensorop_gemm_ue8m0xe3m2_ue8m0xe3m2_f32_void_f16_64x16x512_1x1x1_0_tnn_align128_static_pingpong_q",
-    "runtime_us": 46.1568,
-    "split_k_slices": 4,
-    "raster_order": "along_n",
-    "swizzle_size": 8
-  },
-  {
-    "m": 16,
-    "n": 8704,
-    "k": 5120,
-    "orientation": "swapped",
-    "operation": "cutlass3x_sm120_bstensorop_gemm_ue8m0xe3m2_ue8m0xe3m2_f32_void_f16_128x8x128_1x1x1_0_tnn_align128_static_cooperative_q",
-    "runtime_us": 22.7832,
-    "split_k_slices": 8,
-    "raster_order": "along_m",
-    "swizzle_size": 1
-  },
-  {
-    "m": 32,
-    "n": 5120,
-    "k": 8192,
-    "orientation": "swapped",
-    "operation": "cutlass3x_sm120_bstensorop_gemm_ue8m0xe3m2_ue8m0xe3m2_f32_void_f16_64x16x128_1x1x1_7_tnn_align128_static_pingpong_q",
-    "runtime_us": 23.2696,
-    "split_k_slices": 2,
-    "raster_order": "along_m",
-    "swizzle_size": 2
-  },
-  {
-    "m": 32,
-    "n": 3072,
-    "k": 5120,
-    "orientation": "swapped",
-    "operation": "cutlass3x_sm120_bstensorop_gemm_ue8m0xe3m2_ue8m0xe3m2_f32_void_f16_64x16x256_1x1x1_0_tnn_align128_static_pingpong_q",
-    "runtime_us": 8.8312,
-    "split_k_slices": 1,
-    "raster_order": "along_m",
-    "swizzle_size": 1
-  },
-  {
-    "m": 32,
-    "n": 5120,
-    "k": 7168,
-    "orientation": "swapped",
-    "operation": "cutlass3x_sm120_bstensorop_gemm_ue8m0xe3m2_ue8m0xe3m2_f32_void_f16_64x16x128_1x1x1_6_tnn_align128_static_pingpong_q",
-    "runtime_us": 20.2488,
-    "split_k_slices": 2,
-    "raster_order": "along_m",
-    "swizzle_size": 2
-  },
-  {
-    "m": 32,
-    "n": 5120,
-    "k": 17408,
-    "orientation": "swapped",
-    "operation": "cutlass3x_sm120_bstensorop_gemm_ue8m0xe3m2_ue8m0xe3m2_f32_void_f16_128x16x128_1x1x1_3_tnn_align128_stream_k_cooperative_q",
-    "runtime_us": 47.1112,
-    "split_k_slices": 2,
-    "raster_order": "along_m",
-    "swizzle_size": 4
-  },
-  {
-    "m": 32,
-    "n": 8704,
-    "k": 5120,
-    "orientation": "swapped",
-    "operation": "cutlass3x_sm120_bstensorop_gemm_ue8m0xe3m2_ue8m0xe3m2_f32_void_f16_128x16x128_1x1x1_0_tnn_align128_static_cooperative_q",
-    "runtime_us": 23.4744,
-    "split_k_slices": 2,
-    "raster_order": "along_m",
-    "swizzle_size": 1
-  },
-  {
-    "m": 2048,
-    "n": 5120,
-    "k": 8192,
-    "orientation": "normal",
-    "operation": "cutlass3x_sm120_bstensorop_gemm_ue8m0xe3m2_ue8m0xe3m2_f32_void_f16_128x128x128_1x1x1_0_tnt_align128_cooperative_q",
-    "runtime_us": 387.91700000000003,
-    "split_k_slices": 1,
-    "raster_order": "along_m",
-    "swizzle_size": 1
-  },
-  {
-    "m": 2048,
-    "n": 3072,
-    "k": 5120,
-    "orientation": "normal",
-    "operation": "cutlass3x_sm120_bstensorop_gemm_ue8m0xe3m2_ue8m0xe3m2_f32_void_f16_64x128x128_1x1x1_0_tnt_align128_pingpong_q",
-    "runtime_us": 153.702,
-    "split_k_slices": 1,
-    "raster_order": "along_n",
-    "swizzle_size": 1
-  },
-  {
-    "m": 2048,
-    "n": 5120,
-    "k": 7168,
-    "orientation": "normal",
-    "operation": "cutlass3x_sm120_bstensorop_gemm_ue8m0xe3m2_ue8m0xe3m2_f32_void_f16_128x128x128_1x1x1_0_tnt_align128_cooperative_q",
-    "runtime_us": 330.34200000000004,
-    "split_k_slices": 1,
-    "raster_order": "along_m",
-    "swizzle_size": 1
-  },
-  {
-    "m": 2048,
-    "n": 5120,
-    "k": 17408,
-    "orientation": "normal",
-    "operation": "cutlass3x_sm120_bstensorop_gemm_ue8m0xe3m2_ue8m0xe3m2_f32_void_f16_128x128x128_1x1x1_0_tnt_align128_cooperative_q",
-    "runtime_us": 792.4989999999999,
-    "split_k_slices": 1,
-    "raster_order": "along_n",
-    "swizzle_size": 1
-  },
-  {
-    "m": 2048,
-    "n": 8704,
-    "k": 5120,
-    "orientation": "normal",
-    "operation": "cutlass3x_sm120_bstensorop_gemm_ue8m0xe3m2_ue8m0xe3m2_f32_void_f16_128x128x128_1x1x1_0_tnt_align128_stream_k_cooperative_q",
-    "runtime_us": 389.094,
-    "split_k_slices": 1,
-    "raster_order": "along_m",
-    "swizzle_size": 1
+{
+  "model": "Qwen3.5-27B",
+  "tensor_parallel_size": 2,
+  "operator": "D[M,N] = A[M,K] @ B[N,K].T",
+  "batch_sizes": [1, 16, 32, 64, 96, 2048],
+  "selection": "CUTLASS exhaustive-profiler shortlist, ranked by the cold-cache PyTorch pipeline",
+  "mixed_path_uses_pdl": true,
+  "dispatch": {
+    "1": {
+      "gdn_in_proj_qkvz": {"compute": "w6a6", "orientation": "swapped", "tile": [128, 8, 128], "stages": 4, "mainloop": "cooperative", "scheduler": "static_persistent", "raster": "along_m", "swizzle": 4},
+      "gdn_out_proj": {"compute": "w6a6", "orientation": "swapped", "tile": [128, 8, 128], "stages": "auto", "mainloop": "cooperative", "scheduler": "static_persistent", "raster": "along_n", "swizzle": 8},
+      "full_attention_qkv_gate_proj": {"compute": "w6a6", "orientation": "swapped", "tile": [128, 8, 128], "stages": "auto", "mainloop": "cooperative", "scheduler": "static_persistent", "raster": "along_n", "swizzle": 4},
+      "mlp_gate_up_proj": {"compute": "w6a6", "orientation": "swapped", "tile": [128, 8, 128], "stages": "auto", "mainloop": "cooperative", "scheduler": "static_persistent", "raster": "along_m", "swizzle": 1},
+      "mlp_down_proj": {"compute": "w6a6", "orientation": "swapped", "tile": [64, 16, 256], "stages": "auto", "mainloop": "pingpong", "scheduler": "static_persistent", "raster": "along_m", "swizzle": 1}
+    },
+    "16": {
+      "gdn_in_proj_qkvz": {"compute": "w6a6", "orientation": "swapped", "tile": [128, 8, 128], "stages": "auto", "mainloop": "cooperative", "scheduler": "static_persistent", "raster": "along_n", "swizzle": 1},
+      "gdn_out_proj": {"compute": "w6a6", "orientation": "swapped", "tile": [128, 8, 128], "stages": 4, "mainloop": "cooperative", "scheduler": "static_persistent", "raster": "along_n", "swizzle": 4},
+      "full_attention_qkv_gate_proj": {"compute": "w6a6", "orientation": "swapped", "tile": [128, 8, 128], "stages": "auto", "mainloop": "cooperative", "scheduler": "static_persistent", "raster": "along_m", "swizzle": 1},
+      "mlp_gate_up_proj": {"compute": "w6a6", "orientation": "swapped", "tile": [64, 16, 256], "stages": 3, "mainloop": "pingpong", "scheduler": "static_persistent", "raster": "along_n", "swizzle": 4},
+      "mlp_down_proj": {"compute": "w6a6", "orientation": "swapped", "tile": [64, 16, 512], "stages": "auto", "mainloop": "pingpong", "scheduler": "static_persistent", "raster": "along_m", "swizzle": 1}
+    },
+    "32": {
+      "gdn_in_proj_qkvz": {"compute": "w6a8", "orientation": "normal", "tile": [64, 64, 128], "stages": "auto", "mainloop": "pingpong", "scheduler": "static_persistent", "raster": "along_n", "swizzle": 4},
+      "gdn_out_proj": {"compute": "w6a6", "orientation": "swapped", "tile": [64, 16, 128], "stages": 6, "mainloop": "pingpong", "scheduler": "static_persistent", "raster": "along_m", "swizzle": 8},
+      "full_attention_qkv_gate_proj": {"compute": "w6a8", "orientation": "normal", "tile": [64, 64, 256], "stages": "auto", "mainloop": "pingpong", "scheduler": "static_persistent", "raster": "along_n", "swizzle": 8},
+      "mlp_gate_up_proj": {"compute": "w6a8", "orientation": "normal", "tile": [64, 64, 128], "stages": "auto", "mainloop": "pingpong", "scheduler": "default", "raster": "along_m", "swizzle": 1},
+      "mlp_down_proj": {"compute": "w6a8", "orientation": "normal", "tile": [64, 64, 128], "stages": "auto", "mainloop": "pingpong", "scheduler": "static_persistent", "raster": "along_n", "swizzle": 2}
+    },
+    "64": {
+      "gdn_in_proj_qkvz": {"compute": "w6a6", "orientation": "swapped", "tile": [128, 32, 128], "stages": "auto", "mainloop": "cooperative", "scheduler": "static_persistent", "raster": "along_m", "swizzle": 2},
+      "gdn_out_proj": {"compute": "w6a8", "orientation": "normal", "tile": [64, 64, 128], "stages": 4, "mainloop": "pingpong", "scheduler": "static_persistent", "raster": "along_m", "swizzle": 1},
+      "full_attention_qkv_gate_proj": {"compute": "w6a6", "orientation": "swapped", "tile": [128, 32, 128], "stages": "auto", "mainloop": "cooperative", "scheduler": "static_persistent", "raster": "along_m", "swizzle": 8},
+      "mlp_gate_up_proj": {"compute": "w6a6", "orientation": "normal", "tile": [64, 64, 128], "stages": "auto", "mainloop": "pingpong", "scheduler": "default", "raster": "along_m", "swizzle": 1},
+      "mlp_down_proj": {"compute": "w6a8", "orientation": "normal", "tile": [64, 64, 128], "stages": "auto", "mainloop": "pingpong", "scheduler": "static_persistent", "raster": "along_m", "swizzle": 8}
+    },
+    "96": {
+      "gdn_in_proj_qkvz": {"compute": "w6a8", "orientation": "normal", "tile": [64, 128, 128], "stages": "auto", "mainloop": "pingpong", "scheduler": "static_persistent", "raster": "along_m", "swizzle": 2},
+      "gdn_out_proj": {"compute": "w6a6", "orientation": "swapped", "tile": [128, 32, 128], "stages": "auto", "mainloop": "cooperative", "scheduler": "default", "raster": "along_m", "swizzle": 1},
+      "full_attention_qkv_gate_proj": {"compute": "w6a6", "orientation": "swapped", "tile": [128, 32, 128], "stages": "auto", "mainloop": "cooperative", "scheduler": "static_persistent", "raster": "along_n", "swizzle": 1},
+      "mlp_gate_up_proj": {"compute": "w6a8", "orientation": "normal", "tile": [64, 128, 128], "stages": "auto", "mainloop": "pingpong", "scheduler": "default", "raster": "along_m", "swizzle": 4},
+      "mlp_down_proj": {"compute": "w6a6", "orientation": "swapped", "tile": [128, 32, 128], "stages": "auto", "mainloop": "cooperative", "scheduler": "default", "raster": "along_n", "swizzle": 1}
+    },
+    "2048": {
+      "gdn_in_proj_qkvz": {"compute": "w6a8", "orientation": "normal", "tile": [128, 128, 128], "stages": "auto", "mainloop": "cooperative", "scheduler": "stream_k", "raster": "along_m", "swizzle": 1},
+      "gdn_out_proj": {"compute": "w6a8", "orientation": "normal", "tile": [128, 128, 128], "stages": "auto", "mainloop": "cooperative", "scheduler": "default", "raster": "along_m", "swizzle": 1},
+      "full_attention_qkv_gate_proj": {"compute": "w6a8", "orientation": "normal", "tile": [128, 128, 128], "stages": "auto", "mainloop": "cooperative", "scheduler": "stream_k", "raster": "along_m", "swizzle": 2},
+      "mlp_gate_up_proj": {"compute": "w6a8", "orientation": "normal", "tile": [128, 128, 128], "stages": "auto", "mainloop": "pingpong", "scheduler": "default", "raster": "along_n", "swizzle": 1},
+      "mlp_down_proj": {"compute": "w6a8", "orientation": "normal", "tile": [128, 128, 128], "stages": "auto", "mainloop": "cooperative", "scheduler": "default", "raster": "along_m", "swizzle": 1}
+    }
   }
-]
+}

@@ -3,6 +3,7 @@
 #include <string>
 
 #include <ATen/ATen.h>
+#include <ATen/cuda/CUDAContextLight.h>
 #include <c10/cuda/CUDACachingAllocator.h>
 #include <c10/cuda/CUDAGuard.h>
 #include <c10/cuda/CUDAStream.h>
@@ -77,7 +78,8 @@ at::Tensor launch_swapped(at::Tensor const& a,
                           int device_index,
                           int max_swizzle_size = 8,
                           RasterOrder raster_order = RasterOrder::Heuristic,
-                          int splits = 1) {
+                          int splits = 1,
+                          int sm_count = 0) {
   using Gemm = typename Kernel::Gemm;
   using BlockScaledConfig = typename Kernel::BlockScaledConfig;
   auto output = at::empty({m, n}, a.options().dtype(at::kHalf));
@@ -114,6 +116,8 @@ at::Tensor launch_swapped(at::Tensor const& a,
        reinterpret_cast<typename Kernel::ElementD*>(output.data_ptr<at::Half>()),
        stride_d}};
 
+  arguments.hw_info.device_id = device_index;
+  arguments.hw_info.sm_count = sm_count;
   configure_scheduler<Kernel>(
       arguments, max_swizzle_size, raster_order, splits);
 
@@ -157,7 +161,9 @@ at::Tensor launch_normal(at::Tensor const& a,
                          int device_index,
                          int max_swizzle_size = 8,
                          RasterOrder raster_order = RasterOrder::Heuristic,
-                         int splits = 1) {
+                         int splits = 1,
+                         int sm_count = 0,
+                         bool use_pdl = false) {
   using Gemm = typename Kernel::Gemm;
   using BlockScaledConfig = typename Kernel::BlockScaledConfig;
   auto output = at::empty({m, n}, a.options().dtype(at::kHalf));
@@ -194,6 +200,8 @@ at::Tensor launch_normal(at::Tensor const& a,
        reinterpret_cast<typename Kernel::ElementD*>(output.data_ptr<at::Half>()),
        stride_d}};
 
+  arguments.hw_info.device_id = device_index;
+  arguments.hw_info.sm_count = sm_count;
   configure_scheduler<Kernel>(
       arguments, max_swizzle_size, raster_order, splits);
 
@@ -215,7 +223,7 @@ at::Tensor launch_normal(at::Tensor const& a,
   status = gemm.initialize(arguments, workspace_ptr, stream.stream());
   TORCH_CHECK(status == cutlass::Status::kSuccess,
               "CUTLASS initialize failed: ", cutlassGetStatusString(status));
-  status = gemm.run(stream.stream());
+  status = gemm.run(stream.stream(), nullptr, use_pdl);
   TORCH_CHECK(status == cutlass::Status::kSuccess,
               "CUTLASS launch failed: ", cutlassGetStatusString(status));
   if (workspace.defined()) {
@@ -472,75 +480,203 @@ at::Tensor gemm_cuda_impl(at::Tensor const& a,
               "sfb must contain exactly ", sfb_bytes,
               " bytes in CUTLASS block-scale layout; got ", sfb.numel());
 
-  cudaDeviceProp properties{};
   int device_index = a.get_device();
-  auto cuda_status = cudaGetDeviceProperties(&properties, device_index);
-  TORCH_CHECK(cuda_status == cudaSuccess,
-              "cudaGetDeviceProperties failed: ",
-              cudaGetErrorString(cuda_status));
+  cudaDeviceProp const& properties =
+      *at::cuda::getDeviceProperties(device_index);
   TORCH_CHECK(properties.major == 12 && properties.minor == 0,
               "mxfp6::gemm requires SM120; current device is SM",
               properties.major, properties.minor);
 
   bool const target_nk =
-      (n == 5120 && k == 8192) ||
-      (n == 3072 && k == 5120) ||
-      (n == 5120 && k == 7168) ||
-      (n == 5120 && k == 17408) ||
-      (n == 8704 && k == 5120);
+      (n == 8192 && k == 5120) ||
+      (n == 5120 && k == 3072) ||
+      (n == 7168 && k == 5120) ||
+      (n == 17408 && k == 5120) ||
+      (n == 5120 && k == 8704);
 
-  // Retain the exact cold-cache winners for the original benchmark set.
+  // Profiler-ranked mixed-MMA winners for Qwen3.5-27B TP2. The public tensors
+  // remain packed W6A6. For large M, expanding A once is substantially cheaper
+  // than converting every register fragment in the mainloop and exposes
+  // SM120's fast E4M3 x E3M2 instruction path.
   if (m == 2048 && target_nk) {
-    if (n == 3072 && k == 5120) {
+    auto a_e4m3 = mxfp6_gemm::torch_ext::expand_fp6_to_fp8_cuda(a, m, k);
+    if ((n == 8192 && k == 5120) ||
+        (n == 7168 && k == 5120)) {
+      return launch_normal<mxfp6_gemm::normal::KernelW6A8_128x128x128StreamK>(
+          a_e4m3, b, sfa, sfb, m, n, k, alpha, device_index,
+          n == 7168 ? 2 : 1, RasterOrder::AlongM, 1, 0, true);
+    }
+    if (n == 17408 && k == 5120) {
+      return launch_normal<mxfp6_gemm::normal::KernelW6A8_128x128x128Pingpong>(
+          a_e4m3, b, sfa, sfb, m, n, k, alpha, device_index,
+          1, RasterOrder::AlongN, 1, 0, true);
+    }
+    return launch_normal<mxfp6_gemm::normal::KernelW6A8_128x128x128Cooperative>(
+        a_e4m3, b, sfa, sfb, m, n, k, alpha, device_index,
+        1, RasterOrder::AlongM, 1, 0, true);
+  }
+
+  // The M=64/96 transition region needs explicit profiler-selected tiles:
+  // the generic swapped policy underfills several target layers, while moving
+  // every layer to mixed MMA would pay conversion where native W6A6 is faster.
+  if (m == 64 && target_nk) {
+    if (n == 8192 && k == 5120) {
+      return launch_swapped<
+          mxfp6_gemm::swapped::TargetKernel128x32StaticCooperative>(
+          a, b, sfa, sfb, m, n, k, alpha, device_index,
+          2, RasterOrder::AlongM, 1, properties.multiProcessorCount);
+    }
+    if (n == 5120 && k == 3072) {
+      auto a_e4m3 = mxfp6_gemm::torch_ext::expand_fp6_to_fp8_cuda(a, m, k);
       return launch_normal<
-          mxfp6_gemm::normal::TargetKernel64x128x128Pingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          1, RasterOrder::AlongN);
+          mxfp6_gemm::normal::KernelW6A8_64x64x128Stage4StaticPingpong>(
+          a_e4m3, b, sfa, sfb, m, n, k, alpha, device_index,
+          1, RasterOrder::AlongM, 1, properties.multiProcessorCount, true);
     }
-    if (n == 5120 && (k == 7168 || k == 17408)) {
+    if (n == 7168 && k == 5120) {
+      return launch_swapped<
+          mxfp6_gemm::swapped::TargetKernel128x32StaticCooperative>(
+          a, b, sfa, sfb, m, n, k, alpha, device_index,
+          8, RasterOrder::AlongM, 1, properties.multiProcessorCount);
+    }
+    if (n == 17408 && k == 5120) {
       return launch_normal<
-          mxfp6_gemm::normal::TargetKernel128x128x128Cooperative>(
+          mxfp6_gemm::normal::TargetKernel64x64x128Pingpong>(
           a, b, sfa, sfb, m, n, k, alpha, device_index,
-          1, RasterOrder::AlongN);
+          1, RasterOrder::AlongM);
     }
-    if (n == 5120 && k == 8192) {
-      return launch_normal<mxfp6_gemm::normal::Kernel128x128x128Pingpong>(
+    auto a_e4m3 = mxfp6_gemm::torch_ext::expand_fp6_to_fp8_cuda(a, m, k);
+    return launch_normal<
+        mxfp6_gemm::normal::KernelW6A8_64x64x128StaticPingpong>(
+        a_e4m3, b, sfa, sfb, m, n, k, alpha, device_index,
+        8, RasterOrder::AlongM, 1, properties.multiProcessorCount, true);
+  }
+
+  if (m == 96 && target_nk) {
+    if ((n == 8192 && k == 5120) ||
+        (n == 17408 && k == 5120)) {
+      auto a_e4m3 = mxfp6_gemm::torch_ext::expand_fp6_to_fp8_cuda(a, m, k);
+      if (n == 8192) {
+        return launch_normal<
+            mxfp6_gemm::normal::KernelW6A8_64x128x128StaticPingpong>(
+            a_e4m3, b, sfa, sfb, m, n, k, alpha, device_index,
+            2, RasterOrder::AlongM, 1, properties.multiProcessorCount, true);
+      }
+      return launch_normal<
+          mxfp6_gemm::normal::KernelW6A8_64x128x128Pingpong>(
+          a_e4m3, b, sfa, sfb, m, n, k, alpha, device_index,
+          4, RasterOrder::AlongM, 1, 0, true);
+    }
+    if (n == 7168 && k == 5120) {
+      return launch_swapped<
+          mxfp6_gemm::swapped::TargetKernel128x32StaticCooperative>(
           a, b, sfa, sfb, m, n, k, alpha, device_index,
-          2, RasterOrder::AlongM);
+          1, RasterOrder::AlongN, 1, properties.multiProcessorCount);
     }
-    return launch_normal<mxfp6_gemm::normal::Kernel128x128x128StreamK>(
+    return launch_swapped<
+        mxfp6_gemm::swapped::TargetKernel128x32Cooperative>(
         a, b, sfa, sfb, m, n, k, alpha, device_index,
-        1, RasterOrder::AlongM, 1);
+        1, n == 5120 && k == 8704
+               ? RasterOrder::AlongN
+               : RasterOrder::AlongM);
+  }
+
+  // At M=32 most target layers leave enough native-W6A6 tensor-core
+  // efficiency on the table to repay expansion of the small activation. The
+  // shallow-K output projection is the exception: retain native W6A6 and use
+  // its profiler-selected static-persistent configuration there.
+  if (m == 32 && target_nk) {
+    if (n == 5120 && k == 3072) {
+      return launch_swapped<
+          mxfp6_gemm::swapped::TargetKernel64x16x128Stage6StaticPingpong>(
+          a, b, sfa, sfb, m, n, k, alpha, device_index,
+          8, RasterOrder::AlongM, 1, properties.multiProcessorCount);
+    }
+    auto a_e4m3 = mxfp6_gemm::torch_ext::expand_fp6_to_fp8_cuda(a, m, k);
+    if (n == 8192 && k == 5120) {
+      return launch_normal<
+          mxfp6_gemm::normal::KernelW6A8_64x64x128StaticPingpong>(
+          a_e4m3, b, sfa, sfb, m, n, k, alpha, device_index,
+          4, RasterOrder::AlongN, 1, properties.multiProcessorCount, true);
+    }
+    if (n == 7168 && k == 5120) {
+      return launch_normal<
+          mxfp6_gemm::normal::KernelW6A8_64x64x256StaticPingpong>(
+          a_e4m3, b, sfa, sfb, m, n, k, alpha, device_index,
+          8, RasterOrder::AlongN, 1, properties.multiProcessorCount, true);
+    }
+    if (n == 17408 && k == 5120) {
+      return launch_normal<
+          mxfp6_gemm::normal::KernelW6A8_64x64x128Pingpong>(
+          a_e4m3, b, sfa, sfb, m, n, k, alpha, device_index,
+          1, RasterOrder::AlongM, 1, 0, true);
+    }
+    return launch_normal<
+        mxfp6_gemm::normal::KernelW6A8_64x64x128StaticPingpong>(
+        a_e4m3, b, sfa, sfb, m, n, k, alpha, device_index,
+        2, RasterOrder::AlongN, 1, properties.multiProcessorCount, true);
   }
 
   if (target_nk && m == 1) {
-    return launch_swapped<mxfp6_gemm::swapped::TargetKernel128x8StreamK>(
+    if (n == 8192 && k == 5120) {
+      return launch_swapped<
+          mxfp6_gemm::swapped::TargetKernel128x8Stage4StaticCooperative>(
+          a, b, sfa, sfb, m, n, k, alpha, device_index,
+          4, RasterOrder::AlongM, 1, properties.multiProcessorCount);
+    }
+    if (n == 5120 && k == 3072) {
+      return launch_swapped<
+          mxfp6_gemm::swapped::TargetKernel128x8StaticCooperative>(
+          a, b, sfa, sfb, m, n, k, alpha, device_index,
+          8, RasterOrder::AlongN, 1, properties.multiProcessorCount);
+    }
+    if (n == 7168 && k == 5120) {
+      return launch_swapped<
+          mxfp6_gemm::swapped::TargetKernel128x8StaticCooperative>(
+          a, b, sfa, sfb, m, n, k, alpha, device_index,
+          4, RasterOrder::AlongN, 1, properties.multiProcessorCount);
+    }
+    if (n == 17408 && k == 5120) {
+      return launch_swapped<
+          mxfp6_gemm::swapped::TargetKernel128x8StaticCooperative>(
+          a, b, sfa, sfb, m, n, k, alpha, device_index,
+          1, RasterOrder::AlongM, 1, properties.multiProcessorCount);
+    }
+    return launch_swapped<
+        mxfp6_gemm::swapped::TargetKernel64x16x256Pingpong>(
         a, b, sfa, sfb, m, n, k, alpha, device_index,
-        1, RasterOrder::AlongM, 2);
+        1, RasterOrder::AlongM, 1, properties.multiProcessorCount);
   }
   if (target_nk && m == 16) {
-    if (n == 8704 && k == 5120) {
+    if (n == 8192 && k == 5120) {
       return launch_swapped<
-          mxfp6_gemm::swapped::TargetKernel128x8Cooperative>(
+          mxfp6_gemm::swapped::TargetKernel128x8StaticCooperative>(
           a, b, sfa, sfb, m, n, k, alpha, device_index,
-          1, RasterOrder::AlongM);
+          1, RasterOrder::AlongN, 1, properties.multiProcessorCount);
     }
-    return launch_swapped<mxfp6_gemm::swapped::TargetKernel128x8StreamK>(
-        a, b, sfa, sfb, m, n, k, alpha, device_index,
-        1, RasterOrder::AlongM, 2);
-  }
-  if (target_nk && m == 32) {
-    if (n == 8704 && k == 5120) {
+    if (n == 5120 && k == 3072) {
       return launch_swapped<
-          mxfp6_gemm::swapped::TargetKernel128x16Cooperative>(
+          mxfp6_gemm::swapped::TargetKernel128x8Stage4StaticCooperative>(
           a, b, sfa, sfb, m, n, k, alpha, device_index,
-          1, RasterOrder::AlongM);
+          4, RasterOrder::AlongN, 1, properties.multiProcessorCount);
     }
-    return launch_swapped<mxfp6_gemm::swapped::TargetKernel128x16StreamK>(
+    if (n == 7168 && k == 5120) {
+      return launch_swapped<
+          mxfp6_gemm::swapped::TargetKernel128x8StaticCooperative>(
+          a, b, sfa, sfb, m, n, k, alpha, device_index,
+          1, RasterOrder::AlongM, 1, properties.multiProcessorCount);
+    }
+    if (n == 17408 && k == 5120) {
+      return launch_swapped<
+          mxfp6_gemm::swapped::TargetKernel64x16x256Stage3StaticPingpong>(
+          a, b, sfa, sfb, m, n, k, alpha, device_index,
+          4, RasterOrder::AlongN, 1, properties.multiProcessorCount);
+    }
+    return launch_swapped<
+        mxfp6_gemm::swapped::TargetKernel64x16x512Pingpong>(
         a, b, sfa, sfb, m, n, k, alpha, device_index,
-        1, RasterOrder::AlongM, 2);
+        1, RasterOrder::AlongM, 1, properties.multiProcessorCount);
   }
-
   // Swapping maps the small M dimension to the tensor-core N tile. Boundary
   // profiling favors this orientation through M=96 and normal order from the
   // next region. The policy helpers then select among the compact profiler-
@@ -572,6 +708,7 @@ TORCH_LIBRARY(mxfp6, m) {
         "int m, int n, int k, float alpha=1.0) -> Tensor");
   m.def("pack_fp6(Tensor codes) -> Tensor");
   m.def("unpack_fp6(Tensor packed, int rows, int k) -> Tensor");
+  m.def("expand_fp6_to_fp8(Tensor packed, int rows, int k) -> Tensor");
   m.def("pack_scales(Tensor logical, int rows, int k) -> Tensor");
   m.def("unpack_scales(Tensor packed, int rows, int k) -> Tensor");
 }
@@ -580,6 +717,8 @@ TORCH_LIBRARY_IMPL(mxfp6, CUDA, m) {
   m.impl("gemm", &gemm_cuda);
   m.impl("pack_fp6", &mxfp6_gemm::torch_ext::pack_fp6_cuda);
   m.impl("unpack_fp6", &mxfp6_gemm::torch_ext::unpack_fp6_cuda);
+  m.impl("expand_fp6_to_fp8",
+         &mxfp6_gemm::torch_ext::expand_fp6_to_fp8_cuda);
   m.impl("pack_scales", &mxfp6_gemm::torch_ext::pack_scales_cuda);
   m.impl("unpack_scales", &mxfp6_gemm::torch_ext::unpack_scales_cuda);
 }

@@ -4,25 +4,30 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import math
+import os
 from pathlib import Path
-from typing import Iterable
+import sys
+from typing import Callable, Iterable
 
 import torch
+
+from model_shapes import DEFAULT_SHAPES, QWEN35_27B_TP2_NK
 
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LIBRARY = ROOT / "build" / "mxfp6_torch.so"
-BENCHMARK_NK = (
-    (5120, 8192),
-    (3072, 5120),
-    (5120, 7168),
-    (5120, 17408),
-    (8704, 5120),
-)
-DEFAULT_SHAPES = [
-    (m, n, k) for m in (1, 16, 32, 2048) for n, k in BENCHMARK_NK
-]
+SHAPE_NAMES = {(n, k): name for name, n, k in QWEN35_27B_TP2_NK}
+
+
+@dataclass(frozen=True)
+class Timing:
+    """GPU latency for the complete operator and its compute kernel."""
+
+    pipeline_us: float
+    kernel_us: float
+    conversion_us: float = 0.0
 
 
 def parse_shapes(value: str) -> list[tuple[int, int, int]]:
@@ -83,13 +88,22 @@ def make_inputs(
     )
     sfa = torch.ops.mxfp6.pack_scales(sfa_logical, m, k)
     sfb = torch.ops.mxfp6.pack_scales(sfb_logical, n, k)
-    return a, b, sfa, sfb, a_codes, b_codes
+    return (
+        a,
+        b,
+        sfa,
+        sfb,
+        a_codes,
+        b_codes,
+        sfa_logical,
+        sfb_logical,
+    )
 
 
 def check_correctness(
     tensors: tuple[torch.Tensor, ...], m: int, n: int, k: int
 ) -> tuple[float, float]:
-    a, b, sfa, sfb, a_codes, b_codes = tensors
+    a, b, sfa, sfb, a_codes, b_codes, *_ = tensors
     actual = torch.ops.mxfp6.gemm(a, b, sfa, sfb, m, n, k)
     a_ref = decode_e3m2(a_codes).cuda()
     b_ref = decode_e3m2(b_codes).cuda()
@@ -104,17 +118,15 @@ def check_correctness(
     return max_abs, relative_diff
 
 
-def benchmark(
-    args: Iterable[torch.Tensor],
-    m: int,
-    n: int,
-    k: int,
+def benchmark_operation(
+    run: Callable[[], torch.Tensor],
+    kernel_filter: Callable[[str], bool],
     warmup: int,
     iterations: int,
     flush_l2_mb: int,
-) -> float:
-    a, b, sfa, sfb = tuple(args)[:4]
-    run = lambda: torch.ops.mxfp6.gemm(a, b, sfa, sfb, m, n, k)
+    conversion_filter: Callable[[str], bool] | None = None,
+) -> Timing:
+    """Measure device-side pipeline latency and isolate its main kernel."""
     for _ in range(warmup):
         run()
     torch.cuda.synchronize()
@@ -125,26 +137,84 @@ def benchmark(
             flush_l2_mb * 1_000_000 // 4, dtype=torch.int32, device="cuda"
         )
 
-    # Sum CUDA kernel duration rather than Python/dispatcher submission gaps
-    # between consecutive launches.
+    starts: list[torch.cuda.Event] = []
+    ends: list[torch.cuda.Event] = []
     with torch.profiler.profile(
         activities=[torch.profiler.ProfilerActivity.CUDA], acc_events=True
     ) as profiler:
-        for _ in range(iterations):
-            if flush is not None:
+        if flush is None:
+            start = torch.cuda.Event(enable_timing=True)
+            end = torch.cuda.Event(enable_timing=True)
+            starts.append(start)
+            ends.append(end)
+            start.record()
+            for _ in range(iterations):
+                run()
+            end.record()
+        else:
+            for _ in range(iterations):
                 flush.zero_()
-            run()
-    torch.cuda.synchronize()
+                start = torch.cuda.Event(enable_timing=True)
+                end = torch.cuda.Event(enable_timing=True)
+                starts.append(start)
+                ends.append(end)
+                start.record()
+                run()
+                end.record()
+    ends[-1].synchronize()
+
+    if flush is None:
+        pipeline_us = starts[0].elapsed_time(ends[0]) * 1.0e3 / iterations
+    else:
+        pipeline_us = (
+            sum(start.elapsed_time(end) for start, end in zip(starts, ends))
+            * 1.0e3
+            / iterations
+        )
+
     kernel_times = [
         event.self_device_time_total
         for event in profiler.events()
-        if event.device_type.name == "CUDA" and "cutlass" in event.name.lower()
+        if event.device_type.name == "CUDA" and kernel_filter(event.name.lower())
     ]
     if len(kernel_times) != iterations:
         raise RuntimeError(
-            f"expected {iterations} CUTLASS kernels, profiler found {len(kernel_times)}"
+            f"expected {iterations} main kernels, profiler found {len(kernel_times)}"
         )
-    return sum(kernel_times) / len(kernel_times)
+    conversion_us = 0.0
+    if conversion_filter is not None:
+        conversion_us = sum(
+            event.self_device_time_total
+            for event in profiler.events()
+            if event.device_type.name == "CUDA"
+            and conversion_filter(event.name.lower())
+        ) / iterations
+    return Timing(
+        pipeline_us=pipeline_us,
+        kernel_us=sum(kernel_times) / len(kernel_times),
+        conversion_us=conversion_us,
+    )
+
+
+def benchmark(
+    args: Iterable[torch.Tensor],
+    m: int,
+    n: int,
+    k: int,
+    warmup: int,
+    iterations: int,
+    flush_l2_mb: int,
+) -> Timing:
+    a, b, sfa, sfb = tuple(args)[:4]
+    run = lambda: torch.ops.mxfp6.gemm(a, b, sfa, sfb, m, n, k)
+    return benchmark_operation(
+        run,
+        lambda name: "cutlass" in name,
+        warmup,
+        iterations,
+        flush_l2_mb,
+        lambda name: "expand_fp6_to_fp8_vector_kernel" in name,
+    )
 
 
 def quantize_fp8_per_token(x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -181,7 +251,7 @@ def benchmark_fp8(
     iterations: int,
     warmup: int,
     flush_l2_mb: int,
-) -> float:
+) -> Timing:
     try:
         from vllm import _custom_ops as vllm_ops
     except ImportError as error:
@@ -202,33 +272,80 @@ def benchmark_fp8(
         scale_b=scale_b.t(),
         out_dtype=torch.bfloat16,
     )
-    for _ in range(warmup):
-        run()
-    torch.cuda.synchronize()
+    return benchmark_operation(
+        run,
+        lambda name: "cutlass" in name,
+        warmup,
+        iterations,
+        flush_l2_mb,
+    )
 
-    flush = None
-    if flush_l2_mb > 0:
-        flush = torch.empty(
-            flush_l2_mb * 1_000_000 // 4, dtype=torch.int32, device="cuda"
-        )
-    with torch.profiler.profile(
-        activities=[torch.profiler.ProfilerActivity.CUDA], acc_events=True
-    ) as profiler:
-        for _ in range(iterations):
-            if flush is not None:
-                flush.zero_()
-            run()
-    torch.cuda.synchronize()
-    kernel_times = [
-        event.self_device_time_total
-        for event in profiler.events()
-        if event.device_type.name == "CUDA" and "cutlass" in event.name.lower()
-    ]
-    if len(kernel_times) != iterations:
-        raise RuntimeError(
-            f"expected {iterations} FP8 CUTLASS kernels, found {len(kernel_times)}"
-        )
-    return sum(kernel_times) / len(kernel_times)
+
+def benchmark_torch_scaled_mm(
+    tensors: tuple[torch.Tensor, ...],
+    m: int,
+    n: int,
+    k: int,
+    iterations: int,
+    warmup: int,
+    flush_l2_mb: int,
+    check: bool,
+) -> Timing:
+    """Benchmark PyTorch's dense FP8 GEMM on the same numerical inputs.
+
+    The benchmark inputs use UE8M0 scales equal to one. E3M2 values can
+    therefore be losslessly expanded to E4M3 and passed to ``_scaled_mm``
+    with scalar unit scales. Expansion is preparation and stays outside the
+    timed region for this pre-quantized FP8 baseline.
+    """
+    a, b, sfa, sfb = tensors[:4]
+    a_fp8 = torch.ops.mxfp6.expand_fp6_to_fp8(a, m, k).view(
+        torch.float8_e4m3fn
+    )
+    b_fp8 = torch.ops.mxfp6.expand_fp6_to_fp8(b, n, k).view(
+        torch.float8_e4m3fn
+    )
+    scale_a = torch.ones((), dtype=torch.float32, device="cuda")
+    scale_b = torch.ones((), dtype=torch.float32, device="cuda")
+    run = lambda: torch._scaled_mm(
+        a_fp8,
+        b_fp8.t(),
+        scale_a,
+        scale_b,
+        out_dtype=torch.float16,
+        use_fast_accum=False,
+    )
+    if check:
+        expected = torch.ops.mxfp6.gemm(a, b, sfa, sfb, m, n, k)
+        torch.testing.assert_close(run(), expected, rtol=2e-3, atol=0.25)
+        torch.cuda.synchronize()
+    return benchmark_operation(
+        run,
+        lambda name: any(
+            marker in name
+            for marker in ("nvjet_sm120", "cutlass", "cublas", "scaled_mm")
+        ),
+        warmup,
+        iterations,
+        flush_l2_mb,
+    )
+
+
+def benchmark_humming(
+    run,
+    iterations: int,
+    warmup: int,
+    flush_l2_mb: int,
+) -> Timing:
+    """Measure activation expansion plus the Humming W6A8 GEMM."""
+    return benchmark_operation(
+        run,
+        lambda name: "humming<" in name,
+        warmup,
+        iterations,
+        flush_l2_mb,
+        lambda name: "expand_fp6_to_fp8_vector_kernel" in name,
+    )
 
 
 def main() -> None:
@@ -258,6 +375,24 @@ def main() -> None:
         default=False,
         help="also run the installed vLLM block-scaled FP8 CUTLASS kernel",
     )
+    parser.add_argument(
+        "--compare-torch-scaled-mm",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="also run torch._scaled_mm with losslessly expanded FP8 inputs",
+    )
+    parser.add_argument(
+        "--compare-humming",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="also run the bundled Humming W6A8 bridge for eligible large-M shapes",
+    )
+    parser.add_argument(
+        "--humming-min-m",
+        type=int,
+        default=512,
+        help="minimum M for the Humming comparison (default: 512)",
+    )
     options = parser.parse_args()
 
     if not torch.cuda.is_available():
@@ -274,13 +409,22 @@ def main() -> None:
             "warmup/flush-l2-mb must be nonnegative and iterations must be positive"
         )
 
-    torch.ops.load_library(str(options.library))
+    os.environ["MXFP6_LIBRARY_PATH"] = str(options.library.resolve())
+    sys.path.insert(0, str(ROOT / "python"))
+    import mxfp6
+
+    mxfp6.load_library()
     torch.backends.cuda.matmul.allow_tf32 = False
     print(f"Device: {torch.cuda.get_device_name()} (SM120)")
-    print("Op: torch.ops.mxfp6.gemm (E3M2 x E3M2, UE8M0/32 -> FP16)")
-    speedups: list[tuple[int, float]] = []
+    print("Op: torch.ops.mxfp6.gemm (packed E3M2 storage, UE8M0/32 -> FP16)")
+    print("Latency: GPU pipeline (conversion + GEMM) and isolated GEMM kernel")
+    vllm_fp8_speedups: list[tuple[int, float]] = []
+    torch_fp8_speedups: list[tuple[int, float]] = []
+    humming_speedups: list[tuple[int, float]] = []
+    humming_checked = False
 
     for index, (m, n, k) in enumerate(options.shapes):
+        layer = SHAPE_NAMES.get((n, k), "custom")
         tensors = make_inputs(m, n, k, options.seed + index)
         if index == 0 or options.check_all:
             max_abs, diff = check_correctness(tensors, m, n, k)
@@ -288,7 +432,7 @@ def main() -> None:
         else:
             correctness = "check=skipped"
 
-        time_us = benchmark(
+        timing = benchmark(
             tensors,
             m,
             n,
@@ -297,14 +441,17 @@ def main() -> None:
             options.iterations,
             options.flush_l2_mb,
         )
-        tflops = 2.0 * m * n * k / time_us / 1.0e6
+        pipeline_tflops = 2.0 * m * n * k / timing.pipeline_us / 1.0e6
+        kernel_tflops = 2.0 * m * n * k / timing.kernel_us / 1.0e6
         input_bytes = (m * k + n * k) * 3 // 4
         scale_bytes = (((m + 127) // 128) * 128 + n) * k // 32
         output_bytes = m * n * 2
-        bandwidth = (input_bytes + scale_bytes + output_bytes) / time_us / 1.0e3
+        bandwidth = (
+            input_bytes + scale_bytes + output_bytes
+        ) / timing.pipeline_us / 1.0e3
         comparison = ""
         if options.compare_fp8:
-            fp8_time_us = benchmark_fp8(
+            fp8_timing = benchmark_fp8(
                 m,
                 n,
                 k,
@@ -314,29 +461,128 @@ def main() -> None:
                 options.flush_l2_mb,
             )
             comparison = (
-                f" | FP8={fp8_time_us:8.3f} us | "
-                f"MXFP6 speedup={fp8_time_us / time_us:5.3f}x"
+                f" | FP8 e2e={fp8_timing.pipeline_us:8.3f} us "
+                f"(gemm={fp8_timing.kernel_us:8.3f}) | "
+                f"MXFP6 speedup={fp8_timing.pipeline_us / timing.pipeline_us:5.3f}x"
             )
-            speedups.append((m, fp8_time_us / time_us))
+            vllm_fp8_speedups.append(
+                (m, fp8_timing.pipeline_us / timing.pipeline_us)
+            )
+        if options.compare_torch_scaled_mm:
+            torch_fp8_timing = benchmark_torch_scaled_mm(
+                tensors,
+                m,
+                n,
+                k,
+                options.iterations,
+                options.warmup,
+                options.flush_l2_mb,
+                index == 0 or options.check_all,
+            )
+            comparison += (
+                f" | torch._scaled_mm e2e={torch_fp8_timing.pipeline_us:8.3f} us "
+                f"(gemm={torch_fp8_timing.kernel_us:8.3f}) | "
+                f"MXFP6 speedup="
+                f"{torch_fp8_timing.pipeline_us / timing.pipeline_us:5.3f}x"
+            )
+            torch_fp8_speedups.append(
+                (m, torch_fp8_timing.pipeline_us / timing.pipeline_us)
+            )
+        if options.compare_humming:
+            if m < options.humming_min_m or n % 256:
+                comparison += " | Humming=skipped"
+            else:
+                a, b, sfa, sfb, _, _, sfa_logical, sfb_logical = tensors
+                packed_a = mxfp6.PackedMXFP6Tensor(
+                    a, sfa, m, k, sfa_logical
+                )
+                packed_b = mxfp6.PackedMXFP6Tensor(
+                    b, sfb, n, k, sfb_logical
+                )
+                humming_b = mxfp6.prepare_humming_weight(packed_b)
+                run_humming = lambda: mxfp6.gemm(packed_a, humming_b)
+                if not humming_checked or options.check_all:
+                    torch.testing.assert_close(
+                        run_humming(),
+                        torch.ops.mxfp6.gemm(a, b, sfa, sfb, m, n, k),
+                        rtol=2e-3,
+                        atol=0.5,
+                    )
+                    humming_checked = True
+                humming_timing = benchmark_humming(
+                    run_humming,
+                    options.iterations,
+                    options.warmup,
+                    options.flush_l2_mb,
+                )
+                comparison += (
+                    f" | Humming e2e={humming_timing.pipeline_us:8.3f} us "
+                    f"(gemm={humming_timing.kernel_us:8.3f}, "
+                    f"convert={humming_timing.conversion_us:6.3f}) | "
+                    f"MXFP6 speedup={humming_timing.pipeline_us / timing.pipeline_us:5.3f}x"
+                )
+                humming_speedups.append(
+                    (m, humming_timing.pipeline_us / timing.pipeline_us)
+                )
+        conversion = (
+            f", convert={timing.conversion_us:6.3f}"
+            if timing.conversion_us > 0.0
+            else ""
+        )
         print(
-            f" > Perf (m={m:6}, n={n:6}, k={k:6}, layout=NT, FP16, "
-            f"mxfp6): {time_us:8.3f} us | {tflops:7.2f} TFLOPS | "
+            f" > Perf (layer={layer}, m={m:6}, n={n:6}, k={k:6}, "
+            f"layout=NT, FP16, "
+            f"mxfp6): e2e={timing.pipeline_us:8.3f} us "
+            f"(gemm={timing.kernel_us:8.3f}{conversion}) | "
+            f"{pipeline_tflops:7.2f} e2e TFLOPS | "
+            f"{kernel_tflops:7.2f} kernel TFLOPS | "
             f"{bandwidth:7.2f} GB/s | {correctness}{comparison}"
         )
 
-    if speedups:
-        print("Speedup summary (geometric mean, FP8 time / MXFP6 time):")
-        for batch in sorted({m for m, _ in speedups}):
-            values = [value for m, value in speedups if m == batch]
+    if vllm_fp8_speedups:
+        print("Speedup over vLLM block-scaled FP8 (FP8 time / MXFP6 time):")
+        for batch in sorted({m for m, _ in vllm_fp8_speedups}):
+            values = [value for m, value in vllm_fp8_speedups if m == batch]
             geometric_mean = math.exp(sum(math.log(value) for value in values) / len(values))
             print(f"  bs{batch:<4}: {geometric_mean:.3f}x over {len(values)} shapes")
         overall = math.exp(
-            sum(math.log(value) for _, value in speedups) / len(speedups)
+            sum(math.log(value) for _, value in vllm_fp8_speedups)
+            / len(vllm_fp8_speedups)
         )
         target = "PASS" if overall >= 1.2 else "MISS"
         print(
-            f"  overall: {overall:.3f}x over {len(speedups)} shapes "
+            f"  overall: {overall:.3f}x over {len(vllm_fp8_speedups)} shapes "
             f"(target >=1.200x: {target})"
+        )
+
+    if torch_fp8_speedups:
+        print("Speedup over torch._scaled_mm (FP8 time / MXFP6 time):")
+        for batch in sorted({m for m, _ in torch_fp8_speedups}):
+            values = [value for m, value in torch_fp8_speedups if m == batch]
+            geometric_mean = math.exp(
+                sum(math.log(value) for value in values) / len(values)
+            )
+            print(
+                f"  bs{batch:<4}: {geometric_mean:.3f}x "
+                f"over {len(values)} shapes"
+            )
+        overall = math.exp(
+            sum(math.log(value) for _, value in torch_fp8_speedups)
+            / len(torch_fp8_speedups)
+        )
+        print(
+            f"  overall: {overall:.3f}x over "
+            f"{len(torch_fp8_speedups)} shapes"
+        )
+
+    if humming_speedups:
+        overall = math.exp(
+            sum(math.log(value) for _, value in humming_speedups)
+            / len(humming_speedups)
+        )
+        print(
+            "MXFP6 pipeline speedup over Humming (Humming time / MXFP6 time): "
+            f"{overall:.3f}x over {len(humming_speedups)} shapes"
         )
 
 

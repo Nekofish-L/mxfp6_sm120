@@ -5,10 +5,12 @@
 namespace mxfp6_gemm::normal {
 
 template <class TileM_, class TileN_, class TileK_, class MainloopSchedule_,
-          class TileScheduler_ = void, class StageCount_ = void>
+          class TileScheduler_ = void, class StageCount_ = void,
+          class ElementPairA_ = mxfp6_gemm::ElementPairA,
+          class ElementPairB_ = mxfp6_gemm::ElementPairB>
 struct KernelConfig {
-  using ElementPairA = mxfp6_gemm::ElementPairA;
-  using ElementPairB = mxfp6_gemm::ElementPairB;
+  using ElementPairA = ElementPairA_;
+  using ElementPairB = ElementPairB_;
   using ElementA = typename ElementPairA::DataType;
   using ElementB = typename ElementPairB::DataType;
   using ElementSF = typename ElementPairA::ScaleFactorType;
@@ -120,10 +122,50 @@ using Kernel128x128x128StreamK = KernelConfig<
     cutlass::gemm::StreamKScheduler>;
 
 // Exact target-shape winners retained alongside the general portfolio.
-using TargetKernel64x128x128Pingpong = KernelConfig<
-    cute::_64, cute::_128, cute::_128,
+using TargetKernel64x64x128Pingpong = KernelConfig<
+    cute::_64, cute::_64, cute::_128,
     cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120>;
-using TargetKernel128x128x128Cooperative = KernelConfig<
+
+// Humming-style large-M path: preserve the public packed-W6 activation and
+// weight representation, expand only the activation into a temporary E4M3
+// tensor, and issue SM120's faster E4M3 x E3M2 mixed MMA. The weight remains
+// physically packed at six bits throughout.
+using ElementPairA8 = cutlass::mx_float8_t<cutlass::float_e4m3_t>;
+using KernelW6A8_64x64x128Pingpong = KernelConfig<
+    cute::_64, cute::_64, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    void, void, ElementPairA8>;
+using KernelW6A8_64x64x128StaticPingpong = KernelConfig<
+    cute::_64, cute::_64, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    cutlass::gemm::StaticPersistentScheduler, void, ElementPairA8>;
+using KernelW6A8_64x64x128Stage4StaticPingpong = KernelConfig<
+    cute::_64, cute::_64, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    cutlass::gemm::StaticPersistentScheduler,
+    cutlass::gemm::collective::StageCount<4>, ElementPairA8>;
+using KernelW6A8_64x64x256StaticPingpong = KernelConfig<
+    cute::_64, cute::_64, cute::_256,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    cutlass::gemm::StaticPersistentScheduler, void, ElementPairA8>;
+using KernelW6A8_64x128x128Pingpong = KernelConfig<
+    cute::_64, cute::_128, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    void, void, ElementPairA8>;
+using KernelW6A8_64x128x128StaticPingpong = KernelConfig<
+    cute::_64, cute::_128, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    cutlass::gemm::StaticPersistentScheduler, void, ElementPairA8>;
+using KernelW6A8_128x128x128Pingpong = KernelConfig<
     cute::_128, cute::_128, cute::_128,
-    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120>;
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    void, void, ElementPairA8>;
+using KernelW6A8_128x128x128Cooperative = KernelConfig<
+    cute::_128, cute::_128, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
+    void, void, ElementPairA8>;
+using KernelW6A8_128x128x128StreamK = KernelConfig<
+    cute::_128, cute::_128, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
+    cutlass::gemm::StreamKScheduler, void, ElementPairA8>;
 }  // namespace mxfp6_gemm::normal
