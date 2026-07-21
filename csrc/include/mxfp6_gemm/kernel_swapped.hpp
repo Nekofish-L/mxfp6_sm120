@@ -10,7 +10,8 @@ template <class TileM_, class TileN_, class TileK_, class MainloopSchedule_,
           class EpilogueTile_ = cutlass::epilogue::collective::EpilogueTileAuto,
           class TileScheduler_ = void, class StageCount_ = void,
           class ElementPairA_ = mxfp6_gemm::ElementPairB,
-          class ElementPairB_ = mxfp6_gemm::ElementPairA>
+          class ElementPairB_ = mxfp6_gemm::ElementPairA,
+          class ElementD_ = cutlass::half_t>
 struct KernelConfig {
   using ElementPairA = ElementPairA_;
   using ElementPairB = ElementPairB_;
@@ -18,7 +19,7 @@ struct KernelConfig {
   using ElementB = typename ElementPairB::DataType;
   using ElementSF = typename ElementPairA::ScaleFactorType;
   using ElementC = void;
-  using ElementD = cutlass::half_t;
+  using ElementD = ElementD_;
   using ElementAccumulator = float;
   using ElementCompute = float;
 
@@ -87,6 +88,11 @@ struct KernelConfig {
   using BlockScaledConfig = typename CollectiveMainloop::Sm1xxBlkScaledConfig;
   static constexpr bool IsStreamK =
       cute::is_same_v<TileScheduler_, cutlass::gemm::StreamKScheduler>;
+
+  template <class NewElementD>
+  using RebindOutput = KernelConfig<
+      TileM_, TileN_, TileK_, MainloopSchedule_, EpilogueTile_,
+      TileScheduler_, StageCount_, ElementPairA_, ElementPairB_, NewElementD>;
 };
 
 using Kernel128x8Stage2Cooperative = KernelConfig<

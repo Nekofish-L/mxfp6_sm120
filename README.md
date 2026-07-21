@@ -9,8 +9,8 @@ D[M, N] = A[M, K] @ B[N, K].T
 Persistent weights are bit-packed E3M2 with one UE8M0 scale per 32 values.
 FP16 or BF16 activations are dynamically mapped 16-to-8 into E4M3/UE8M0 and
 consumed by a native CUTLASS W6A8 kernel. Accumulation is FP32 and output is
-FP16. Production dispatch is implemented entirely in this repository and does
-not call Humming.
+selectable FP16 or BF16 directly in the CUTLASS epilogue. Production dispatch
+is implemented entirely in this repository and does not call Humming.
 
 The 16-to-8 activation mapping is intentional. It removes repeated
 activation-side six-bit unpacking from the MMA mainloop, while persistent
@@ -25,7 +25,8 @@ The following results were measured on one NVIDIA GeForce RTX 5090 using:
 - vLLM `0.20.3.dev4+ge38d84f55.d20260715`;
 - pinned Humming revision `694298e9`;
 - Qwen3.5-27B TP2 linear shapes, five `(N,K)` pairs per batch;
-- BF16 activation input, warm cache, 20 warmups and 100 measured iterations;
+- BF16 activation input, FP16 output, warm cache, 20 warmups and 100 measured
+  iterations;
 - checked-in static dispatch with runtime autotuning disabled.
 
 All ratios use standalone GEMM kernel time only:
@@ -145,16 +146,37 @@ a = torch.randn((m, k), device="cuda", dtype=torch.bfloat16)
 weight = torch.randn((n, k), device="cuda", dtype=torch.bfloat16)
 
 packed_weight = mxfp6.quantize_mxfp6(weight)
-output = mxfp6.gemm(a, packed_weight)
+output = mxfp6.gemm(a, packed_weight, out_dtype=torch.bfloat16)
 ```
+
+`out_dtype` accepts `torch.float16` (the default) or `torch.bfloat16`. Both are
+written directly by the GEMM epilogue; BF16 does not add a conversion kernel.
 
 The activation quantizer and W6A8 GEMM can be invoked separately for explicit
 prewarming, activation reuse or CUDA Graph capture:
 
 ```python
 quantized_a = mxfp6.quantize_activation(a)
-mxfp6.autotune_w6a8(quantized_a, packed_weight)
-output = mxfp6.gemm_w6a8(quantized_a, packed_weight)
+mxfp6.autotune_w6a8(
+    quantized_a, packed_weight, out_dtype=torch.bfloat16
+)
+output = mxfp6.gemm_w6a8(
+    quantized_a, packed_weight, out_dtype=torch.bfloat16
+)
+```
+
+The public warmup entry accepts either the original FP16/BF16 activation or an
+`MXFP8Tensor`, optionally runs dtype-specific autotuning, executes the
+production launch path, and synchronizes before returning:
+
+```python
+config = mxfp6.warmup_w6a8(
+    a,
+    packed_weight,
+    out_dtype=torch.bfloat16,
+    iterations=3,
+    autotune=True,
+)
 ```
 
 Logical E3M2 code and UE8M0 scale utilities remain available for serialization
@@ -180,13 +202,15 @@ reference = mxfp6.gemm(packed_a6, humming_weight)
 ## Runtime autotuning
 
 Unknown W6A8 shapes use first-use selection over 29 precompiled native CUTLASS
-families. This is AOT kernel selection, not runtime NVRTC compilation:
+families. This is AOT kernel selection, not runtime NVRTC compilation.
+`autotune_w6a8` accepts FP16/BF16 or prequantized MXFP8 activation input, and
+its cache and in-process overrides are isolated by output dtype:
 
 1. a coarse pass ranks kernel and swizzle choices;
 2. the three best families refine raster and swizzle;
 3. the winner is checked numerically against the deterministic fallback;
 4. the full launch config is installed in the C++ dispatcher and cached by
-   build, GPU, shape and measurement policy.
+   build, GPU, shape, output dtype and measurement policy.
 
 Later calls use the in-process override; later processes load the JSON cache
 without profiling. Tuning and file I/O are disabled during CUDA Graph capture
@@ -215,6 +239,7 @@ CUDA_VISIBLE_DEVICES=0 MXFP6_AUTOTUNE=0 \
 python3 benchmarks/benchmark.py \
   --library build/mxfp6_torch.so \
   --activation-input bf16 \
+  --output-dtype fp16 \
   --compare-humming --compare-fp8 \
   --warmup 20 --iterations 100 --flush-l2-mb 0
 ```

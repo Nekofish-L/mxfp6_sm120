@@ -29,7 +29,7 @@ from ._loader import load_library
 
 
 AUTOTUNE_SCHEMA = 1
-CANDIDATE_ABI = "native-w6a8-29-v2"
+CANDIDATE_ABI = "native-w6a8-29-v3"
 TIMING_POLICY = "gemm-kernels-two-stage-v3"
 FALLBACK_CONFIG_ID = -1
 
@@ -141,6 +141,17 @@ def _nonnegative_env_int(name: str, default: int) -> int:
     return value
 
 
+def _output_dtype_name(out_dtype: torch.dtype) -> str:
+    if out_dtype == torch.float16:
+        return "fp16"
+    if out_dtype == torch.bfloat16:
+        return "bf16"
+    raise TypeError(
+        "out_dtype must be torch.float16 or torch.bfloat16; "
+        f"got {out_dtype}"
+    )
+
+
 def _cache_root() -> Path:
     override = os.environ.get("MXFP6_AUTOTUNE_CACHE_DIR")
     if override:
@@ -177,7 +188,11 @@ def _device_descriptor(device_index: int) -> dict[str, object]:
 
 
 def _descriptor(
-    device_index: int, m: int, n: int, k: int
+    device_index: int,
+    m: int,
+    n: int,
+    k: int,
+    out_dtype: torch.dtype,
 ) -> dict[str, object]:
     flush_l2_mb = _nonnegative_env_int(
         "MXFP6_AUTOTUNE_FLUSH_L2_MB", 0
@@ -196,7 +211,7 @@ def _descriptor(
             "a": "mxfp8_e4m3_ue8m0_group32",
             "b": "packed_mxfp6_e3m2_ue8m0_group32",
             "accumulator": "fp32",
-            "output": "fp16",
+            "output": _output_dtype_name(out_dtype),
         },
         "measurement": {
             "cache_regime": "warm" if flush_l2_mb == 0 else "explicit_flush",
@@ -358,9 +373,12 @@ def _run_config(
     m: int,
     n: int,
     k: int,
+    out_dtype: torch.dtype,
 ) -> torch.Tensor:
     if config.config_id == FALLBACK_CONFIG_ID:
-        return torch.ops.mxfp6.gemm_w6a8(a, b, sfa, sfb, m, n, k)
+        return torch.ops.mxfp6.gemm_w6a8(
+            a, b, sfa, sfb, m, n, k, 1.0, out_dtype
+        )
     return torch.ops.mxfp6.gemm_w6a8_config(
         a,
         b,
@@ -373,6 +391,7 @@ def _run_config(
         config.config_id,
         config.swizzle,
         config.raster_order,
+        out_dtype,
     )
 
 
@@ -385,13 +404,14 @@ def _measure_config(
     m: int,
     n: int,
     k: int,
+    out_dtype: torch.dtype,
     warmup: int,
     iterations: int,
     repeats: int,
     flush: torch.Tensor | None,
 ) -> float:
     for _ in range(warmup):
-        _run_config(config, a, b, sfa, sfb, m, n, k)
+        _run_config(config, a, b, sfa, sfb, m, n, k, out_dtype)
     torch.cuda.synchronize(a.device)
     samples = []
     for _ in range(repeats):
@@ -402,7 +422,9 @@ def _measure_config(
             for _ in range(iterations):
                 if flush is not None:
                     flush.zero_()
-                _run_config(config, a, b, sfa, sfb, m, n, k)
+                _run_config(
+                    config, a, b, sfa, sfb, m, n, k, out_dtype
+                )
         torch.cuda.synchronize(a.device)
         gemm_device_times = [
             event.self_device_time_total
@@ -437,6 +459,7 @@ def _autotune(
     m: int,
     n: int,
     k: int,
+    out_dtype: torch.dtype,
 ) -> AutotuneResult:
     warmup = _positive_env_int("MXFP6_AUTOTUNE_WARMUP", 2)
     iterations = _positive_env_int("MXFP6_AUTOTUNE_ITERATIONS", 5)
@@ -452,9 +475,13 @@ def _autotune(
 
     # Ensure the reference call cannot accidentally use a stale in-process
     # override while this exact shape is being retuned.
-    torch.ops.mxfp6.set_w6a8_config(a, m, n, k, -1, 1, 0)
+    torch.ops.mxfp6.set_w6a8_config(
+        a, m, n, k, -1, 1, 0, out_dtype
+    )
     fallback = W6A8Config(FALLBACK_CONFIG_ID, 1, 0)
-    fallback_output = _run_config(fallback, a, b, sfa, sfb, m, n, k)
+    fallback_output = _run_config(
+        fallback, a, b, sfa, sfb, m, n, k, out_dtype
+    )
     fallback_us = _measure_config(
         fallback,
         a,
@@ -464,6 +491,7 @@ def _autotune(
         m,
         n,
         k,
+        out_dtype,
         warmup,
         iterations,
         repeats,
@@ -484,6 +512,7 @@ def _autotune(
                 m,
                 n,
                 k,
+                out_dtype,
                 warmup,
                 iterations,
                 1,
@@ -532,6 +561,7 @@ def _autotune(
                 m,
                 n,
                 k,
+                out_dtype,
                 warmup,
                 iterations,
                 repeats,
@@ -549,7 +579,7 @@ def _autotune(
     for latency, config in refined_results:
         try:
             candidate_output = _run_config(
-                config, a, b, sfa, sfb, m, n, k
+                config, a, b, sfa, sfb, m, n, k, out_dtype
             )
             torch.testing.assert_close(
                 candidate_output,
@@ -594,9 +624,12 @@ def _install(
     n: int,
     k: int,
     config: W6A8Config,
+    out_dtype: torch.dtype,
 ) -> None:
     if config.config_id == FALLBACK_CONFIG_ID:
-        torch.ops.mxfp6.set_w6a8_config(anchor, m, n, k, -1, 1, 0)
+        torch.ops.mxfp6.set_w6a8_config(
+            anchor, m, n, k, -1, 1, 0, out_dtype
+        )
         return
     torch.ops.mxfp6.set_w6a8_config(
         anchor,
@@ -606,6 +639,7 @@ def _install(
         config.config_id,
         config.swizzle,
         config.raster_order,
+        out_dtype,
     )
 
 
@@ -618,6 +652,7 @@ def ensure_w6a8_tuned(
     n: int,
     k: int,
     *,
+    out_dtype: torch.dtype = torch.float16,
     force: bool = False,
 ) -> W6A8Config | None:
     """Install a cached/native winner, tuning this shape once on a miss.
@@ -640,7 +675,8 @@ def ensure_w6a8_tuned(
             f"Python expects {CANDIDATE_ABI!r}, extension reports "
             f"{extension_abi!r}"
         )
-    descriptor = _descriptor(device_index, m, n, k)
+    _output_dtype_name(out_dtype)
+    descriptor = _descriptor(device_index, m, n, k, out_dtype)
     key = _cache_key(descriptor)
     process_key = (device_index, key)
     if not force:
@@ -658,7 +694,7 @@ def ensure_w6a8_tuned(
 
         cached = None if force else _read_entry(key, descriptor)
         if cached is not None:
-            _install(a, m, n, k, cached)
+            _install(a, m, n, k, cached, out_dtype)
             with _STATE_LOCK:
                 _DECISIONS[process_key] = cached
             _verbose(
@@ -677,7 +713,9 @@ def ensure_w6a8_tuned(
                     _verbose(
                         f"tuning {m}x{n}x{k} on CUDA device {device_index}"
                     )
-                    result = _autotune(a, b, sfa, sfb, m, n, k)
+                    result = _autotune(
+                        a, b, sfa, sfb, m, n, k, out_dtype
+                    )
                     result_config = result.config
                     _write_entry(key, descriptor, result)
         except OSError as error:
@@ -685,7 +723,9 @@ def ensure_w6a8_tuned(
             # an in-process decision even when persistence is unavailable.
             _verbose(f"persistent cache unavailable: {error}")
             if result is None:
-                result = _autotune(a, b, sfa, sfb, m, n, k)
+                result = _autotune(
+                    a, b, sfa, sfb, m, n, k, out_dtype
+                )
             result_config = result.config
         except RuntimeError as error:
             # Candidate profiling is an optimization. Preserve the known-safe
@@ -701,7 +741,7 @@ def ensure_w6a8_tuned(
                 f"{result.fallback_us:.3f} us)"
             )
 
-        _install(a, m, n, k, result_config)
+        _install(a, m, n, k, result_config, out_dtype)
         with _STATE_LOCK:
             _DECISIONS[process_key] = result_config
         return result_config

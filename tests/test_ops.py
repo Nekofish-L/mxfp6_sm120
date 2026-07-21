@@ -107,10 +107,11 @@ def reference_gemm(
     b_codes: torch.Tensor,
     sfa: torch.Tensor,
     sfb: torch.Tensor,
+    out_dtype: torch.dtype = torch.float16,
 ) -> torch.Tensor:
     a = decode_e3m2(a_codes) * decode_ue8m0(sfa).repeat_interleave(32, dim=1)
     b = decode_e3m2(b_codes) * decode_ue8m0(sfb).repeat_interleave(32, dim=1)
-    return (a @ b.t()).half()
+    return (a @ b.t()).to(out_dtype)
 
 
 def decode_mxfp8(operand, mxfp6) -> torch.Tensor:
@@ -170,41 +171,52 @@ def test_w6a8_candidate_registry(mxfp6) -> None:
     a6 = mxfp6.pack_operand(a_codes, sfa)
     b = mxfp6.pack_operand(b_codes, sfb)
     a8 = torch.ops.mxfp6.expand_fp6_to_fp8(a6.values, m, k)
-    assert torch.ops.mxfp6.w6a8_config_abi(a8) == "native-w6a8-29-v2"
-    torch.ops.mxfp6.set_w6a8_config(a8, m, n, k, -1, 1, 0)
-    reference = torch.ops.mxfp6.gemm_w6a8(
-        a8, b.values, a6.scales, b.scales, m, n, k
-    )
-    for config_id in range(29):
-        actual = torch.ops.mxfp6.gemm_w6a8_config(
-            a8,
-            b.values,
-            a6.scales,
-            b.scales,
-            m,
-            n,
-            k,
-            1.0,
-            config_id,
-            1,
-            0,
+    assert torch.ops.mxfp6.w6a8_config_abi(a8) == "native-w6a8-29-v3"
+    for out_dtype in (torch.float16, torch.bfloat16):
+        torch.ops.mxfp6.set_w6a8_config(
+            a8, m, n, k, -1, 1, 0, out_dtype
         )
-        torch.testing.assert_close(actual, reference, rtol=2e-3, atol=0.25)
+        reference = torch.ops.mxfp6.gemm_w6a8(
+            a8, b.values, a6.scales, b.scales, m, n, k, 1.0, out_dtype
+        )
+        assert reference.dtype == out_dtype
+        for config_id in range(29):
+            actual = torch.ops.mxfp6.gemm_w6a8_config(
+                a8,
+                b.values,
+                a6.scales,
+                b.scales,
+                m,
+                n,
+                k,
+                1.0,
+                config_id,
+                1,
+                0,
+                out_dtype,
+            )
+            torch.testing.assert_close(
+                actual, reference, rtol=2e-3, atol=0.5
+            )
 
     try:
         assert torch.ops.mxfp6.set_w6a8_config(
-            a8, m, n, k, 5, 2, 1
+            a8, m, n, k, 5, 2, 1, torch.bfloat16
         )
         overridden = torch.ops.mxfp6.gemm_w6a8(
-            a8, b.values, a6.scales, b.scales, m, n, k
+            a8, b.values, a6.scales, b.scales, m, n, k,
+            1.0, torch.bfloat16
         )
         expected = torch.ops.mxfp6.gemm_w6a8_config(
-            a8, b.values, a6.scales, b.scales, m, n, k, 1.0, 5, 2, 1
+            a8, b.values, a6.scales, b.scales, m, n, k,
+            1.0, 5, 2, 1, torch.bfloat16
         )
         torch.testing.assert_close(overridden, expected, rtol=0, atol=0)
     finally:
-        torch.ops.mxfp6.set_w6a8_config(a8, m, n, k, -1, 1, 0)
-    print("PASS native W6A8 candidate ABI and C++ override registry")
+        torch.ops.mxfp6.set_w6a8_config(
+            a8, m, n, k, -1, 1, 0, torch.bfloat16
+        )
+    print("PASS FP16/BF16 W6A8 candidate ABI and C++ override registry")
 
 
 def test_float_w6a8_gemm(mxfp6) -> None:
@@ -223,15 +235,63 @@ def test_float_w6a8_gemm(mxfp6) -> None:
         _, b_codes, _, sfb = make_problem(m, n, k, 6900 + index)
         b = mxfp6.pack_operand(b_codes, sfb)
         quantized = mxfp6.quantize_activation(source)
-        direct = mxfp6.gemm_w6a8(quantized, b)
-        fused = mxfp6.gemm(source, b)
         b_values = decode_e3m2(b_codes) * decode_ue8m0(sfb).repeat_interleave(
             32, dim=1
         )
-        reference = (decode_mxfp8(quantized, mxfp6) @ b_values.t()).half()
-        torch.testing.assert_close(direct, reference, rtol=2e-3, atol=0.25)
-        torch.testing.assert_close(fused, direct, rtol=0, atol=0)
-        print(f"PASS native {str(dtype).removeprefix('torch.')} W6A8 {m}x{n}x{k}")
+        reference_fp32 = decode_mxfp8(quantized, mxfp6) @ b_values.t()
+        for out_dtype in (torch.float16, torch.bfloat16):
+            direct = mxfp6.gemm_w6a8(
+                quantized, b, out_dtype=out_dtype
+            )
+            fused = mxfp6.gemm(source, b, out_dtype=out_dtype)
+            reference = reference_fp32.to(out_dtype)
+            assert direct.dtype == out_dtype
+            torch.testing.assert_close(
+                direct, reference, rtol=2e-3, atol=0.5
+            )
+            torch.testing.assert_close(fused, direct, rtol=0, atol=0)
+        print(
+            "PASS native FP16/BF16 output for "
+            f"{str(dtype).removeprefix('torch.')} W6A8 {m}x{n}x{k}"
+        )
+
+
+def test_warmup_api(mxfp6) -> None:
+    m, n, k = 17, 136, 128
+    source = torch.randn((m, k), device="cuda", dtype=torch.bfloat16)
+    weight = mxfp6.quantize_mxfp6(
+        torch.randn((n, k), device="cuda", dtype=torch.bfloat16)
+    )
+    result = mxfp6.warmup_w6a8(
+        source,
+        weight,
+        out_dtype=torch.bfloat16,
+        iterations=2,
+        autotune=False,
+    )
+    assert result is None
+    result = mxfp6.warmup_w6a8(
+        mxfp6.quantize_activation(source),
+        weight,
+        out_dtype=torch.float16,
+        iterations=1,
+        autotune=False,
+    )
+    assert result is None
+
+    try:
+        mxfp6.gemm(source, weight, out_dtype=torch.float32)
+    except TypeError:
+        pass
+    else:
+        raise AssertionError("float32 output must be rejected")
+    try:
+        mxfp6.warmup_w6a8(source, weight, iterations=0)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("zero warmup iterations must be rejected")
+    print("PASS public FP16/BF16 W6A8 warmup API and validation")
 
 
 def test_random_scale_gemm(mxfp6) -> None:
@@ -259,6 +319,14 @@ def test_random_scale_gemm(mxfp6) -> None:
         actual = mxfp6.gemm(a, b)
         reference = reference_gemm(a_codes, b_codes, sfa, sfb)
         torch.testing.assert_close(actual, reference, rtol=2e-3, atol=0.25)
+        actual_bf16 = mxfp6.gemm(a, b, out_dtype=torch.bfloat16)
+        reference_bf16 = reference_gemm(
+            a_codes, b_codes, sfa, sfb, torch.bfloat16
+        )
+        assert actual_bf16.dtype == torch.bfloat16
+        torch.testing.assert_close(
+            actual_bf16, reference_bf16, rtol=2e-3, atol=0.5
+        )
         max_abs = (actual - reference).abs().max().item()
         print(f"PASS random-scale GEMM {m}x{n}x{k}: max_abs={max_abs:g}")
 
@@ -347,9 +415,14 @@ def test_float_nondefault_stream(mxfp6) -> None:
     b = mxfp6.pack_operand(b_codes, sfb)
     stream = torch.cuda.Stream()
     with torch.cuda.stream(stream):
-        actual = mxfp6.gemm(source, b)
-        expected = mxfp6.gemm_w6a8(mxfp6.quantize_activation(source), b)
+        actual = mxfp6.gemm(source, b, out_dtype=torch.bfloat16)
+        expected = mxfp6.gemm_w6a8(
+            mxfp6.quantize_activation(source),
+            b,
+            out_dtype=torch.bfloat16,
+        )
     stream.synchronize()
+    assert actual.dtype == torch.bfloat16
     torch.testing.assert_close(actual, expected, rtol=0, atol=0)
     print("PASS fused W6A8 non-default current-stream semantics")
 
@@ -364,10 +437,15 @@ def test_humming_backend(mxfp6) -> None:
         humming_b.values.numel() * humming_b.values.element_size()
         == n * k * 6 // 8
     )
-    actual = mxfp6.gemm(a, humming_b)
-    expected = mxfp6.gemm(a, b)
-    torch.testing.assert_close(actual, expected, rtol=2e-3, atol=0.5)
-    print("PASS Humming W6A8 bridge correctness and six-bit weight storage")
+    for out_dtype in (torch.float16, torch.bfloat16):
+        actual = mxfp6.gemm(a, humming_b, out_dtype=out_dtype)
+        expected = mxfp6.gemm(a, b, out_dtype=out_dtype)
+        assert actual.dtype == out_dtype
+        torch.testing.assert_close(actual, expected, rtol=2e-3, atol=0.5)
+    print(
+        "PASS FP16/BF16 Humming W6A8 bridge correctness and six-bit "
+        "weight storage"
+    )
 
 
 def main() -> None:
@@ -394,6 +472,7 @@ def main() -> None:
     test_dynamic_quantization(mxfp6)
     test_w6a8_candidate_registry(mxfp6)
     test_float_w6a8_gemm(mxfp6)
+    test_warmup_api(mxfp6)
     test_random_scale_gemm(mxfp6)
     test_small_w6a8_dispatch(mxfp6)
     test_tuned_transition_gemm(mxfp6)

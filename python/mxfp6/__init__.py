@@ -36,6 +36,7 @@ from .ops import (
     unpack_fp6,
     unpack_operand,
     unpack_scales,
+    warmup_w6a8,
 )
 
 __version__ = "0.1.0"
@@ -73,4 +74,5 @@ __all__ = [
     "unpack_fp6",
     "unpack_operand",
     "unpack_scales",
+    "warmup_w6a8",
 ]

@@ -122,13 +122,24 @@ def prepare_humming_weight(weight: PackedMXFP6Tensor) -> HummingMXFP6Weight:
     return HummingMXFP6Weight(values, scales, weight.rows, weight.k)
 
 
-def _layer_config(n: int, k: int) -> dict[str, object]:
+def _layer_config(
+    n: int, k: int, out_dtype: torch.dtype
+) -> dict[str, object]:
+    if out_dtype == torch.float16:
+        c_dtype = "float16"
+    elif out_dtype == torch.bfloat16:
+        c_dtype = "bfloat16"
+    else:
+        raise TypeError(
+            "out_dtype must be torch.float16 or torch.bfloat16; "
+            f"got {out_dtype}"
+        )
     return {
         "shape_n": n,
         "shape_k": k,
         "a_dtype": "float8e4m3",
         "b_dtype": "float6e3m2",
-        "c_dtype": "float16",
+        "c_dtype": c_dtype,
         "bs_dtype": "float8e8m0",
         "input_scale_group_size": 32,
         "weight_scale_group_size": 32,
@@ -139,7 +150,11 @@ def _layer_config(n: int, k: int) -> dict[str, object]:
 
 @lru_cache(maxsize=128)
 def _kernel_configs(
-    device_index: int, m: int, n: int, k: int
+    device_index: int,
+    m: int,
+    n: int,
+    k: int,
+    out_dtype: torch.dtype,
 ) -> torch.Tensor:
     # Humming chooses the tile and pipeline from its SM120 heuristic. Three
     # safety overrides avoid rare partial-output corruption observed in
@@ -149,7 +164,7 @@ def _kernel_configs(
     # overlapped schedule.
     with torch.cuda.device(device_index):
         _, _, kernel_module, layer_module, tune_module, _ = _import_humming()
-        layer = _layer_config(n, k)
+        layer = _layer_config(n, k, out_dtype)
         meta = layer_module.HummingLayerMeta(**layer)
         tuning = dict(tune_module.get_heuristics_config(meta, shape_m=m))
         tuning.update(
@@ -165,11 +180,13 @@ def gemm_humming(
     a: PackedMXFP6Tensor,
     b: HummingMXFP6Weight,
     alpha: float = 1.0,
+    *,
+    out_dtype: torch.dtype = torch.float16,
 ) -> torch.Tensor:
     """Run the Humming mixed W6A8 path for ``A @ B.T``.
 
     E3M2 is a subset of E4M3, so activation conversion is exact. The returned
-    tensor is FP16, matching the native operator.
+    tensor uses the requested FP16 or BF16 output type.
     """
     if not isinstance(a, PackedMXFP6Tensor):
         raise TypeError("a must be a PackedMXFP6Tensor instance")
@@ -177,6 +194,11 @@ def gemm_humming(
         raise TypeError("b must be a HummingMXFP6Weight instance")
     if alpha != 1.0:
         raise ValueError("the Humming backend currently requires alpha == 1.0")
+    if out_dtype not in (torch.float16, torch.bfloat16):
+        raise TypeError(
+            "out_dtype must be torch.float16 or torch.bfloat16; "
+            f"got {out_dtype}"
+        )
     if a.k != b.k:
         raise ValueError(f"a.k and b.k must match; got {a.k} and {b.k}")
     if a.device != b.device:
@@ -192,12 +214,12 @@ def gemm_humming(
         )
 
     _, humming_ops, _, _, _, _ = _import_humming()
-    configs = _kernel_configs(device_index, a.rows, b.rows, a.k)
+    configs = _kernel_configs(
+        device_index, a.rows, b.rows, a.k, out_dtype
+    )
     inputs = expand_fp6_to_fp8(a.values, a.rows, a.k)
     input_scale = _logical_scales(a).contiguous().view(torch.int32)
-    output = torch.empty(
-        (a.rows, b.rows), dtype=torch.float16, device=a.device
-    )
+    output = torch.empty((a.rows, b.rows), dtype=out_dtype, device=a.device)
     return humming_ops.launch_kernel(
         configs=configs,
         inputs=inputs,

@@ -100,13 +100,19 @@ def make_inputs(
 
 
 def check_correctness(
-    tensors: tuple[torch.Tensor, ...], m: int, n: int, k: int
+    tensors: tuple[torch.Tensor, ...],
+    m: int,
+    n: int,
+    k: int,
+    out_dtype: torch.dtype,
 ) -> tuple[float, float]:
     a, b, sfa, sfb, a_codes, b_codes, *_ = tensors
-    actual = torch.ops.mxfp6.gemm(a, b, sfa, sfb, m, n, k)
+    actual = torch.ops.mxfp6.gemm(
+        a, b, sfa, sfb, m, n, k, 1.0, out_dtype
+    )
     a_ref = decode_e3m2(a_codes).cuda()
     b_ref = decode_e3m2(b_codes).cuda()
-    reference = (a_ref @ b_ref.t()).half()
+    reference = (a_ref @ b_ref.t()).to(out_dtype)
     torch.cuda.synchronize()
 
     error = (actual.float() - reference.float()).abs()
@@ -117,8 +123,10 @@ def check_correctness(
     return max_abs, relative_diff
 
 
-def check_float_correctness(mxfp6, source, weight) -> tuple[float, float]:
-    actual = mxfp6.gemm(source, weight)
+def check_float_correctness(
+    mxfp6, source, weight, out_dtype: torch.dtype
+) -> tuple[float, float]:
+    actual = mxfp6.gemm(source, weight, out_dtype=out_dtype)
     quantized = mxfp6.quantize_activation(source)
     a_values = quantized.values.view(quantized.shape).view(
         torch.float8_e4m3fn
@@ -135,7 +143,7 @@ def check_float_correctness(mxfp6, source, weight) -> tuple[float, float]:
         torch.ones_like(b_scales, dtype=torch.float32),
         b_scales.to(torch.int32) - 127,
     ).repeat_interleave(32, dim=1)
-    reference = (a_ref @ b_ref.t()).half()
+    reference = (a_ref @ b_ref.t()).to(out_dtype)
     torch.cuda.synchronize()
     error = (actual.float() - reference.float()).abs()
     denominator = actual.double().square().sum() + reference.double().square().sum()
@@ -207,9 +215,12 @@ def benchmark(
     warmup: int,
     iterations: int,
     flush_l2_mb: int,
+    out_dtype: torch.dtype,
 ) -> Timing:
     a, b, sfa, sfb = tuple(args)[:4]
-    run = lambda: torch.ops.mxfp6.gemm(a, b, sfa, sfb, m, n, k)
+    run = lambda: torch.ops.mxfp6.gemm(
+        a, b, sfa, sfb, m, n, k, 1.0, out_dtype
+    )
     return benchmark_operation(
         run,
         lambda name: "cutlass" in name,
@@ -227,13 +238,14 @@ def benchmark_float(
     warmup: int,
     iterations: int,
     flush_l2_mb: int,
+    out_dtype: torch.dtype,
 ) -> Timing:
     # A profiler event spans kernel residency, not just instructions issued by
     # that kernel. With PDL, the fused GEMM can be resident while it waits for
     # the quantizer's GDC signal. Profile prequantized GEMM and quantization in
     # separate runs so the two reported compute times cannot include that wait.
     quantized = mxfp6.quantize_activation(source)
-    mxfp6.autotune_w6a8(quantized, weight)
+    mxfp6.autotune_w6a8(quantized, weight, out_dtype=out_dtype)
     a_values, sfa = quantized.values, quantized.scales
     direct_run = lambda: torch.ops.mxfp6.gemm_w6a8(
         a_values,
@@ -243,6 +255,8 @@ def benchmark_float(
         source.size(0),
         weight.rows,
         source.size(1),
+        1.0,
+        out_dtype,
     )
     direct = benchmark_operation(
         direct_run,
@@ -284,6 +298,7 @@ def benchmark_fp8(
     k: int,
     seed: int,
     input_dtype: torch.dtype,
+    out_dtype: torch.dtype,
     iterations: int,
     warmup: int,
     flush_l2_mb: int,
@@ -313,7 +328,7 @@ def benchmark_fp8(
         scale_b=scale_b.t(),
         # Match the native MXFP6/W6A8 output type.  Keeping this identical is
         # important for both output traffic and epilogue cost.
-        out_dtype=torch.float16,
+        out_dtype=out_dtype,
     )
     return benchmark_operation(
         run,
@@ -333,6 +348,7 @@ def benchmark_torch_scaled_mm(
     warmup: int,
     flush_l2_mb: int,
     check: bool,
+    out_dtype: torch.dtype,
 ) -> Timing:
     """Benchmark PyTorch's dense FP8 GEMM on the same numerical inputs.
 
@@ -355,11 +371,13 @@ def benchmark_torch_scaled_mm(
         b_fp8.t(),
         scale_a,
         scale_b,
-        out_dtype=torch.float16,
+        out_dtype=out_dtype,
         use_fast_accum=False,
     )
     if check:
-        expected = torch.ops.mxfp6.gemm(a, b, sfa, sfb, m, n, k)
+        expected = torch.ops.mxfp6.gemm(
+            a, b, sfa, sfb, m, n, k, 1.0, out_dtype
+        )
         torch.testing.assert_close(run(), expected, rtol=2e-3, atol=0.25)
         torch.cuda.synchronize()
     return benchmark_operation(
@@ -418,6 +436,12 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--output-dtype",
+        choices=("fp16", "bf16"),
+        default="fp16",
+        help="native and comparison GEMM output dtype (default: fp16)",
+    )
+    parser.add_argument(
         "--check-all", action="store_true", help="run FP32 reference for every shape"
     )
     parser.add_argument(
@@ -474,14 +498,22 @@ def main() -> None:
     import mxfp6
 
     mxfp6.load_library()
+    out_dtype = (
+        torch.float16
+        if options.output_dtype == "fp16"
+        else torch.bfloat16
+    )
     torch.backends.cuda.matmul.allow_tf32 = False
     print(f"Device: {torch.cuda.get_device_name()} (SM120)")
     if options.activation_input == "packed":
-        print("Op: packed MXFP6 activation compatibility path -> FP16")
+        print(
+            "Op: packed MXFP6 activation compatibility path -> "
+            f"{options.output_dtype.upper()}"
+        )
     else:
         print(
             f"Op: {options.activation_input.upper()} activation -> native "
-            "MXFP8 x MXFP6 -> FP16"
+            f"MXFP8 x MXFP6 -> {options.output_dtype.upper()}"
         )
     print(
         "Latency: CUDA kernels only; native total is the sum of the "
@@ -508,10 +540,12 @@ def main() -> None:
             source = decode_e3m2(a_codes).to(device="cuda", dtype=dtype)
         if index == 0 or options.check_all:
             if source is None:
-                max_abs, diff = check_correctness(tensors, m, n, k)
+                max_abs, diff = check_correctness(
+                    tensors, m, n, k, out_dtype
+                )
             else:
                 max_abs, diff = check_float_correctness(
-                    mxfp6, source, packed_b
+                    mxfp6, source, packed_b, out_dtype
                 )
             correctness = f"max_abs={max_abs:.4g}, diff={diff:.3g}"
         else:
@@ -526,6 +560,7 @@ def main() -> None:
                 options.warmup,
                 options.iterations,
                 options.flush_l2_mb,
+                out_dtype,
             )
         else:
             timing = benchmark_float(
@@ -535,6 +570,7 @@ def main() -> None:
                 options.warmup,
                 options.iterations,
                 options.flush_l2_mb,
+                out_dtype,
             )
         compute_us = timing.kernel_us + timing.conversion_us
         compute_tflops = 2.0 * m * n * k / compute_us / 1.0e6
@@ -561,6 +597,7 @@ def main() -> None:
                 k,
                 options.seed + index,
                 source.dtype if source is not None else torch.bfloat16,
+                out_dtype,
                 options.iterations,
                 options.warmup,
                 options.flush_l2_mb,
@@ -583,6 +620,7 @@ def main() -> None:
                 options.warmup,
                 options.flush_l2_mb,
                 index == 0 or options.check_all,
+                out_dtype,
             )
             comparison += (
                 f" | torch._scaled_mm gemm="
@@ -607,11 +645,15 @@ def main() -> None:
                 )
             else:
                 humming_b = mxfp6.prepare_humming_weight(packed_b)
-                run_humming = lambda: mxfp6.gemm(packed_a, humming_b)
+                run_humming = lambda: mxfp6.gemm(
+                    packed_a, humming_b, out_dtype=out_dtype
+                )
                 if not humming_checked or options.check_all:
                     torch.testing.assert_close(
                         run_humming(),
-                        torch.ops.mxfp6.gemm(a, b, sfa, sfb, m, n, k),
+                        torch.ops.mxfp6.gemm(
+                            a, b, sfa, sfb, m, n, k, 1.0, out_dtype
+                        ),
                         rtol=2e-3,
                         atol=0.5,
                     )

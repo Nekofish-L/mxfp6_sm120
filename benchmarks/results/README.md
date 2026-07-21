@@ -3,6 +3,7 @@
 `native_w6a8_dispatch.json` is the reviewed production manifest. It records:
 
 - the FP16/BF16 16-to-8 activation and packed-W6 weight formats;
+- native FP16 and BF16 GEMM epilogues;
 - exact small-batch tile, scheduler, raster and swizzle selections;
 - the large-batch native CUTLASS policy;
 - the current RTX 5090 GEMM-only comparison against Humming W6A8 and vLLM
@@ -20,6 +21,7 @@ CUDA_VISIBLE_DEVICES=0 MXFP6_AUTOTUNE=0 \
 python3 benchmarks/benchmark.py \
   --library build/mxfp6_torch.so \
   --activation-input bf16 \
+  --output-dtype fp16 \
   --compare-humming --compare-fp8 \
   --warmup 20 --iterations 100 --flush-l2-mb 0
 ```

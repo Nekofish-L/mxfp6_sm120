@@ -1,9 +1,11 @@
 #include <cstdint>
 #include <limits>
 #include <mutex>
+#include <optional>
 #include <shared_mutex>
 #include <string>
 #include <tuple>
+#include <type_traits>
 #include <unordered_map>
 
 #include <ATen/ATen.h>
@@ -34,10 +36,11 @@ struct W6A8ShapeKey {
   int64_t m;
   int64_t n;
   int64_t k;
+  at::ScalarType output_dtype;
 
   bool operator==(W6A8ShapeKey const& other) const {
     return device_index == other.device_index && m == other.m &&
-        n == other.n && k == other.k;
+        n == other.n && k == other.k && output_dtype == other.output_dtype;
   }
 };
 
@@ -51,6 +54,7 @@ struct W6A8ShapeKeyHash {
     combine(key.m);
     combine(key.n);
     combine(key.k);
+    combine(static_cast<int64_t>(key.output_dtype));
     return value;
   }
 };
@@ -69,9 +73,11 @@ bool find_w6a8_override(int device_index,
                         int64_t m,
                         int64_t n,
                         int64_t k,
+                        at::ScalarType output_dtype,
                         W6A8LaunchConfig& result) {
   std::shared_lock<std::shared_mutex> lock(w6a8_overrides_mutex);
-  auto const iterator = w6a8_overrides.find({device_index, m, n, k});
+  auto const iterator = w6a8_overrides.find(
+      {device_index, m, n, k, output_dtype});
   if (iterator == w6a8_overrides.end()) {
     return false;
   }
@@ -129,8 +135,37 @@ void check_input(at::Tensor const& tensor,
               name, " must be at least 16-byte aligned");
 }
 
+at::ScalarType resolve_output_dtype(
+    std::optional<at::ScalarType> output_dtype) {
+  at::ScalarType const resolved = output_dtype.value_or(at::kHalf);
+  TORCH_CHECK(resolved == at::kHalf || resolved == at::kBFloat16,
+              "out_dtype must be torch.float16 or torch.bfloat16; got ",
+              resolved);
+  return resolved;
+}
+
+// Kernel selection is synchronous on the calling host thread. A scoped
+// thread-local keeps output dtype out of the large policy call graph while
+// remaining safe for concurrent launches from independent Python threads.
+thread_local at::ScalarType current_output_dtype = at::kHalf;
+
+class OutputDtypeGuard {
+ public:
+  explicit OutputDtypeGuard(at::ScalarType output_dtype)
+      : previous_(current_output_dtype) {
+    current_output_dtype = output_dtype;
+  }
+
+  ~OutputDtypeGuard() {
+    current_output_dtype = previous_;
+  }
+
+ private:
+  at::ScalarType previous_;
+};
+
 template <class Kernel>
-at::Tensor launch_swapped(at::Tensor const& a,
+at::Tensor launch_swapped_typed(at::Tensor const& a,
                           at::Tensor const& b,
                           at::Tensor const& sfa,
                           at::Tensor const& sfb,
@@ -146,7 +181,14 @@ at::Tensor launch_swapped(at::Tensor const& a,
                           bool use_pdl = false) {
   using Gemm = typename Kernel::Gemm;
   using BlockScaledConfig = typename Kernel::BlockScaledConfig;
-  auto output = at::empty({m, n}, a.options().dtype(at::kHalf));
+  static_assert(
+      std::is_same_v<typename Kernel::ElementD, cutlass::half_t> ||
+      std::is_same_v<typename Kernel::ElementD, cutlass::bfloat16_t>);
+  constexpr at::ScalarType output_dtype =
+      std::is_same_v<typename Kernel::ElementD, cutlass::bfloat16_t>
+      ? at::kBFloat16
+      : at::kHalf;
+  auto output = at::empty({m, n}, a.options().dtype(output_dtype));
   auto problem = cute::make_shape(
       static_cast<int>(n), static_cast<int>(m), static_cast<int>(k), 1);
   auto stride_a = cutlass::make_cute_packed_stride(
@@ -177,7 +219,125 @@ at::Tensor launch_swapped(at::Tensor const& a,
        layout_sfb},
       {{static_cast<float>(alpha), 0.0f},
        static_cast<typename Kernel::ElementC const*>(nullptr), stride_c,
-       reinterpret_cast<typename Kernel::ElementD*>(output.data_ptr<at::Half>()),
+       reinterpret_cast<typename Kernel::ElementD*>(output.data_ptr()),
+       stride_d}};
+
+  arguments.hw_info.device_id = device_index;
+  arguments.hw_info.sm_count = sm_count;
+  configure_scheduler<Kernel>(
+      arguments, max_swizzle_size, raster_order, splits);
+
+  Gemm gemm;
+  auto status = gemm.can_implement(arguments);
+  TORCH_CHECK(status == cutlass::Status::kSuccess,
+              "CUTLASS can_implement failed: ", cutlassGetStatusString(status));
+
+  size_t const workspace_bytes = Gemm::get_workspace_size(arguments);
+  at::Tensor workspace;
+  void* workspace_ptr = nullptr;
+  if (workspace_bytes > 0) {
+    workspace = at::empty(
+        {static_cast<int64_t>(workspace_bytes)}, a.options().dtype(at::kByte));
+    workspace_ptr = workspace.data_ptr();
+  }
+
+  auto stream = c10::cuda::getCurrentCUDAStream(device_index);
+  status = gemm.initialize(arguments, workspace_ptr, stream.stream());
+  TORCH_CHECK(status == cutlass::Status::kSuccess,
+              "CUTLASS initialize failed: ", cutlassGetStatusString(status));
+  status = gemm.run(stream.stream(), nullptr, use_pdl);
+  TORCH_CHECK(status == cutlass::Status::kSuccess,
+              "CUTLASS launch failed: ", cutlassGetStatusString(status));
+  if (workspace.defined()) {
+    c10::cuda::CUDACachingAllocator::recordStream(
+        workspace.storage().data_ptr(), stream);
+  }
+  return output;
+}
+
+template <class Kernel>
+at::Tensor launch_swapped(at::Tensor const& a,
+                          at::Tensor const& b,
+                          at::Tensor const& sfa,
+                          at::Tensor const& sfb,
+                          int64_t m,
+                          int64_t n,
+                          int64_t k,
+                          double alpha,
+                          int device_index,
+                          int max_swizzle_size = 8,
+                          RasterOrder raster_order = RasterOrder::Heuristic,
+                          int splits = 1,
+                          int sm_count = 0,
+                          bool use_pdl = false) {
+  if (current_output_dtype == at::kBFloat16) {
+    using BFloat16Kernel = typename Kernel::template RebindOutput<
+        cutlass::bfloat16_t>;
+    return launch_swapped_typed<BFloat16Kernel>(
+        a, b, sfa, sfb, m, n, k, alpha, device_index, max_swizzle_size,
+        raster_order, splits, sm_count, use_pdl);
+  }
+  return launch_swapped_typed<Kernel>(
+      a, b, sfa, sfb, m, n, k, alpha, device_index, max_swizzle_size,
+      raster_order, splits, sm_count, use_pdl);
+}
+
+template <class Kernel>
+at::Tensor launch_normal_typed(at::Tensor const& a,
+                         at::Tensor const& b,
+                         at::Tensor const& sfa,
+                         at::Tensor const& sfb,
+                         int64_t m,
+                         int64_t n,
+                         int64_t k,
+                         double alpha,
+                         int device_index,
+                         int max_swizzle_size = 8,
+                         RasterOrder raster_order = RasterOrder::Heuristic,
+                         int splits = 1,
+                         int sm_count = 0,
+                         bool use_pdl = false) {
+  using Gemm = typename Kernel::Gemm;
+  using BlockScaledConfig = typename Kernel::BlockScaledConfig;
+  static_assert(
+      std::is_same_v<typename Kernel::ElementD, cutlass::half_t> ||
+      std::is_same_v<typename Kernel::ElementD, cutlass::bfloat16_t>);
+  constexpr at::ScalarType output_dtype =
+      std::is_same_v<typename Kernel::ElementD, cutlass::bfloat16_t>
+      ? at::kBFloat16
+      : at::kHalf;
+  auto output = at::empty({m, n}, a.options().dtype(output_dtype));
+  auto problem = cute::make_shape(
+      static_cast<int>(m), static_cast<int>(n), static_cast<int>(k), 1);
+  auto stride_a = cutlass::make_cute_packed_stride(
+      typename Kernel::StrideA{}, cute::make_shape(
+          static_cast<int>(m), static_cast<int>(k), 1));
+  auto stride_b = cutlass::make_cute_packed_stride(
+      typename Kernel::StrideB{}, cute::make_shape(
+          static_cast<int>(n), static_cast<int>(k), 1));
+  auto stride_c = cutlass::make_cute_packed_stride(
+      typename Kernel::StrideC{}, cute::make_shape(
+          static_cast<int>(m), static_cast<int>(n), 1));
+  auto stride_d = cutlass::make_cute_packed_stride(
+      typename Kernel::StrideD{}, cute::make_shape(
+          static_cast<int>(m), static_cast<int>(n), 1));
+  auto layout_sfa = BlockScaledConfig::tile_atom_to_shape_SFA(problem);
+  auto layout_sfb = BlockScaledConfig::tile_atom_to_shape_SFB(problem);
+
+  typename Gemm::Arguments arguments{
+      cutlass::gemm::GemmUniversalMode::kGemm,
+      problem,
+      {reinterpret_cast<typename Kernel::ElementA const*>(a.data_ptr<uint8_t>()),
+       stride_a,
+       reinterpret_cast<typename Kernel::ElementB const*>(b.data_ptr<uint8_t>()),
+       stride_b,
+       reinterpret_cast<typename Kernel::ElementSF const*>(sfa.data_ptr<uint8_t>()),
+       layout_sfa,
+       reinterpret_cast<typename Kernel::ElementSF const*>(sfb.data_ptr<uint8_t>()),
+       layout_sfb},
+      {{static_cast<float>(alpha), 0.0f},
+       static_cast<typename Kernel::ElementC const*>(nullptr), stride_c,
+       reinterpret_cast<typename Kernel::ElementD*>(output.data_ptr()),
        stride_d}};
 
   arguments.hw_info.device_id = device_index;
@@ -228,73 +388,16 @@ at::Tensor launch_normal(at::Tensor const& a,
                          int splits = 1,
                          int sm_count = 0,
                          bool use_pdl = false) {
-  using Gemm = typename Kernel::Gemm;
-  using BlockScaledConfig = typename Kernel::BlockScaledConfig;
-  auto output = at::empty({m, n}, a.options().dtype(at::kHalf));
-  auto problem = cute::make_shape(
-      static_cast<int>(m), static_cast<int>(n), static_cast<int>(k), 1);
-  auto stride_a = cutlass::make_cute_packed_stride(
-      typename Kernel::StrideA{}, cute::make_shape(
-          static_cast<int>(m), static_cast<int>(k), 1));
-  auto stride_b = cutlass::make_cute_packed_stride(
-      typename Kernel::StrideB{}, cute::make_shape(
-          static_cast<int>(n), static_cast<int>(k), 1));
-  auto stride_c = cutlass::make_cute_packed_stride(
-      typename Kernel::StrideC{}, cute::make_shape(
-          static_cast<int>(m), static_cast<int>(n), 1));
-  auto stride_d = cutlass::make_cute_packed_stride(
-      typename Kernel::StrideD{}, cute::make_shape(
-          static_cast<int>(m), static_cast<int>(n), 1));
-  auto layout_sfa = BlockScaledConfig::tile_atom_to_shape_SFA(problem);
-  auto layout_sfb = BlockScaledConfig::tile_atom_to_shape_SFB(problem);
-
-  typename Gemm::Arguments arguments{
-      cutlass::gemm::GemmUniversalMode::kGemm,
-      problem,
-      {reinterpret_cast<typename Kernel::ElementA const*>(a.data_ptr<uint8_t>()),
-       stride_a,
-       reinterpret_cast<typename Kernel::ElementB const*>(b.data_ptr<uint8_t>()),
-       stride_b,
-       reinterpret_cast<typename Kernel::ElementSF const*>(sfa.data_ptr<uint8_t>()),
-       layout_sfa,
-       reinterpret_cast<typename Kernel::ElementSF const*>(sfb.data_ptr<uint8_t>()),
-       layout_sfb},
-      {{static_cast<float>(alpha), 0.0f},
-       static_cast<typename Kernel::ElementC const*>(nullptr), stride_c,
-       reinterpret_cast<typename Kernel::ElementD*>(output.data_ptr<at::Half>()),
-       stride_d}};
-
-  arguments.hw_info.device_id = device_index;
-  arguments.hw_info.sm_count = sm_count;
-  configure_scheduler<Kernel>(
-      arguments, max_swizzle_size, raster_order, splits);
-
-  Gemm gemm;
-  auto status = gemm.can_implement(arguments);
-  TORCH_CHECK(status == cutlass::Status::kSuccess,
-              "CUTLASS can_implement failed: ", cutlassGetStatusString(status));
-
-  size_t const workspace_bytes = Gemm::get_workspace_size(arguments);
-  at::Tensor workspace;
-  void* workspace_ptr = nullptr;
-  if (workspace_bytes > 0) {
-    workspace = at::empty(
-        {static_cast<int64_t>(workspace_bytes)}, a.options().dtype(at::kByte));
-    workspace_ptr = workspace.data_ptr();
+  if (current_output_dtype == at::kBFloat16) {
+    using BFloat16Kernel = typename Kernel::template RebindOutput<
+        cutlass::bfloat16_t>;
+    return launch_normal_typed<BFloat16Kernel>(
+        a, b, sfa, sfb, m, n, k, alpha, device_index, max_swizzle_size,
+        raster_order, splits, sm_count, use_pdl);
   }
-
-  auto stream = c10::cuda::getCurrentCUDAStream(device_index);
-  status = gemm.initialize(arguments, workspace_ptr, stream.stream());
-  TORCH_CHECK(status == cutlass::Status::kSuccess,
-              "CUTLASS initialize failed: ", cutlassGetStatusString(status));
-  status = gemm.run(stream.stream(), nullptr, use_pdl);
-  TORCH_CHECK(status == cutlass::Status::kSuccess,
-              "CUTLASS launch failed: ", cutlassGetStatusString(status));
-  if (workspace.defined()) {
-    c10::cuda::CUDACachingAllocator::recordStream(
-        workspace.storage().data_ptr(), stream);
-  }
-  return output;
+  return launch_normal_typed<Kernel>(
+      a, b, sfa, sfb, m, n, k, alpha, device_index, max_swizzle_size,
+      raster_order, splits, sm_count, use_pdl);
 }
 
 at::Tensor launch_swapped_policy(at::Tensor const& a,
@@ -718,14 +821,16 @@ bool set_w6a8_config_cuda(at::Tensor const& anchor,
                           int64_t k,
                           int64_t config_id,
                           int64_t swizzle,
-                          int64_t raster_order) {
+                          int64_t raster_order,
+                          std::optional<at::ScalarType> output_dtype) {
   TORCH_CHECK(anchor.is_cuda(), "anchor must be a CUDA tensor");
   TORCH_CHECK(m > 0, "m must be positive; got ", m);
   TORCH_CHECK(n > 0 && n % 8 == 0,
               "n must be a positive multiple of 8; got ", n);
   TORCH_CHECK(k > 0 && k % 128 == 0,
               "k must be a positive multiple of 128; got ", k);
-  W6A8ShapeKey const key{anchor.get_device(), m, n, k};
+  W6A8ShapeKey const key{
+      anchor.get_device(), m, n, k, resolve_output_dtype(output_dtype)};
   std::unique_lock<std::shared_mutex> lock(w6a8_overrides_mutex);
   if (config_id < 0) {
     w6a8_overrides.erase(key);
@@ -742,7 +847,7 @@ bool set_w6a8_config_cuda(at::Tensor const& anchor,
 
 std::string w6a8_config_abi_cuda(at::Tensor const& anchor) {
   TORCH_CHECK(anchor.is_cuda(), "anchor must be a CUDA tensor");
-  return "native-w6a8-29-v2";
+  return "native-w6a8-29-v3";
 }
 
 // Native W6A8 dispatcher. The persistent B operand remains packed E3M2 while
@@ -765,7 +870,7 @@ at::Tensor launch_w6a8_policy(at::Tensor const& a,
 
   W6A8LaunchConfig override_config{};
   if (find_w6a8_override(
-          device_index, m, n, k, override_config)) {
+          device_index, m, n, k, current_output_dtype, override_config)) {
     return launch_w6a8_config(
         a, b, sfa, sfb, m, n, k, alpha, device_index, sm_count,
         override_config.config_id, override_config.swizzle,
@@ -1023,10 +1128,12 @@ at::Tensor gemm_cuda_impl(at::Tensor const& a,
                           int64_t m,
                           int64_t n,
                           int64_t k,
-                          double alpha) {
+                          double alpha,
+                          at::ScalarType output_dtype) {
 #if !defined(CUTLASS_ARCH_MMA_SM120_SUPPORTED)
   TORCH_CHECK(false, "mxfp6_torch must be compiled for sm_120a");
 #else
+  OutputDtypeGuard output_guard(output_dtype);
   TORCH_CHECK(m > 0, "m must be positive; got ", m);
   TORCH_CHECK(n > 0 && n % 8 == 0,
               "n must be a positive multiple of 8; got ", n);
@@ -1268,8 +1375,11 @@ at::Tensor gemm_cuda(at::Tensor const& a,
                      int64_t m,
                      int64_t n,
                      int64_t k,
-                     double alpha) {
-  return gemm_cuda_impl(a, b, sfa, sfb, m, n, k, alpha);
+                     double alpha,
+                     std::optional<at::ScalarType> output_dtype) {
+  return gemm_cuda_impl(
+      a, b, sfa, sfb, m, n, k, alpha,
+      resolve_output_dtype(output_dtype));
 }
 
 at::Tensor gemm_w6a8_cuda_impl(at::Tensor const& a,
@@ -1282,10 +1392,12 @@ at::Tensor gemm_w6a8_cuda_impl(at::Tensor const& a,
                                double alpha,
                                int64_t config_id,
                                int64_t swizzle,
-                               int64_t raster_order) {
+                               int64_t raster_order,
+                               at::ScalarType output_dtype) {
 #if !defined(CUTLASS_ARCH_MMA_SM120_SUPPORTED)
   TORCH_CHECK(false, "mxfp6_torch must be compiled for sm_120a");
 #else
+  OutputDtypeGuard output_guard(output_dtype);
   TORCH_CHECK(m > 0, "m must be positive; got ", m);
   TORCH_CHECK(n > 0 && n % 8 == 0,
               "n must be a positive multiple of 8; got ", n);
@@ -1341,9 +1453,11 @@ at::Tensor gemm_w6a8_cuda(at::Tensor const& a,
                           int64_t m,
                           int64_t n,
                           int64_t k,
-                          double alpha) {
+                          double alpha,
+                          std::optional<at::ScalarType> output_dtype) {
   return gemm_w6a8_cuda_impl(
-      a, b, sfa, sfb, m, n, k, alpha, -1, 1, 0);
+      a, b, sfa, sfb, m, n, k, alpha, -1, 1, 0,
+      resolve_output_dtype(output_dtype));
 }
 
 at::Tensor gemm_w6a8_config_cuda(at::Tensor const& a,
@@ -1356,12 +1470,13 @@ at::Tensor gemm_w6a8_config_cuda(at::Tensor const& a,
                                  double alpha,
                                  int64_t config_id,
                                  int64_t swizzle,
-                                 int64_t raster_order) {
+                                 int64_t raster_order,
+                                 std::optional<at::ScalarType> output_dtype) {
   TORCH_CHECK(config_id >= 0,
               "config_id must be nonnegative; got ", config_id);
   return gemm_w6a8_cuda_impl(
       a, b, sfa, sfb, m, n, k, alpha,
-      config_id, swizzle, raster_order);
+      config_id, swizzle, raster_order, resolve_output_dtype(output_dtype));
 }
 
 at::Tensor gemm_from_float_cuda_impl(at::Tensor const& input,
@@ -1371,10 +1486,12 @@ at::Tensor gemm_from_float_cuda_impl(at::Tensor const& input,
                                      double alpha,
                                      int64_t config_id,
                                      int64_t swizzle,
-                                     int64_t raster_order) {
+                                     int64_t raster_order,
+                                     at::ScalarType output_dtype) {
 #if !defined(CUTLASS_ARCH_MMA_SM120_SUPPORTED)
   TORCH_CHECK(false, "mxfp6_torch must be compiled for sm_120a");
 #else
+  OutputDtypeGuard output_guard(output_dtype);
   TORCH_CHECK(input.is_cuda(), "input must be a CUDA tensor");
   TORCH_CHECK(input.dim() == 2, "input must have shape [M,K]");
   int64_t const m = input.size(0);
@@ -1424,8 +1541,11 @@ at::Tensor gemm_from_float_cuda(at::Tensor const& input,
                                 at::Tensor const& b,
                                 at::Tensor const& sfb,
                                 int64_t n,
-                                double alpha) {
-  return gemm_from_float_cuda_impl(input, b, sfb, n, alpha, -1, 1, 0);
+                                double alpha,
+                                std::optional<at::ScalarType> output_dtype) {
+  return gemm_from_float_cuda_impl(
+      input, b, sfb, n, alpha, -1, 1, 0,
+      resolve_output_dtype(output_dtype));
 }
 
 at::Tensor gemm_from_float_config_cuda(at::Tensor const& input,
@@ -1435,30 +1555,35 @@ at::Tensor gemm_from_float_config_cuda(at::Tensor const& input,
                                        double alpha,
                                        int64_t config_id,
                                        int64_t swizzle,
-                                       int64_t raster_order) {
+                                       int64_t raster_order,
+                                       std::optional<at::ScalarType> output_dtype) {
   TORCH_CHECK(config_id >= 0,
               "config_id must be nonnegative; got ", config_id);
   return gemm_from_float_cuda_impl(
-      input, b, sfb, n, alpha, config_id, swizzle, raster_order);
+      input, b, sfb, n, alpha, config_id, swizzle, raster_order,
+      resolve_output_dtype(output_dtype));
 }
 
 }  // namespace
 
 TORCH_LIBRARY(mxfp6, m) {
   m.def("gemm(Tensor a, Tensor b, Tensor sfa, Tensor sfb, "
-        "int m, int n, int k, float alpha=1.0) -> Tensor");
+        "int m, int n, int k, float alpha=1.0, "
+        "ScalarType? out_dtype=None) -> Tensor");
   m.def("gemm_w6a8(Tensor a, Tensor b, Tensor sfa, Tensor sfb, "
-        "int m, int n, int k, float alpha=1.0) -> Tensor");
+        "int m, int n, int k, float alpha=1.0, "
+        "ScalarType? out_dtype=None) -> Tensor");
   m.def("gemm_w6a8_config(Tensor a, Tensor b, Tensor sfa, Tensor sfb, "
         "int m, int n, int k, float alpha, int config_id, int swizzle, "
-        "int raster_order) -> Tensor");
+        "int raster_order, ScalarType? out_dtype=None) -> Tensor");
   m.def("gemm_from_float(Tensor input, Tensor b, Tensor sfb, "
-        "int n, float alpha=1.0) -> Tensor");
+        "int n, float alpha=1.0, ScalarType? out_dtype=None) -> Tensor");
   m.def("gemm_from_float_config(Tensor input, Tensor b, Tensor sfb, "
         "int n, float alpha, int config_id, int swizzle, "
-        "int raster_order) -> Tensor");
+        "int raster_order, ScalarType? out_dtype=None) -> Tensor");
   m.def("set_w6a8_config(Tensor anchor, int m, int n, int k, "
-        "int config_id, int swizzle, int raster_order) -> bool");
+        "int config_id, int swizzle, int raster_order, "
+        "ScalarType? out_dtype=None) -> bool");
   m.def("w6a8_config_abi(Tensor anchor) -> str");
   m.def("pack_fp6(Tensor codes) -> Tensor");
   m.def("unpack_fp6(Tensor packed, int rows, int k) -> Tensor");
