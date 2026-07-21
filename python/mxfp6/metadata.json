@@ -2,10 +2,13 @@
   "name": "mxfp6-sm120",
   "version": "0.1.0",
   "gpu_architecture": "sm_120a",
-  "input_format": "OCP E3M2",
+  "activation_input_dtype": ["float16", "bfloat16"],
+  "activation_compute_format": "OCP E4M3",
+  "weight_storage_format": "OCP E3M2",
   "scale_format": "UE8M0",
   "scale_vector_size": 32,
   "accumulator_dtype": "float32",
   "output_dtype": "float16",
+  "autotune_candidate_abi": "native-w6a8-29-v2",
   "cutlass_commit": "e6233cbac5d7c7a865c19c91cd684ceece19513c"
 }

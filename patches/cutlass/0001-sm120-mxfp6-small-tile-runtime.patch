@@ -24,6 +24,27 @@ index 2835751f4179972f938ec5008c544248e111becf..08dab124cb32687d2cf8b91be1a71e9b
    using sSFA_shape        = decltype(make_shape(  sSFA_shapeM{},   sSF_shapeK{}));
    using sSFA_stride       = decltype(make_stride(sSFA_strideM{}, sSFA_strideK{}));
    using SmemLayoutAtomSFA = decltype(make_layout(  sSFA_shape{},  sSFA_stride{}));
+diff --git a/include/cutlass/gemm/collective/builders/sm120_blockwise_mma_builder.inl b/include/cutlass/gemm/collective/builders/sm120_blockwise_mma_builder.inl
+index 6dd884c..8a76148 100644
+--- a/include/cutlass/gemm/collective/builders/sm120_blockwise_mma_builder.inl
++++ b/include/cutlass/gemm/collective/builders/sm120_blockwise_mma_builder.inl
+@@ -237,7 +237,15 @@ struct CollectiveBuilder<
+                                                                         KernelSchedule>>;
+ 
+   using SmemCopyAtomA = Copy_Atom<decltype(detail::sm120_rr_smem_copy_selector_A<ElementA, ElementB, UseF8f6f4>()), SmemAllocTypeA>;
+-  using SmemCopyAtomB = Copy_Atom<decltype(detail::sm120_rr_smem_copy_selector_B<ElementA, ElementB, UseF8f6f4>()), SmemAllocTypeB>;
++  // The stock E4M3 selector uses a 128-bit LDSM.  A 16-column output tile
++  // exposes only 64 bits per B copy partition, so use the matching x2 atom.
++  // Wider stock kernels retain their original copy instruction unchanged.
++  using SmemCopyOpB = cute::conditional_t<
++      (size<1>(TileShape_MNK{}) == 16),
++      SM75_U32x2_LDSM_N,
++      decltype(detail::sm120_rr_smem_copy_selector_B<
++          ElementA, ElementB, UseF8f6f4>())>;
++  using SmemCopyAtomB = Copy_Atom<SmemCopyOpB, SmemAllocTypeB>;
+ 
+ 
+   using CollectiveOp = CollectiveMma<
 diff --git a/include/cutlass/gemm/collective/builders/sm120_common.inl b/include/cutlass/gemm/collective/builders/sm120_common.inl
 index 7a8172cadd350a7ddd830157e656d0b5d3a61d7c..0276ff676695da3ee1423fb26ce1c6a8262dd25f 100644
 --- a/include/cutlass/gemm/collective/builders/sm120_common.inl

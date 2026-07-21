@@ -1,0 +1,96 @@
+{
+  "schema_version": 2,
+  "model": "Qwen3.5-27B",
+  "tensor_parallel_size": 2,
+  "operator": "D[M,N] = A[M,K] @ B[N,K].T",
+  "backend": "native_cutlass_sm120",
+  "uses_humming_backend": false,
+  "activation_input": ["float16", "bfloat16"],
+  "activation_mapping": "16-bit to E4M3/UE8M0 (MXFP8), group size 32",
+  "weight_storage": "packed E3M2/UE8M0 (MXFP6), group size 32",
+  "output": "float16",
+  "accumulator": "float32",
+  "candidate_abi": "native-w6a8-29-v2",
+  "batch_sizes": [1, 16, 32, 64, 96, 512, 1024, 2048, 4096, 8192],
+  "selection": "native CUTLASS profiler shortlist plus exhaustive family validation on RTX 5090",
+  "fused_launch_uses_pdl": true,
+  "small_batch_dispatch": {
+    "1": {
+      "gdn_in_proj_qkvz": {"tile": [128, 8, 128], "stages": 4, "mainloop": "cooperative", "scheduler": "static_persistent", "raster": "heuristic", "swizzle": 4},
+      "gdn_out_proj": {"tile": [128, 8, 128], "stages": 5, "mainloop": "cooperative", "scheduler": "static_persistent", "raster": "along_m", "swizzle": 1},
+      "full_attention_qkv_gate_proj": {"tile": [128, 8, 128], "stages": "auto", "mainloop": "cooperative", "scheduler": "static_persistent", "raster": "heuristic", "swizzle": 1},
+      "mlp_gate_up_proj": {"tile": [128, 8, 128], "stages": "auto", "mainloop": "cooperative", "scheduler": "static_persistent", "raster": "along_m", "swizzle": 1},
+      "mlp_down_proj": {"tile": [128, 8, 128], "stages": "auto", "mainloop": "cooperative", "scheduler": "stream_k", "raster": "along_m", "swizzle": 2}
+    },
+    "16": {
+      "gdn_in_proj_qkvz": {"tile": [64, 16, 256], "stages": "auto", "mainloop": "pingpong", "scheduler": "static_persistent", "raster": "along_m", "swizzle": 2},
+      "gdn_out_proj": {"tile": [64, 16, 256], "stages": "auto", "mainloop": "pingpong", "scheduler": "static_persistent", "raster": "along_m", "swizzle": 2},
+      "full_attention_qkv_gate_proj": {"tile": [64, 16, 256], "stages": "auto", "mainloop": "pingpong", "scheduler": "static_persistent", "raster": "along_m", "swizzle": 4},
+      "mlp_gate_up_proj": {"tile": [128, 16, 128], "stages": 4, "mainloop": "cooperative", "scheduler": "static_persistent", "raster": "along_m", "swizzle": 1},
+      "mlp_down_proj": {"tile": [64, 16, 256], "stages": "auto", "mainloop": "pingpong", "scheduler": "static_persistent", "raster": "along_m", "swizzle": 2}
+    },
+    "32": {
+      "gdn_in_proj_qkvz": {"tile": [128, 32, 128], "stages": "auto", "mainloop": "cooperative", "scheduler": "default", "raster": "along_m", "swizzle": 1},
+      "gdn_out_proj": {"tile": [64, 32, 256], "stages": "auto", "mainloop": "pingpong", "scheduler": "static_persistent", "raster": "along_m", "swizzle": 2},
+      "full_attention_qkv_gate_proj": {"tile": [128, 32, 128], "stages": "auto", "mainloop": "cooperative", "scheduler": "default", "raster": "along_m", "swizzle": 1},
+      "mlp_gate_up_proj": {"tile": [128, 32, 128], "stages": "auto", "mainloop": "cooperative", "scheduler": "default", "raster": "heuristic", "swizzle": 1},
+      "mlp_down_proj": {"tile": [64, 32, 128], "stages": "auto", "mainloop": "pingpong", "scheduler": "default", "raster": "heuristic", "swizzle": 1}
+    }
+  },
+  "large_batch_policy": {
+    "orientation": "normal",
+    "tile_portfolio": [[64, 64, 128], [64, 64, 256], [64, 128, 128], [128, 128, 128]],
+    "schedulers": ["pingpong", "cooperative", "static_persistent", "stream_k"],
+    "stream_k_policy": "exact overrides plus underfilled-tail fallback",
+    "implementation": "csrc/torch_extension.cu:launch_w6a8_policy"
+  },
+  "benchmark": {
+    "date_utc": "2026-07-21",
+    "device": "NVIDIA GeForce RTX 5090",
+    "device_count": 1,
+    "torch": "2.11.0+cu130",
+    "cuda": "13.0",
+    "vllm": "0.20.3.dev4+ge38d84f55.d20260715",
+    "humming_commit": "694298e9eb25ffdfc088353b49ba537ebf304479",
+    "activation_input": "bfloat16",
+    "cache_regime": "warm",
+    "warmup": 20,
+    "iterations": 100,
+    "autotune": "disabled; checked-in static dispatch",
+    "metric": "geometric mean of reference GEMM latency divided by native MXFP6 GEMM latency over five layers",
+    "quantization_in_speedup": false,
+    "native_speedup_over_vllm_block_fp8": {
+      "1": 1.973,
+      "16": 1.754,
+      "32": 1.530,
+      "64": 1.222,
+      "96": 1.572,
+      "512": 1.814,
+      "1024": 1.737,
+      "2048": 1.671,
+      "4096": 1.588,
+      "8192": 1.583,
+      "overall_50_shapes": 1.633
+    },
+    "native_speedup_over_humming": {
+      "1": 1.449,
+      "16": 1.137,
+      "32": 1.254,
+      "64": 10.612,
+      "96": 21.220,
+      "512": 1.197,
+      "1024": 1.330,
+      "2048": 1.230,
+      "4096": 1.078,
+      "8192": 1.067,
+      "comparable_overall_excluding_m64_m96": 1.212,
+      "raw_overall_50_shapes": 2.005,
+      "anomalous_batches": [64, 96],
+      "anomaly_validation": "correct outputs under --check-all; repeated batch geometric means were 10.8x and 21.1x"
+    },
+    "bs32_static_revalidation": {
+      "bfloat16": 1.278,
+      "float16": 1.277
+    }
+  }
+}

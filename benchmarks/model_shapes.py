@@ -14,7 +14,7 @@ QWEN35_27B_TP2_NK = (
     ("mlp_down_proj", 5120, 8704),
 )
 
-DEFAULT_BATCH_SIZES = (1, 16, 32, 64, 96, 2048)
+DEFAULT_BATCH_SIZES = (1, 16, 32, 64, 96, 512, 1024, 2048, 4096, 8192)
 DEFAULT_SHAPES = tuple(
     (m, n, k)
     for m in DEFAULT_BATCH_SIZES

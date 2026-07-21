@@ -3,8 +3,9 @@
 The CUTLASS submodule is pinned to upstream commit
 `e6233cbac5d7c7a865c19c91cd684ceece19513c`.
 
-- `0001-sm120-mxfp6-small-tile-runtime.patch` is required to build and run
-  the selected TileM=64 and TileN=8/16 production kernels correctly.
+- `0001-sm120-mxfp6-small-tile-runtime.patch` fixes the scale-factor layout
+  for TileM=32/64 and the shared-memory copy atoms for narrow TileN=8/16
+  production kernels. It is required at build and runtime.
 - `0002-sm120-mxfp6-profiler-search.patch` adds the candidate generation,
   static scheduler, and minimal-library options used to reproduce the
   exhaustive profiler search. It is not required by an installed wheel.

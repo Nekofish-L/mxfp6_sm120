@@ -1,15 +1,29 @@
-# Autotuning results
+# Reviewed benchmark results
 
-`target_shapes.json` records the final dispatch for the 30 Qwen3.5-27B TP2
-benchmark shapes under the repository's `(M,N,K)` operator convention. Each
-entry records compute type, orientation, tile, pipeline, scheduler, raster
-order, and swizzle. The manifest distinguishes native W6A6 from mixed W6A8
-paths and notes that mixed launches use programmatic dependent launch.
-`general_policy.json` records the constraints, orientation boundary, portfolio,
-and profiler-grid quality of the general native-W6A6 dispatcher.
+`native_w6a8_dispatch.json` is the reviewed production manifest. It records:
 
-Raw profiler CSV files, repeated robustness runs, and experimental search
-directories are generated artifacts and are intentionally ignored by Git. The
-profiler produces a top-K candidate set; final selection uses the complete
-cold-cache PyTorch pipeline. Regenerate the search with
-`benchmarks/autotune.py` as documented in the repository README.
+- the FP16/BF16 16-to-8 activation and packed-W6 weight formats;
+- exact small-batch tile, scheduler, raster and swizzle selections;
+- the large-batch native CUTLASS policy;
+- the current RTX 5090 GEMM-only comparison against Humming W6A8 and vLLM
+  block-FP8 W8A8.
+
+Production dispatch never selects Humming. Unknown W6A8 shapes are selected
+from the compiled native portfolio on first use and cached per build, GPU,
+shape and measurement policy. Machine-local autotune caches and raw profiler
+CSV files are generated artifacts and are intentionally ignored.
+
+Reproduce the checked-in warm-cache comparison with:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 MXFP6_AUTOTUNE=0 \
+python3 benchmarks/benchmark.py \
+  --library build/mxfp6_torch.so \
+  --activation-input bf16 \
+  --compare-humming --compare-fp8 \
+  --warmup 20 --iterations 100 --flush-l2-mb 0
+```
+
+Every speedup uses standalone GEMM kernel time. Activation quantization,
+persistent weight preparation, Humming first-use JIT and host gaps are not part
+of the ratio.

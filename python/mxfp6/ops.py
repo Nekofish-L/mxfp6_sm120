@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import threading
 from typing import TYPE_CHECKING
 
 import torch
@@ -8,6 +9,7 @@ import torch
 from ._loader import load_library
 
 if TYPE_CHECKING:
+    from .autotune import W6A8Config
     from .humming_backend import HummingMXFP6Weight
 
 
@@ -21,6 +23,9 @@ TUNED_NK = frozenset(
         (5120, 8704),
     }
 )
+TUNED_M = frozenset((1, 16, 32, 64, 96, 512, 1024, 2048, 4096, 8192))
+_AUTOTUNE_STATE_LOCK = threading.Lock()
+_AUTOTUNE_READY: set[tuple[int, int, int, int]] = set()
 
 
 def _require_cuda_uint8_contiguous(tensor: torch.Tensor, name: str) -> None:
@@ -51,6 +56,56 @@ def _validate_problem(m: int, n: int, k: int) -> None:
         raise ValueError(f"k must be a positive multiple of 128; got {k}")
 
 
+def _autotune_process_key(
+    device: torch.device, m: int, n: int, k: int
+) -> tuple[int, int, int, int]:
+    device_index = (
+        device.index if device.index is not None else torch.cuda.current_device()
+    )
+    return (device_index, m, n, k)
+
+
+def _needs_w6a8_autotune(
+    device: torch.device, m: int, n: int, k: int
+) -> bool:
+    from .autotune import (
+        can_autotune_now,
+        is_autotune_enabled,
+        should_tune_exact_shapes,
+    )
+
+    if not is_autotune_enabled() or not can_autotune_now():
+        return False
+    if is_tuned_shape(m, n, k) and not should_tune_exact_shapes():
+        return False
+    key = _autotune_process_key(device, m, n, k)
+    with _AUTOTUNE_STATE_LOCK:
+        return key not in _AUTOTUNE_READY
+
+
+def _ensure_w6a8_autotuned(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    sfa: torch.Tensor,
+    sfb: torch.Tensor,
+    m: int,
+    n: int,
+    k: int,
+    *,
+    force: bool = False,
+) -> W6A8Config | None:
+    from .autotune import ensure_w6a8_tuned
+
+    config = ensure_w6a8_tuned(
+        a, b, sfa, sfb, m, n, k, force=force
+    )
+    if config is not None:
+        key = _autotune_process_key(a.device, m, n, k)
+        with _AUTOTUNE_STATE_LOCK:
+            _AUTOTUNE_READY.add(key)
+    return config
+
+
 @dataclass(frozen=True)
 class PackedMXFP6Tensor:
     """An E3M2 matrix and its UE8M0/32 scales in SM120 physical layout."""
@@ -68,6 +123,46 @@ class PackedMXFP6Tensor:
     @property
     def shape(self) -> tuple[int, int]:
         return (self.rows, self.k)
+
+
+@dataclass(frozen=True)
+class MXFP8Tensor:
+    """A byte-aligned E4M3 matrix and UE8M0/32 scales for native W6A8."""
+
+    values: torch.Tensor
+    scales: torch.Tensor
+    rows: int
+    k: int
+
+    @property
+    def device(self) -> torch.device:
+        return self.values.device
+
+    @property
+    def shape(self) -> tuple[int, int]:
+        return (self.rows, self.k)
+
+    def dequantized_values(self) -> torch.Tensor:
+        """Return the E4M3 payload viewed as a float8 matrix (without scales)."""
+        return self.values.view(self.rows, self.k).view(torch.float8_e4m3fn)
+
+
+def _validate_float_activation(input: torch.Tensor) -> tuple[int, int]:
+    if input.device.type != "cuda":
+        raise ValueError(f"input must be a CUDA tensor; got {input.device}")
+    if input.dtype not in (torch.float16, torch.bfloat16):
+        raise TypeError(
+            "input must have dtype torch.float16 or torch.bfloat16; "
+            f"got {input.dtype}"
+        )
+    if input.ndim != 2:
+        raise ValueError(f"input must have shape [M,K]; got {tuple(input.shape)}")
+    if not input.is_contiguous():
+        raise ValueError("input must be contiguous")
+    rows, k = (int(value) for value in input.shape)
+    if rows <= 0 or k <= 0 or k % 128:
+        raise ValueError("M must be positive and K a positive multiple of 128")
+    return rows, k
 
 
 def pack_fp6(codes: torch.Tensor) -> torch.Tensor:
@@ -178,6 +273,34 @@ def unpack_operand(
     )
 
 
+def quantize_mxfp8(input: torch.Tensor) -> MXFP8Tensor:
+    """Dynamically map a contiguous FP16/BF16 ``[M,K]`` activation to MXFP8.
+
+    Quantization uses one power-of-two UE8M0 scale per 32 consecutive K
+    values. The returned value bytes and scales are already in the layouts
+    consumed by the native SM120 W6A8 kernels.
+    """
+    rows, k = _validate_float_activation(input)
+    _require_sm120(input.device)
+    load_library()
+    values, scales = torch.ops.mxfp6.quantize_mxfp8(input)
+    return MXFP8Tensor(values, scales, rows, k)
+
+
+def quantize_mxfp6(input: torch.Tensor) -> PackedMXFP6Tensor:
+    """Dynamically map a contiguous FP16/BF16 ``[M,K]`` matrix to MXFP6."""
+    rows, k = _validate_float_activation(input)
+    _require_sm120(input.device)
+    load_library()
+    values, scales = torch.ops.mxfp6.quantize_mxfp6(input)
+    return PackedMXFP6Tensor(values, scales, rows, k)
+
+
+# The production activation path is W6A8; keep this intent-revealing alias for
+# model integrations that should not have to name the storage format.
+quantize_activation = quantize_mxfp8
+
+
 def gemm_packed(
     a: torch.Tensor,
     b: torch.Tensor,
@@ -200,20 +323,160 @@ def gemm_packed(
     return torch.ops.mxfp6.gemm(a, b, sfa, sfb, m, n, k, alpha)
 
 
+def gemm_w6a8(
+    a: MXFP8Tensor,
+    b: PackedMXFP6Tensor,
+    alpha: float = 1.0,
+) -> torch.Tensor:
+    """Compute native ``MXFP8(A) @ MXFP6(B).T`` on SM120."""
+    if not isinstance(a, MXFP8Tensor):
+        raise TypeError("a must be an MXFP8Tensor instance")
+    if not isinstance(b, PackedMXFP6Tensor):
+        raise TypeError("b must be a PackedMXFP6Tensor instance")
+    if a.k != b.k:
+        raise ValueError(f"a.k and b.k must match; got {a.k} and {b.k}")
+    if a.device != b.device:
+        raise ValueError("a and b must be on the same CUDA device")
+    _validate_problem(a.rows, b.rows, a.k)
+    for tensor, name in (
+        (a.values, "a.values"),
+        (a.scales, "a.scales"),
+        (b.values, "b.values"),
+        (b.scales, "b.scales"),
+    ):
+        _require_cuda_uint8_contiguous(tensor, name)
+    _require_sm120(a.device)
+    load_library()
+    if _needs_w6a8_autotune(a.device, a.rows, b.rows, a.k):
+        _ensure_w6a8_autotuned(
+            a.values,
+            b.values,
+            a.scales,
+            b.scales,
+            a.rows,
+            b.rows,
+            a.k,
+        )
+    return torch.ops.mxfp6.gemm_w6a8(
+        a.values,
+        b.values,
+        a.scales,
+        b.scales,
+        a.rows,
+        b.rows,
+        a.k,
+        alpha,
+    )
+
+
+def gemm_from_float(
+    a: torch.Tensor,
+    b: PackedMXFP6Tensor,
+    alpha: float = 1.0,
+) -> torch.Tensor:
+    """Quantize FP16/BF16 A to MXFP8 and run the native W6A8 GEMM.
+
+    Weight B remains packed at six bits. Quantization and GEMM are launched on
+    the current CUDA stream with programmatic dependent launch enabled.
+    """
+    rows, k = _validate_float_activation(a)
+    if not isinstance(b, PackedMXFP6Tensor):
+        raise TypeError("b must be a PackedMXFP6Tensor instance")
+    if k != b.k:
+        raise ValueError(f"a.shape[1] and b.k must match; got {k} and {b.k}")
+    if a.device != b.device:
+        raise ValueError("a and b must be on the same CUDA device")
+    _validate_problem(rows, b.rows, k)
+    _require_sm120(a.device)
+    load_library()
+    if _needs_w6a8_autotune(a.device, rows, b.rows, k):
+        # Quantize only once for candidate selection. Quantization is outside
+        # every candidate timing; the normal fused call below remains the
+        # production 16->8 + GEMM path and uses the installed C++ override.
+        tune_values, tune_scales = torch.ops.mxfp6.quantize_mxfp8(a)
+        _ensure_w6a8_autotuned(
+            tune_values,
+            b.values,
+            tune_scales,
+            b.scales,
+            rows,
+            b.rows,
+            k,
+        )
+    return torch.ops.mxfp6.gemm_from_float(
+        a, b.values, b.scales, b.rows, alpha
+    )
+
+
+def autotune_w6a8(
+    a: MXFP8Tensor,
+    b: PackedMXFP6Tensor,
+    *,
+    force: bool = False,
+) -> W6A8Config | None:
+    """Preselect and persist a native W6A8 config before graph capture.
+
+    This explicit entry is useful during model warmup. Ordinary unknown-shape
+    calls invoke the same tuner automatically; checked-in exact shapes keep
+    their deterministic dispatch unless ``force=True``.
+    """
+    if not isinstance(a, MXFP8Tensor):
+        raise TypeError("a must be an MXFP8Tensor instance")
+    if not isinstance(b, PackedMXFP6Tensor):
+        raise TypeError("b must be a PackedMXFP6Tensor instance")
+    if a.k != b.k or a.device != b.device:
+        raise ValueError("a and b must have matching K and CUDA device")
+    _validate_problem(a.rows, b.rows, a.k)
+    _require_sm120(a.device)
+    load_library()
+    if not force and is_tuned_shape(a.rows, b.rows, a.k):
+        from .autotune import should_tune_exact_shapes
+
+        if not should_tune_exact_shapes():
+            return None
+    return _ensure_w6a8_autotuned(
+        a.values,
+        b.values,
+        a.scales,
+        b.scales,
+        a.rows,
+        b.rows,
+        a.k,
+        force=force,
+    )
+
+
 def gemm(
-    a: PackedMXFP6Tensor,
+    a: torch.Tensor | MXFP8Tensor | PackedMXFP6Tensor,
     b: PackedMXFP6Tensor | HummingMXFP6Weight,
     alpha: float = 1.0,
 ) -> torch.Tensor:
-    """Compute ``A @ B.T`` from prepacked MXFP6 operands.
+    """Compute ``A @ B.T`` using the native current-repository kernels.
+
+    FP16/BF16 activation tensors are dynamically mapped 16-to-8 and use W6A8
+    for every batch size. :class:`MXFP8Tensor` skips that conversion. Packed
+    MXFP6 activation inputs retain the legacy W6A6-compatible API.
 
     A :class:`~mxfp6.HummingMXFP6Weight` selects the optional Humming reference
-    backend. Ordinary :class:`PackedMXFP6Tensor` operands use the CUTLASS
-    dispatcher, which selects native W6A6 or lossless mixed W6A8 compute while
-    retaining six-bit storage at the API boundary.
+    backend only when explicitly supplied; ordinary weights never route to it.
     """
+    if isinstance(a, torch.Tensor):
+        if not isinstance(b, PackedMXFP6Tensor):
+            raise TypeError(
+                "FP16/BF16 activation input requires a PackedMXFP6Tensor weight"
+            )
+        return gemm_from_float(a, b, alpha)
+
+    if isinstance(a, MXFP8Tensor):
+        if not isinstance(b, PackedMXFP6Tensor):
+            raise TypeError("MXFP8 activation requires a PackedMXFP6Tensor weight")
+        return gemm_w6a8(a, b, alpha)
+
     if not isinstance(a, PackedMXFP6Tensor):
-        raise TypeError("a must be a PackedMXFP6Tensor instance")
+        raise TypeError(
+            "a must be an FP16/BF16 Tensor, MXFP8Tensor, or "
+            "PackedMXFP6Tensor"
+        )
 
     # Keep Humming optional and lazily imported. This also avoids starting its
     # background JIT launcher for users of the native W6A6 path.
@@ -257,7 +520,7 @@ def gemm_from_codes(
 
 def is_tuned_shape(m: int, n: int, k: int) -> bool:
     """Return whether a problem has an exact target-shape override."""
-    return m in (1, 16, 32, 2048) and (n, k) in TUNED_NK
+    return m in TUNED_M and (n, k) in TUNED_NK
 
 
 def is_available() -> bool:

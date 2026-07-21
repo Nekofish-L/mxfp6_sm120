@@ -1,6 +1,11 @@
-"""Packed MXFP6 GEMM kernels for NVIDIA SM120 GPUs."""
+"""Native W6A8 GEMM with packed MXFP6 weights for NVIDIA SM120 GPUs."""
 
 from ._loader import load_library
+from .autotune import (
+    W6A8Config,
+    cache_directory as autotune_cache_directory,
+    is_autotune_enabled,
+)
 from .humming_backend import (
     HummingMXFP6Weight,
     gemm_humming,
@@ -8,18 +13,26 @@ from .humming_backend import (
     prepare_humming_weight,
 )
 from .ops import (
+    MXFP8Tensor,
     PackedMXFP6Tensor,
     SCALE_VECTOR_SIZE,
+    TUNED_M,
     TUNED_NK,
+    autotune_w6a8,
     expand_fp6_to_fp8,
     gemm,
     gemm_from_codes,
+    gemm_from_float,
     gemm_packed,
+    gemm_w6a8,
     is_available,
     is_tuned_shape,
     pack_fp6,
     pack_operand,
     pack_scales,
+    quantize_activation,
+    quantize_mxfp6,
+    quantize_mxfp8,
     unpack_fp6,
     unpack_operand,
     unpack_scales,
@@ -28,17 +41,25 @@ from .ops import (
 __version__ = "0.1.0"
 
 __all__ = [
+    "MXFP8Tensor",
     "PackedMXFP6Tensor",
     "HummingMXFP6Weight",
     "SCALE_VECTOR_SIZE",
+    "TUNED_M",
     "TUNED_NK",
+    "W6A8Config",
     "__version__",
+    "autotune_cache_directory",
+    "autotune_w6a8",
     "expand_fp6_to_fp8",
     "gemm",
     "gemm_from_codes",
+    "gemm_from_float",
     "gemm_humming",
     "gemm_packed",
+    "gemm_w6a8",
     "is_available",
+    "is_autotune_enabled",
     "is_humming_available",
     "is_tuned_shape",
     "load_library",
@@ -46,6 +67,9 @@ __all__ = [
     "pack_operand",
     "pack_scales",
     "prepare_humming_weight",
+    "quantize_activation",
+    "quantize_mxfp6",
+    "quantize_mxfp8",
     "unpack_fp6",
     "unpack_operand",
     "unpack_scales",

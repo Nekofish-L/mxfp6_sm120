@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mxfp6-sm120"
 version = "0.1.0"
-description = "Packed SM120 MXFP6 block-scaled GEMM kernels for PyTorch"
+description = "Native SM120 W6A8 GEMM with packed MXFP6 weights for PyTorch"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["torch"]

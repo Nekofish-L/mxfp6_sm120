@@ -1,4 +1,4 @@
-"""Optional Humming W6A8 backend for large-M SM120 GEMMs."""
+"""Optional Humming W6A8 reference backend for SM120 GEMMs."""
 
 from __future__ import annotations
 
@@ -95,7 +95,7 @@ class HummingMXFP6Weight:
 
 
 def prepare_humming_weight(weight: PackedMXFP6Tensor) -> HummingMXFP6Weight:
-    """Repack a persistent E3M2 weight once for the large-M W6A8 kernel."""
+    """Repack a persistent E3M2 weight once for the reference W6A8 kernel."""
     if not isinstance(weight, PackedMXFP6Tensor):
         raise TypeError("weight must be a PackedMXFP6Tensor instance")
     if weight.rows % 256:
@@ -169,7 +169,7 @@ def gemm_humming(
     """Run the Humming mixed W6A8 path for ``A @ B.T``.
 
     E3M2 is a subset of E4M3, so activation conversion is exact. The returned
-    tensor is FP16, matching the native W6A6 operator.
+    tensor is FP16, matching the native operator.
     """
     if not isinstance(a, PackedMXFP6Tensor):
         raise TypeError("a must be a PackedMXFP6Tensor instance")

@@ -164,6 +164,14 @@ using KernelW6A8_128x128x128Cooperative = KernelConfig<
     cute::_128, cute::_128, cute::_128,
     cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
     void, void, ElementPairA8>;
+using KernelW6A8_128x128x128StaticPingpong = KernelConfig<
+    cute::_128, cute::_128, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    cutlass::gemm::StaticPersistentScheduler, void, ElementPairA8>;
+using KernelW6A8_128x128x128StaticCooperative = KernelConfig<
+    cute::_128, cute::_128, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
+    cutlass::gemm::StaticPersistentScheduler, void, ElementPairA8>;
 using KernelW6A8_128x128x128StreamK = KernelConfig<
     cute::_128, cute::_128, cute::_128,
     cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,

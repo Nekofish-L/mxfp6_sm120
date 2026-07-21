@@ -1,102 +1,128 @@
 # SM120 MXFP6 GEMM
 
-Native OCP MXFP6 matrix multiplication for NVIDIA Blackwell GeForce SM120:
+Native mixed-precision GEMM for NVIDIA Blackwell GeForce SM120:
 
 ```text
 D[M, N] = A[M, K] @ B[N, K].T
 ```
 
-Both operands use bit-packed E3M2 storage with one UE8M0 scale per 32 values.
-The dispatcher selects one of two SM120 block-scaled tensor-core paths:
+Persistent weights are bit-packed E3M2 with one UE8M0 scale per 32 values.
+FP16 or BF16 activations are dynamically mapped 16-to-8 into E4M3/UE8M0 and
+consumed by a native CUTLASS W6A8 kernel. Accumulation is FP32 and output is
+FP16. Production dispatch is implemented entirely in this repository and does
+not call Humming.
 
-- native E3M2-by-E3M2 compute for general and latency-oriented shapes;
-- E4M3-by-E3M2 compute for profiler-tuned large-M shapes, after losslessly
-  expanding only the activation.
+The 16-to-8 activation mapping is intentional. It removes repeated
+activation-side six-bit unpacking from the MMA mainloop, while persistent
+weights retain their six-bit storage and bandwidth advantage. The repository
+also keeps a packed-MXFP6 activation compatibility API for existing callers.
 
-Both paths accumulate in FP32 and write FP16 output. Persistent weights always
-remain packed at six bits per value. CUDA operators provide FP6 packing,
-lossless activation expansion, and CUTLASS scale-layout conversion.
+## Performance
 
-The implementation uses the CUTLASS C++ CollectiveBuilder API. CUTLASS is a
-pinned upstream submodule; the small-tile SM120 fixes required by this project
-are maintained as an explicit patch queue.
+The following results were measured on one NVIDIA GeForce RTX 5090 using:
 
-The large-M design is based on the same storage/compute separation used by
-Humming, while the shipped path uses CUTLASS kernels selected by exhaustive
-profiler search. A pinned Humming backend is retained as an optional correctness
-and performance reference.
+- PyTorch `2.11.0+cu130`, CUDA 13.0;
+- vLLM `0.20.3.dev4+ge38d84f55.d20260715`;
+- pinned Humming revision `694298e9`;
+- Qwen3.5-27B TP2 linear shapes, five `(N,K)` pairs per batch;
+- BF16 activation input, warm cache, 20 warmups and 100 measured iterations;
+- checked-in static dispatch with runtime autotuning disabled.
 
-The public operator supports every shape satisfying:
+All ratios use standalone GEMM kernel time only:
 
-- `M > 0`
-- `N > 0` and `N % 8 == 0`
-- `K > 0` and `K % 128 == 0`
+```text
+speedup = reference GEMM latency / native MXFP6 GEMM latency
+```
 
-The checked-in exact profiler overrides are tuned specifically for
-Qwen3.5-27B with tensor parallel size 2. They cover its five linear-layer
-shapes at `M=1,16,32,64,96,2048`. Native W6A6 is used whenever it wins the
-complete pipeline; selected shapes at `M=32,64,96,2048` losslessly expand the
-activation and use mixed W6A8. All other valid problems use an 18-kernel
-native-W6A6 portfolio derived from a representative exhaustive search. The
-general dispatcher swaps operands for `M <= 96`, then selects tile width,
-pipeline depth, schedule, and Stream-K from the problem geometry.
+Activation quantization, weight preparation, Humming JIT compilation and host
+gaps are excluded from every ratio.
+
+| M | vs Humming W6A8 | vs vLLM block-FP8 W8A8 |
+|---:|---:|---:|
+| 1 | 1.449x | 1.973x |
+| 16 | 1.137x | 1.754x |
+| 32 | 1.254x | 1.530x |
+| 64 | 10.612x† | 1.222x |
+| 96 | 21.220x† | 1.572x |
+| 512 | 1.197x | 1.814x |
+| 1024 | 1.330x | 1.737x |
+| 2048 | 1.230x | 1.671x |
+| 4096 | 1.078x | 1.588x |
+| 8192 | 1.067x | 1.583x |
+| Overall | 1.212x‡ | 1.633x |
+
+† The pinned Humming configuration enters a correct but pathological slow path
+at M=64 and M=96. Repeated `--check-all` runs reproduce 10.8x and 21.1x batch
+geometric means. These two batches are shown but excluded from the comparable
+Humming overall value. Including them gives a raw 50-shape overall of 2.005x.
+
+‡ Geometric mean over the remaining 40 Humming comparisons. A dedicated BS32
+static-dispatch rerun measured 1.278x with BF16 input and 1.277x with FP16.
+
+The vLLM baseline is block-scaled W8A8, while this project keeps weights at six
+bits. It is a kernel-performance comparison, not a claim that the numerical
+formats or weight footprints are identical. Full dispatch and measurement
+metadata are recorded in
+[`benchmarks/results/native_w6a8_dispatch.json`](benchmarks/results/native_w6a8_dispatch.json).
+
+## Supported shapes
+
+The public operator accepts:
+
+- `M > 0`;
+- `N > 0` and `N % 8 == 0`;
+- `K > 0` and `K % 128 == 0`.
+
+Checked-in exact overrides cover the five Qwen3.5-27B TP2 linear layers at
+`M=1,16,32,64,96,512,1024,2048,4096,8192`. Swapped x8, x16 and x32 tiles keep
+the small activation batch in the tensor-core N dimension. Larger batches use
+normal 64x64, 64x128 and 128x128 tiles. The portfolio includes ping-pong,
+cooperative, static-persistent and selective Stream-K scheduling.
 
 ## Requirements
 
-- NVIDIA compute capability 12.0 GPU
-- CUDA Toolkit 12.8 or newer
-- CUDA-enabled PyTorch
-- CMake 3.24 or newer and a C++17 compiler
-- Ninja (recommended)
+- NVIDIA compute capability 12.0 GPU;
+- CUDA Toolkit 12.8 or newer;
+- CUDA-enabled PyTorch;
+- CMake 3.24 or newer and a C++17 compiler;
+- Ninja is recommended.
 
-The optional Humming reference backend requires the dependencies installed by
-the `humming` Python extra. It JIT-compiles on first use and reuses its cache in
-later processes.
-
-The current CUTLASS revision is
-`e6233cbac5d7c7a865c19c91cd684ceece19513c`.
-The bundled Humming revision is
+CUTLASS is pinned at `e6233cbac5d7c7a865c19c91cd684ceece19513c`.
+The optional Humming reference is pinned at
 `694298e9eb25ffdfc088353b49ba537ebf304479`.
 
 ## Installation
 
-Clone the repository and initialize both pinned dependencies:
+Clone with the pinned dependencies:
 
 ```bash
 git clone --recurse-submodules https://github.com/Nekofish-L/mxfp6_sm120.git
 cd mxfp6_sm120
 ```
 
-For an existing clone without submodules:
+For an existing clone:
 
 ```bash
 git submodule update --init --depth 1 third_party/cutlass third_party/humming
 ```
 
-Build and install a wheel:
+Build a wheel against the active PyTorch ABI:
 
 ```bash
 ./scripts/build_wheel.sh
 python3 -m pip install --no-deps dist/mxfp6_sm120-*.whl
 ```
 
-To include the large-M Humming backend and its runtime dependencies, install
-directly from the checkout:
+Install the optional Humming comparison dependencies when needed:
 
 ```bash
 python3 -m pip install --no-build-isolation '.[humming]'
 ```
 
-Built wheels contain the pinned Humming source snapshot, so deployment does
-not require a separate Humming checkout. The optional dependencies still need
-to be installed through the extra.
+The wheel build applies the required runtime CUTLASS patch idempotently. Use
+`MAX_JOBS=1` on memory-constrained systems.
 
-The build script applies the required runtime patch idempotently. It does not
-download `nvidia-cutlass-dsl`; CUTLASS source is obtained only through the Git
-submodule. Build isolation is disabled intentionally so the extension links
-against the active PyTorch ABI. Use `MAX_JOBS=1` on memory-constrained hosts.
-
-To build the development targets directly:
+For a development build:
 
 ```bash
 bash scripts/apply_cutlass_patches.sh --runtime-only
@@ -105,82 +131,100 @@ cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
 
-The shared library contains `sm_120a` machine code and must be built against a
-PyTorch/CUDA ABI compatible with the deployment environment.
-
 ## Python API
 
-`pack_operand` and `gemm` form the recommended interface. Weights should be
-packed once and reused.
+Quantize a persistent weight once, then pass FP16 or BF16 activations directly
+to `gemm`:
 
 ```python
 import torch
 import mxfp6
 
-m, n, k = 16, 8192, 5120
-a_codes = torch.randint(0, 64, (m, k), device="cuda", dtype=torch.uint8)
-b_codes = torch.randint(0, 64, (n, k), device="cuda", dtype=torch.uint8)
-sfa = torch.full((m, k // 32), 0x7f, device="cuda", dtype=torch.uint8)
-sfb = torch.full((n, k // 32), 0x7f, device="cuda", dtype=torch.uint8)
+m, n, k = 32, 8192, 5120
+a = torch.randn((m, k), device="cuda", dtype=torch.bfloat16)
+weight = torch.randn((n, k), device="cuda", dtype=torch.bfloat16)
 
-packed_b = mxfp6.pack_operand(b_codes, sfb)
-packed_a = mxfp6.pack_operand(a_codes, sfa)
-output = mxfp6.gemm(packed_a, packed_b)
+packed_weight = mxfp6.quantize_mxfp6(weight)
+output = mxfp6.gemm(a, packed_weight)
 ```
 
-Each `uint8` code stores one E3M2 pattern in its low six bits. UE8M0 byte
-`0x7f` represents a scale of 1.0. The logical scale tensor shape is always
-`[rows, K / 32]`.
-
-Lower-level and conversion APIs are also available:
+The activation quantizer and W6A8 GEMM can be invoked separately for explicit
+prewarming, activation reuse or CUDA Graph capture:
 
 ```python
-output = mxfp6.gemm_from_codes(a_codes, b_codes, sfa, sfb)
-packed_values = mxfp6.pack_fp6(a_codes)
-restored_codes = mxfp6.unpack_fp6(packed_values, m, k)
-packed_scales = mxfp6.pack_scales(sfa)
-restored_scales = mxfp6.unpack_scales(packed_scales, m, k)
+quantized_a = mxfp6.quantize_activation(a)
+mxfp6.autotune_w6a8(quantized_a, packed_weight)
+output = mxfp6.gemm_w6a8(quantized_a, packed_weight)
 ```
 
-`gemm_from_codes` includes conversion overhead and is intended for convenience,
-not latency-critical inference.
-
-### Hybrid dispatch and Humming reference
-
-For tuned mixed entries at `M=32,64,96,2048`, the normal packed call
-automatically expands A and selects the profiler-ranked E4M3-by-E3M2 CUTLASS
-kernel. Programmatic dependent launch reduces the handoff cost between the
-conversion and GEMM kernels. The temporary is exactly `M*K` bytes; both input
-objects retain their compact `6/8 * rows * K`-byte value storage.
-
-The optional Humming backend can be selected explicitly for comparison. Repack
-a persistent weight once, then pass it to the same `gemm` entry point:
+Logical E3M2 code and UE8M0 scale utilities remain available for serialization
+and tests:
 
 ```python
-humming_b = mxfp6.prepare_humming_weight(packed_b)
-output = mxfp6.gemm(packed_a, humming_b)
+codes = torch.randint(0, 64, (n, k), device="cuda", dtype=torch.uint8)
+scales = torch.full((n, k // 32), 0x7f, device="cuda", dtype=torch.uint8)
+packed_weight = mxfp6.pack_operand(codes, scales)
+restored_codes, restored_scales = mxfp6.unpack_operand(packed_weight)
 ```
 
-The prepared Humming object also stores values at six bits each and does not
-retain a duplicate native weight. Its current wrapper requires `N % 256 == 0`
-and `alpha == 1.0`.
+Each code uses its low six bits. UE8M0 byte `0x7f` represents scale 1.0.
+
+Humming is an explicit reference backend only:
+
+```python
+packed_a6 = mxfp6.quantize_mxfp6(a)
+humming_weight = mxfp6.prepare_humming_weight(packed_weight)
+reference = mxfp6.gemm(packed_a6, humming_weight)
+```
+
+## Runtime autotuning
+
+Unknown W6A8 shapes use first-use selection over 29 precompiled native CUTLASS
+families. This is AOT kernel selection, not runtime NVRTC compilation:
+
+1. a coarse pass ranks kernel and swizzle choices;
+2. the three best families refine raster and swizzle;
+3. the winner is checked numerically against the deterministic fallback;
+4. the full launch config is installed in the C++ dispatcher and cached by
+   build, GPU, shape and measurement policy.
+
+Later calls use the in-process override; later processes load the JSON cache
+without profiling. Tuning and file I/O are disabled during CUDA Graph capture
+and `torch.compile` tracing.
+
+Useful controls:
+
+```bash
+MXFP6_AUTOTUNE=0                    # checked-in/static fallback only
+MXFP6_AUTOTUNE_VERBOSE=1            # print tune and cache-hit decisions
+MXFP6_AUTOTUNE_CACHE_DIR=/local/dir # override the persistent cache directory
+MXFP6_AUTOTUNE_FLUSH_L2_MB=256      # tune with explicit cache flushing
+MXFP6_AUTOTUNE_EXACT=1              # retune checked-in exact shapes
+MXFP6_AUTOTUNE_EXHAUSTIVE=1         # offline: refine every eligible family
+```
+
+The default cache is `$XDG_CACHE_HOME/mxfp6/autotune`, or
+`~/.cache/mxfp6/autotune` when `XDG_CACHE_HOME` is unset.
 
 ## Benchmarking
 
-Build the development library, then run:
+Reproduce the table above:
 
 ```bash
-CUDA_VISIBLE_DEVICES=4 python3 benchmarks/benchmark.py
+CUDA_VISIBLE_DEVICES=0 MXFP6_AUTOTUNE=0 \
+python3 benchmarks/benchmark.py \
+  --library build/mxfp6_torch.so \
+  --activation-input bf16 \
+  --compare-humming --compare-fp8 \
+  --warmup 20 --iterations 100 --flush-l2-mb 0
 ```
 
-The benchmark reports both complete GPU-pipeline latency and isolated GEMM
-kernel latency. Pipeline timing includes activation expansion when the mixed
-path is selected. It uses an 8 GB cache flush by default; pass
-`--flush-l2-mb=0` for warm-cache measurements.
+The benchmark independently reports GEMM and activation quantization. Every
+printed speedup uses GEMM alone. `--flush-l2-mb=0` selects warm-cache runs;
+use `--flush-l2-mb=256` for an explicit cold-weight regime. Add `--check-all`
+to validate every baseline output rather than the first representative shape.
 
-The default problems are the five Qwen3.5-27B TP2 linear layers under the
-operator's `A[M,K] @ B[N,K].T` convention, at
-`M=1,16,32,64,96,2048`:
+The default matrix contains five Qwen3.5-27B TP2 layers per batch:
 
 | Layer | N | K |
 |---|---:|---:|
@@ -190,136 +234,58 @@ operator's `A[M,K] @ B[N,K].T` convention, at
 | MLP gate/up projection | 17408 | 5120 |
 | MLP down projection | 5120 | 8704 |
 
-Compare against PyTorch's FP8 `torch._scaled_mm`:
+Small-batch W6A8/W6A6 and quantizer microbenchmarks are available separately:
 
 ```bash
-CUDA_VISIBLE_DEVICES=4 python3 benchmarks/benchmark.py \
-  --compare-torch-scaled-mm
+python3 benchmarks/compare_small_batch.py --flush-l2-mb=0
+python3 benchmarks/quantization.py
 ```
 
-This baseline losslessly expands the same E3M2 values to E4M3, uses scalar
-unit scales and FP16 output, and leaves FP8 preparation outside the timed
-region. `use_fast_accum=False` matches the PyTorch default and is faster for
-these SM120 shapes in the tested PyTorch build.
+## CUTLASS development
 
-An optional FP8 comparison uses vLLM's installed block-scaled CUTLASS operator
-without importing external source files:
+The runtime build requires the small-tile SM120 patch. The profiler patch adds
+the wider candidate grid used for offline kernel search:
 
-```bash
-CUDA_VISIBLE_DEVICES=4 python3 benchmarks/benchmark.py --compare-fp8
-```
+- `patches/cutlass/0001-sm120-mxfp6-small-tile-runtime.patch`;
+- `patches/cutlass/0002-sm120-mxfp6-profiler-search.patch`.
 
-Compare the optimized CUTLASS path with the bundled Humming reference:
+Apply or inspect the queue with:
 
 ```bash
-CUDA_VISIBLE_DEVICES=4 python3 benchmarks/benchmark.py \
-  --compare-humming --flush-l2-mb=0
-```
-
-Persistent weight conversion and first-use JIT are outside the timed region;
-activation E3M2-to-E4M3 conversion is inside both pipeline measurements.
-
-One representative RTX 5090 cold-cache run reports the following
-geometric-mean pipeline speedups. These are full operator times and include
-activation expansion on mixed paths:
-
-| M | Shapes | vLLM FP8 / MXFP6 | `torch._scaled_mm` / MXFP6 |
-|---:|---:|---:|---:|
-| 1 | 5 | 1.266x | 1.651x |
-| 16 | 5 | 1.153x | 1.443x |
-| 32 | 5 | 1.110x | 1.336x |
-| 64 | 5 | 1.079x | 1.803x |
-| 96 | 5 | 1.274x | 1.530x |
-| 2048 | 5 | 1.518x | 0.999x |
-| Overall | 30 | 1.225x | 1.436x |
-
-The shallow-K GDN output projection at `M=32` and `M=64` is approximately at
-parity and can vary by about five percent across runs. The grouped results are
-stable across physical GPUs 4-7. Absolute values vary with clocks, power
-limits, thermals, and software versions.
-
-## CUTLASS profiler autotuning
-
-Build the generated profiler libraries for native W6A6 and mixed W6A8 search:
-
-```bash
-./scripts/build_profiler.sh w6a6
-./scripts/build_profiler.sh w6a8
-```
-
-Run native exhaustive fixed-shape search for the 30 default targets on
-physical GPUs 4-7:
-
-```bash
-python3 benchmarks/autotune.py \
-  --devices=4,5,6,7 \
-  --orientations=both \
-  --workspace-count=0 \
-  --llc-capacity-kib=524288 \
-  --split-k-slices=1 \
-  --top-k=10 \
-  --output-dir=benchmarks/results/native_search
-```
-
-Reproduce the mixed-MMA candidate search used by the hybrid dispatcher:
-
-```bash
-python3 benchmarks/autotune.py \
-  --mma=w6a8 \
-  --devices=4,5,6,7 \
-  --orientations=normal \
-  --workspace-count=0 \
-  --llc-capacity-kib=524288 \
-  --split-k-slices=1 \
-  --top-k=10 \
-  --output-dir=benchmarks/results/mixed_search
-```
-
-The script defaults to GPUs `4,5,6,7`, serializes work assigned to each GPU,
-and uses CUTLASS exhaustive fixed-shape search with top-k ranking. The profiler
-is a candidate generator: final selection must use `benchmark.py` with its
-default 8 GB flush because profiler ordering alone did not reproduce every
-small-batch PyTorch pipeline result. Raw CSV files and exploratory outputs
-under `benchmarks/results/` are ignored. The curated target-shape and
-general-policy manifests are retained under `benchmarks/results/`.
-
-Analyze one or more profiler result directories and reproduce the orientation
-summary, rule quality, and greedy portfolio selection with:
-
-```bash
-python3 benchmarks/analyze.py benchmarks/results/latest \
-  --swap-max-m=96 --portfolio-size=18
-```
-
-## CUTLASS patches
-
-- `0001-sm120-mxfp6-small-tile-runtime.patch` is required for runtime builds.
-- `0002-sm120-mxfp6-profiler-search.patch` adds profiler candidates and minimal
-  library generation; it is required only for autotuning.
-
-Useful commands:
-
-```bash
+bash scripts/apply_cutlass_patches.sh --runtime-only
 bash scripts/apply_cutlass_patches.sh --check --runtime-only
-bash scripts/apply_cutlass_patches.sh --check
 bash scripts/apply_cutlass_patches.sh --reverse
 ```
+
+Build generated profiler libraries and run fixed-shape search with:
+
+```bash
+./scripts/build_profiler.sh w6a8
+python3 benchmarks/autotune.py \
+  --mma=w6a8 --devices=0 --orientations=both \
+  --top-k=10 --output-dir=benchmarks/results/native_search
+```
+
+The CUTLASS profiler is a candidate generator rather than the production
+dispatcher. Ordered profiling, clock drift, warm weights and minimum-selection
+bias can change a winner. Promote a fixed configuration only after independent
+randomized validation. General atomic work stealing is not used for uniform
+interior tiles; Stream-K is retained only for underfilled tail waves.
 
 ## Repository layout
 
 ```text
-csrc/                  CUDA/C++ kernels and headers
-python/mxfp6/           Python package and operator wrappers
-benchmarks/             Performance and autotuning tools
-tests/                  End-to-end CUDA tests
-scripts/                Build and patch entry points
-patches/cutlass/        Versioned CUTLASS patch queue
-third_party/cutlass/    Pinned upstream submodule
-third_party/humming/    Pinned optional large-M backend
+csrc/                  CUDA/C++ kernels and quantizers
+python/mxfp6/          Python API and persistent autotuner
+benchmarks/            GEMM, baseline and search tools
+benchmarks/results/    Reviewed dispatch and measurement metadata
+tests/                 CUDA correctness and stream tests
+patches/cutlass/       Versioned SM120 CUTLASS fixes
+scripts/               Build and patch helpers
+third_party/           Pinned CUTLASS and Humming submodules
 ```
 
 ## License
 
 The project is released under the BSD 3-Clause License. CUTLASS and Humming
-retain their upstream licenses; the Humming license is included in built
-wheels.
+retain their upstream licenses.

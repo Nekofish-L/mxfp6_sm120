@@ -20,8 +20,12 @@ endif()
 
 file(READ
   "${CUTLASS_DIR}/include/cutlass/gemm/collective/builders/sm120_blockscaled_mma_builder.inl"
-  MXFP6_CUTLASS_SM120_BUILDER)
-if(NOT MXFP6_CUTLASS_SM120_BUILDER MATCHES "sSFATileShape_M")
+  MXFP6_CUTLASS_SM120_BLOCKSCALED_BUILDER)
+file(READ
+  "${CUTLASS_DIR}/include/cutlass/gemm/collective/builders/sm120_blockwise_mma_builder.inl"
+  MXFP6_CUTLASS_SM120_BLOCKWISE_BUILDER)
+if(NOT MXFP6_CUTLASS_SM120_BLOCKSCALED_BUILDER MATCHES "sSFATileShape_M" OR
+   NOT MXFP6_CUTLASS_SM120_BLOCKWISE_BUILDER MATCHES "SmemCopyOpB")
   message(FATAL_ERROR
     "The required SM120 small-tile CUTLASS patch is not applied. Run: "
     "bash scripts/apply_cutlass_patches.sh --runtime-only")
@@ -82,6 +86,7 @@ endif()
 add_library(mxfp6_torch SHARED
   csrc/torch_extension.cu
   csrc/packing.cu
+  csrc/quantization.cu
 )
 
 target_include_directories(mxfp6_torch PRIVATE
@@ -93,14 +98,15 @@ target_include_directories(mxfp6_torch PRIVATE
 target_link_libraries(mxfp6_torch PRIVATE ${TORCH_LIBRARIES})
 target_compile_options(mxfp6_torch PRIVATE
   $<$<COMPILE_LANGUAGE:CUDA>:
-    -arch=sm_120a
-    --expt-relaxed-constexpr
-    -O3
-    -Xcompiler=-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=.
-    -Xcompiler=-fmacro-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=.
-    -Xcudafe=--diag_suppress=20012
-    -Xcudafe=--diag_suppress=20013
-    -Xcudafe=--diag_suppress=20015
+      -arch=sm_120a
+      -DCUTLASS_ENABLE_GDC_FOR_SM100=1
+      --expt-relaxed-constexpr
+      -O3
+      -Xcompiler=-ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=.
+      -Xcompiler=-fmacro-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=.
+      -Xcudafe=--diag_suppress=20012
+      -Xcudafe=--diag_suppress=20013
+      -Xcudafe=--diag_suppress=20015
   >
 )
 

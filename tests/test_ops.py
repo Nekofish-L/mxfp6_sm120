@@ -113,6 +113,127 @@ def reference_gemm(
     return (a @ b.t()).half()
 
 
+def decode_mxfp8(operand, mxfp6) -> torch.Tensor:
+    values = operand.values.view(operand.rows, operand.k).view(
+        torch.float8_e4m3fn
+    ).float()
+    scales = mxfp6.unpack_scales(
+        operand.scales, operand.rows, operand.k
+    )
+    return values * decode_ue8m0(scales).repeat_interleave(32, dim=1)
+
+
+def test_dynamic_quantization(mxfp6) -> None:
+    """Verify the real 16->8 and 16->6 activation mappings."""
+    for dtype in (torch.float16, torch.bfloat16):
+        for rows, k in ((1, 128), (7, 256), (129, 128)):
+            generator = torch.Generator(device="cuda").manual_seed(rows + k)
+            source = (
+                torch.randn(
+                    (rows, k), generator=generator, device="cuda",
+                    dtype=torch.float32,
+                )
+                * 6.0
+            ).to(dtype)
+            quantized = mxfp6.quantize_mxfp8(source)
+            logical_scales = mxfp6.unpack_scales(
+                quantized.scales, rows, k
+            )
+            scales = decode_ue8m0(logical_scales).repeat_interleave(32, dim=1)
+            expected = (source.float() / scales).to(
+                torch.float8_e4m3fn
+            ).view(torch.uint8)
+            actual = quantized.values.view(rows, k)
+            torch.testing.assert_close(actual, expected)
+
+        # Every group contains +28, so its exact UE8M0 scale is one. All E3M2
+        # values then round-trip through the native 16->6 conversion.
+        rows, k = 17, 256
+        codes = torch.arange(32, dtype=torch.uint8, device="cuda").repeat(
+            rows, k // 32
+        )
+        source = decode_e3m2(codes).to(dtype)
+        quantized6 = mxfp6.quantize_mxfp6(source)
+        restored_codes, restored_scales = mxfp6.unpack_operand(quantized6)
+        torch.testing.assert_close(restored_codes, codes)
+        torch.testing.assert_close(
+            restored_scales,
+            torch.full_like(restored_scales, 0x7F),
+        )
+    print("PASS native FP16/BF16 16->8 and 16->6 MX quantization")
+
+
+def test_w6a8_candidate_registry(mxfp6) -> None:
+    """Keep the persistent-cache IDs synchronized with the native registry."""
+    m, n, k = 17, 136, 128
+    a_codes, b_codes, sfa, sfb = make_problem(m, n, k, 6817)
+    a6 = mxfp6.pack_operand(a_codes, sfa)
+    b = mxfp6.pack_operand(b_codes, sfb)
+    a8 = torch.ops.mxfp6.expand_fp6_to_fp8(a6.values, m, k)
+    assert torch.ops.mxfp6.w6a8_config_abi(a8) == "native-w6a8-29-v2"
+    torch.ops.mxfp6.set_w6a8_config(a8, m, n, k, -1, 1, 0)
+    reference = torch.ops.mxfp6.gemm_w6a8(
+        a8, b.values, a6.scales, b.scales, m, n, k
+    )
+    for config_id in range(29):
+        actual = torch.ops.mxfp6.gemm_w6a8_config(
+            a8,
+            b.values,
+            a6.scales,
+            b.scales,
+            m,
+            n,
+            k,
+            1.0,
+            config_id,
+            1,
+            0,
+        )
+        torch.testing.assert_close(actual, reference, rtol=2e-3, atol=0.25)
+
+    try:
+        assert torch.ops.mxfp6.set_w6a8_config(
+            a8, m, n, k, 5, 2, 1
+        )
+        overridden = torch.ops.mxfp6.gemm_w6a8(
+            a8, b.values, a6.scales, b.scales, m, n, k
+        )
+        expected = torch.ops.mxfp6.gemm_w6a8_config(
+            a8, b.values, a6.scales, b.scales, m, n, k, 1.0, 5, 2, 1
+        )
+        torch.testing.assert_close(overridden, expected, rtol=0, atol=0)
+    finally:
+        torch.ops.mxfp6.set_w6a8_config(a8, m, n, k, -1, 1, 0)
+    print("PASS native W6A8 candidate ABI and C++ override registry")
+
+
+def test_float_w6a8_gemm(mxfp6) -> None:
+    """Compare fused and prequantized native W6A8 against an FP32 reference."""
+    for index, (m, n, k, dtype) in enumerate(
+        (
+            (1, 128, 128, torch.float16),
+            (17, 136, 128, torch.bfloat16),
+            (129, 128, 256, torch.float16),
+        )
+    ):
+        generator = torch.Generator(device="cuda").manual_seed(6800 + index)
+        source = torch.randn(
+            (m, k), generator=generator, device="cuda", dtype=dtype
+        )
+        _, b_codes, _, sfb = make_problem(m, n, k, 6900 + index)
+        b = mxfp6.pack_operand(b_codes, sfb)
+        quantized = mxfp6.quantize_activation(source)
+        direct = mxfp6.gemm_w6a8(quantized, b)
+        fused = mxfp6.gemm(source, b)
+        b_values = decode_e3m2(b_codes) * decode_ue8m0(sfb).repeat_interleave(
+            32, dim=1
+        )
+        reference = (decode_mxfp8(quantized, mxfp6) @ b_values.t()).half()
+        torch.testing.assert_close(direct, reference, rtol=2e-3, atol=0.25)
+        torch.testing.assert_close(fused, direct, rtol=0, atol=0)
+        print(f"PASS native {str(dtype).removeprefix('torch.')} W6A8 {m}x{n}x{k}")
+
+
 def test_random_scale_gemm(mxfp6) -> None:
     shapes = (
         (1, 8, 128),
@@ -160,6 +281,32 @@ def test_large_m_mixed_gemm(mxfp6) -> None:
     )
 
 
+def test_small_w6a8_dispatch(mxfp6) -> None:
+    """Exercise each retained exact small-batch W6A8 kernel family."""
+    shapes = (
+        (1, 5120, 3072),    # 128x8, five-stage cooperative
+        (1, 5120, 8704),    # 128x8 Stream-K
+        (16, 8192, 5120),   # 64x16x256 ping-pong
+        (16, 17408, 5120),  # 128x16 cooperative
+        (16, 5120, 8704),   # deep-K exact 64x16x256 policy
+    )
+    for index, (m, n, k) in enumerate(shapes):
+        a_codes, b_codes, sfa, sfb = make_problem(m, n, k, 1800 + index)
+        a6 = mxfp6.pack_operand(a_codes, sfa)
+        b = mxfp6.pack_operand(b_codes, sfb)
+        a8 = mxfp6.MXFP8Tensor(
+            torch.ops.mxfp6.expand_fp6_to_fp8(a6.values, m, k),
+            a6.scales,
+            m,
+            k,
+        )
+        actual = mxfp6.gemm_w6a8(a8, b)
+        expected = mxfp6.gemm(a6, b)
+        torch.testing.assert_close(actual, expected, rtol=2e-3, atol=0.25)
+        max_abs = (actual - expected).abs().max().item()
+        print(f"PASS small W6A8 dispatch {m}x{n}x{k}: max_abs={max_abs:g}")
+
+
 def test_tuned_transition_gemm(mxfp6) -> None:
     """Exercise native and mixed exact dispatch at M=32, 64, and 96."""
     shapes = (
@@ -191,6 +338,20 @@ def test_nondefault_stream(mxfp6) -> None:
     reference = reference_gemm(a_codes, b_codes, sfa, sfb)
     torch.testing.assert_close(actual, reference, rtol=2e-3, atol=0.25)
     print("PASS CUDA non-default current-stream semantics")
+
+
+def test_float_nondefault_stream(mxfp6) -> None:
+    m, n, k = 16, 128, 128
+    source = torch.randn((m, k), device="cuda", dtype=torch.bfloat16)
+    _, b_codes, _, sfb = make_problem(m, n, k, 2027)
+    b = mxfp6.pack_operand(b_codes, sfb)
+    stream = torch.cuda.Stream()
+    with torch.cuda.stream(stream):
+        actual = mxfp6.gemm(source, b)
+        expected = mxfp6.gemm_w6a8(mxfp6.quantize_activation(source), b)
+    stream.synchronize()
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+    print("PASS fused W6A8 non-default current-stream semantics")
 
 
 def test_humming_backend(mxfp6) -> None:
@@ -230,10 +391,15 @@ def main() -> None:
     test_fp6_tools(mxfp6)
     test_fp6_to_fp8(mxfp6)
     test_scale_tools(mxfp6)
+    test_dynamic_quantization(mxfp6)
+    test_w6a8_candidate_registry(mxfp6)
+    test_float_w6a8_gemm(mxfp6)
     test_random_scale_gemm(mxfp6)
+    test_small_w6a8_dispatch(mxfp6)
     test_tuned_transition_gemm(mxfp6)
     test_large_m_mixed_gemm(mxfp6)
     test_nondefault_stream(mxfp6)
+    test_float_nondefault_stream(mxfp6)
     if options.humming:
         test_humming_backend(mxfp6)
     print("All MXFP6 tool tests passed")

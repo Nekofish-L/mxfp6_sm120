@@ -8,10 +8,12 @@ namespace mxfp6_gemm::swapped {
 // dimension and stores column-major [N,M] directly into row-major [M,N].
 template <class TileM_, class TileN_, class TileK_, class MainloopSchedule_,
           class EpilogueTile_ = cutlass::epilogue::collective::EpilogueTileAuto,
-          class TileScheduler_ = void, class StageCount_ = void>
+          class TileScheduler_ = void, class StageCount_ = void,
+          class ElementPairA_ = mxfp6_gemm::ElementPairB,
+          class ElementPairB_ = mxfp6_gemm::ElementPairA>
 struct KernelConfig {
-  using ElementPairA = mxfp6_gemm::ElementPairB;
-  using ElementPairB = mxfp6_gemm::ElementPairA;
+  using ElementPairA = ElementPairA_;
+  using ElementPairB = ElementPairB_;
   using ElementA = typename ElementPairA::DataType;
   using ElementB = typename ElementPairB::DataType;
   using ElementSF = typename ElementPairA::ScaleFactorType;
@@ -176,4 +178,128 @@ using TargetKernel64x16x512Pingpong = KernelConfig<
     cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
     cutlass::epilogue::collective::EpilogueTileAuto,
     cutlass::gemm::StaticPersistentScheduler>;
+
+// Mixed path for D.T = W6 @ A8.T. Unlike the normal W6A8 orientation this
+// keeps the small logical batch in the MMA N dimension, so M=1/16 does not
+// waste a 64- or 128-row activation tile. Persistent weights remain packed
+// E3M2; only the transient activation uses byte-addressable E4M3 storage.
+using ElementPairB8 = cutlass::mx_float8_t<cutlass::float_e4m3_t>;
+using KernelW6A8_128x8StaticCooperative = KernelConfig<
+    cute::_128, cute::_8, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    cutlass::gemm::StaticPersistentScheduler, void,
+    mxfp6_gemm::ElementPairB, ElementPairB8>;
+using KernelW6A8_128x8Stage4StaticCooperative = KernelConfig<
+    cute::_128, cute::_8, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    cutlass::gemm::StaticPersistentScheduler,
+    cutlass::gemm::collective::StageCount<4>,
+    mxfp6_gemm::ElementPairB, ElementPairB8>;
+// Profiler-selected small-batch portfolio. M=1 uses a narrow cooperative
+// tile (or Stream-K for deep K), while M=16 uses a full 16-column tile and
+// deeper K tiles to remove the former W6A8 decode penalty.
+using KernelW6A8_128x8Stage5StaticCooperative = KernelConfig<
+    cute::_128, cute::_8, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    cutlass::gemm::StaticPersistentScheduler,
+    cutlass::gemm::collective::StageCount<5>,
+    mxfp6_gemm::ElementPairB, ElementPairB8>;
+using KernelW6A8_128x8StreamK = KernelConfig<
+    cute::_128, cute::_8, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    cutlass::gemm::StreamKScheduler, void,
+    mxfp6_gemm::ElementPairB, ElementPairB8>;
+using KernelW6A8_128x16Stage4StaticCooperative = KernelConfig<
+    cute::_128, cute::_16, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    cutlass::gemm::StaticPersistentScheduler,
+    cutlass::gemm::collective::StageCount<4>,
+    mxfp6_gemm::ElementPairB, ElementPairB8>;
+using KernelW6A8_64x16x256StaticPingpong = KernelConfig<
+    cute::_64, cute::_16, cute::_256,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    cutlass::gemm::StaticPersistentScheduler, void,
+    mxfp6_gemm::ElementPairB, ElementPairB8>;
+
+// M=32 portfolio. In the swapped orientation the logical activation batch is
+// the tile N dimension, so these kernels cover all 32 rows without either the
+// two-wave x16 launch or the half-empty normal 64-row tile used previously.
+using KernelW6A8_64x32x128Pingpong = KernelConfig<
+    cute::_64, cute::_32, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    void, void, mxfp6_gemm::ElementPairB, ElementPairB8>;
+using KernelW6A8_64x32x128Stage3Pingpong = KernelConfig<
+    cute::_64, cute::_32, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    void, cutlass::gemm::collective::StageCount<3>,
+    mxfp6_gemm::ElementPairB, ElementPairB8>;
+using KernelW6A8_64x32x128StaticPingpong = KernelConfig<
+    cute::_64, cute::_32, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    cutlass::gemm::StaticPersistentScheduler, void,
+    mxfp6_gemm::ElementPairB, ElementPairB8>;
+using KernelW6A8_64x32x128Stage3StaticPingpong = KernelConfig<
+    cute::_64, cute::_32, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    cutlass::gemm::StaticPersistentScheduler,
+    cutlass::gemm::collective::StageCount<3>,
+    mxfp6_gemm::ElementPairB, ElementPairB8>;
+using KernelW6A8_64x32x256Pingpong = KernelConfig<
+    cute::_64, cute::_32, cute::_256,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    void, void, mxfp6_gemm::ElementPairB, ElementPairB8>;
+using KernelW6A8_64x32x256Stage2Pingpong = KernelConfig<
+    cute::_64, cute::_32, cute::_256,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    void, cutlass::gemm::collective::StageCount<2>,
+    mxfp6_gemm::ElementPairB, ElementPairB8>;
+using KernelW6A8_64x32x256StaticPingpong = KernelConfig<
+    cute::_64, cute::_32, cute::_256,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    cutlass::gemm::StaticPersistentScheduler, void,
+    mxfp6_gemm::ElementPairB, ElementPairB8>;
+using KernelW6A8_64x32x256Stage2StaticPingpong = KernelConfig<
+    cute::_64, cute::_32, cute::_256,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    cutlass::gemm::StaticPersistentScheduler,
+    cutlass::gemm::collective::StageCount<2>,
+    mxfp6_gemm::ElementPairB, ElementPairB8>;
+using KernelW6A8_128x32Cooperative = KernelConfig<
+    cute::_128, cute::_32, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    void, void, mxfp6_gemm::ElementPairB, ElementPairB8>;
+using KernelW6A8_128x32Stage2Cooperative = KernelConfig<
+    cute::_128, cute::_32, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    void, cutlass::gemm::collective::StageCount<2>,
+    mxfp6_gemm::ElementPairB, ElementPairB8>;
+using KernelW6A8_128x32StaticCooperative = KernelConfig<
+    cute::_128, cute::_32, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    cutlass::gemm::StaticPersistentScheduler, void,
+    mxfp6_gemm::ElementPairB, ElementPairB8>;
+using KernelW6A8_128x32Stage2StaticCooperative = KernelConfig<
+    cute::_128, cute::_32, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    cutlass::gemm::StaticPersistentScheduler,
+    cutlass::gemm::collective::StageCount<2>,
+    mxfp6_gemm::ElementPairB, ElementPairB8>;
 }  // namespace mxfp6_gemm::swapped

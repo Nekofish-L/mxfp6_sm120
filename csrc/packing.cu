@@ -9,6 +9,7 @@
 #include <c10/cuda/CUDAStream.h>
 
 #include "cute/tensor.hpp"
+#include "cutlass/arch/grid_dependency_control.h"
 #include "cutlass/detail/sm100_blockscaled_layout.hpp"
 
 namespace mxfp6_gemm::torch_ext {
@@ -170,24 +171,31 @@ __global__ void expand_fp6_to_fp8_vector_kernel(
 #pragma unroll
   for (int item = 0; item < kExpandVectorsPerThread; ++item) {
     int64_t const vector = first_vector + item;
-    if (vector >= vectors) {
-      return;
+    if (vector < vectors) {
+      uint32_t const* source =
+          reinterpret_cast<uint32_t const*>(input + vector * 12);
+      uint32_t const i0 = source[0];
+      uint32_t const i1 = source[1];
+      uint32_t const i2 = source[2];
+      uint32_t const p0 = i0 & 0x00ffffffu;
+      uint32_t const p1 = (i0 >> 24) | ((i1 & 0x0000ffffu) << 8);
+      uint32_t const p2 = (i1 >> 16) | ((i2 & 0x000000ffu) << 16);
+      uint32_t const p3 = i2 >> 8;
+      uint4 const result{
+          expand_four_codes(p0),
+          expand_four_codes(p1),
+          expand_four_codes(p2),
+          expand_four_codes(p3)};
+      reinterpret_cast<uint4*>(output)[vector] = result;
     }
-    uint32_t const* source =
-        reinterpret_cast<uint32_t const*>(input + vector * 12);
-    uint32_t const i0 = source[0];
-    uint32_t const i1 = source[1];
-    uint32_t const i2 = source[2];
-    uint32_t const p0 = i0 & 0x00ffffffu;
-    uint32_t const p1 = (i0 >> 24) | ((i1 & 0x0000ffffu) << 8);
-    uint32_t const p2 = (i1 >> 16) | ((i2 & 0x000000ffu) << 16);
-    uint32_t const p3 = i2 >> 8;
-    uint4 const result{
-        expand_four_codes(p0),
-        expand_four_codes(p1),
-        expand_four_codes(p2),
-        expand_four_codes(p3)};
-    reinterpret_cast<uint4*>(output)[vector] = result;
+  }
+
+  // The large-M compatibility path launches W6A8 as a programmatically
+  // dependent grid, allowing the consumer to enter residency before every
+  // activation byte has been expanded.
+  __syncthreads();
+  if (threadIdx.x == 0) {
+    cutlass::arch::launch_dependent_grids();
   }
 }
 
