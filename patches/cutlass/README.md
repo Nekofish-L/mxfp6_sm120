@@ -9,6 +9,10 @@ The CUTLASS submodule is pinned to upstream commit
 - `0002-sm120-mxfp6-profiler-search.patch` adds the candidate generation,
   static scheduler, and minimal-library options used to reproduce the
   exhaustive profiler search. It is not required by an installed wheel.
+- `0003-sm120-streamk-persistent-workspace.patch` makes the SM120 Stream-K
+  barrier self-reset after the final accumulator consumer and exposes the
+  reduction/barrier workspace sizes needed by the persistent arena. It is
+  required at runtime.
 
 Run `scripts/apply_cutlass_patches.sh` after initializing the submodule. The
 script is idempotent, verifies the pinned upstream commit, and supports

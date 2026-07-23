@@ -9,6 +9,11 @@
 - the current RTX 5090 GEMM-only comparison against Humming W6A8 and vLLM
   block-FP8 W8A8.
 
+`persistent_workspace.json` compares Stream-K launches with per-call CUTLASS
+initialization against the self-resetting persistent arena.
+`runtime_autotune_v4.json` records the post-change FP16/BF16 retune across the
+50 Qwen3.5-27B TP2 shapes, including the measurement policy and timings.
+
 Production dispatch never selects Humming. Unknown W6A8 shapes are selected
 from the compiled native portfolio on first use and cached per build, GPU,
 shape and measurement policy. Machine-local autotune caches and raw profiler

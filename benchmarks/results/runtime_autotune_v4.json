@@ -1,0 +1,1637 @@
+{
+  "schema_version": 1,
+  "candidate_abi": "native-w6a8-29-v4",
+  "devices": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "batch_sizes": [
+    1,
+    16,
+    32,
+    64,
+    96,
+    512,
+    1024,
+    2048,
+    4096,
+    8192
+  ],
+  "output_dtypes": [
+    "fp16",
+    "bf16"
+  ],
+  "measurement": {
+    "warmup": 5,
+    "iterations": 20,
+    "repeats": 5,
+    "minimum_improvement": 0.02,
+    "flush_l2_mb": 0
+  },
+  "results": [
+    {
+      "shape": [
+        1,
+        5120,
+        3072
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 5.7821500000000015,
+      "fallback_us": 5.7821500000000015,
+      "runner_up_us": 5.7694000000000045
+    },
+    {
+      "shape": [
+        1,
+        5120,
+        3072
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 5.782449999999983,
+      "fallback_us": 5.782449999999983,
+      "runner_up_us": 5.764799999999999
+    },
+    {
+      "shape": [
+        1,
+        5120,
+        8704
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 11.95335,
+      "fallback_us": 11.95335,
+      "runner_up_us": 11.935850000000011
+    },
+    {
+      "shape": [
+        1,
+        5120,
+        8704
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 11.988650000000007,
+      "fallback_us": 11.988650000000007,
+      "runner_up_us": 11.931200000000008
+    },
+    {
+      "shape": [
+        1,
+        7168,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 8.772750000000006,
+      "fallback_us": 8.772750000000006,
+      "runner_up_us": 8.76630000000003
+    },
+    {
+      "shape": [
+        1,
+        7168,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 8.791899999999965,
+      "fallback_us": 8.791899999999965,
+      "runner_up_us": 8.771249999999986
+    },
+    {
+      "shape": [
+        1,
+        8192,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 9.934350000000013,
+      "fallback_us": 9.934350000000013,
+      "runner_up_us": 9.844699999999994
+    },
+    {
+      "shape": [
+        1,
+        8192,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 9.895800000000019,
+      "fallback_us": 9.895800000000019,
+      "runner_up_us": 9.844899999999996
+    },
+    {
+      "shape": [
+        1,
+        17408,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 17.738950000000006,
+      "fallback_us": 17.738950000000006,
+      "runner_up_us": 17.654099999999993
+    },
+    {
+      "shape": [
+        1,
+        17408,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 17.775749999999995,
+      "fallback_us": 17.775749999999995,
+      "runner_up_us": 17.66870000000001
+    },
+    {
+      "shape": [
+        16,
+        5120,
+        3072
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 5.948600000000008,
+      "fallback_us": 5.948600000000008,
+      "runner_up_us": 5.947249999999994
+    },
+    {
+      "shape": [
+        16,
+        5120,
+        3072
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 5.959700000000007,
+      "fallback_us": 5.959700000000007,
+      "runner_up_us": 5.948699999999985
+    },
+    {
+      "shape": [
+        16,
+        5120,
+        8704
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 12.427199999999994,
+      "fallback_us": 12.427199999999994,
+      "runner_up_us": 12.386899999999988
+    },
+    {
+      "shape": [
+        16,
+        5120,
+        8704
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 12.412700000000006,
+      "fallback_us": 12.412700000000006,
+      "runner_up_us": 12.390449999999987
+    },
+    {
+      "shape": [
+        16,
+        7168,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": 4,
+      "kernel": "swapped_128x16_stage4_static_cooperative",
+      "swizzle": 2,
+      "raster_order": 1,
+      "raster": "along_m",
+      "latency_us": 10.707300000000004,
+      "fallback_us": 10.969850000000019,
+      "runner_up_us": 10.710499999999996
+    },
+    {
+      "shape": [
+        16,
+        7168,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": 4,
+      "kernel": "swapped_128x16_stage4_static_cooperative",
+      "swizzle": 2,
+      "raster_order": 2,
+      "raster": "along_n",
+      "latency_us": 10.702450000000033,
+      "fallback_us": 10.993349999999992,
+      "runner_up_us": 10.705300000000005
+    },
+    {
+      "shape": [
+        16,
+        8192,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": 4,
+      "kernel": "swapped_128x16_stage4_static_cooperative",
+      "swizzle": 1,
+      "raster_order": 1,
+      "raster": "along_m",
+      "latency_us": 10.774399999999991,
+      "fallback_us": 11.72929999999999,
+      "runner_up_us": 10.777250000000004
+    },
+    {
+      "shape": [
+        16,
+        8192,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": 4,
+      "kernel": "swapped_128x16_stage4_static_cooperative",
+      "swizzle": 1,
+      "raster_order": 1,
+      "raster": "along_m",
+      "latency_us": 10.774400000000004,
+      "fallback_us": 11.73110000000005,
+      "runner_up_us": 10.780599999999993
+    },
+    {
+      "shape": [
+        16,
+        17408,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 18.22565,
+      "fallback_us": 18.22565,
+      "runner_up_us": 18.201199999999993
+    },
+    {
+      "shape": [
+        16,
+        17408,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 18.236650000000026,
+      "fallback_us": 18.236650000000026,
+      "runner_up_us": 18.209549999999986
+    },
+    {
+      "shape": [
+        32,
+        5120,
+        3072
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 6.972799999999995,
+      "fallback_us": 6.972799999999995,
+      "runner_up_us": 6.955099999999993
+    },
+    {
+      "shape": [
+        32,
+        5120,
+        3072
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 6.961599999999987,
+      "fallback_us": 6.961599999999987,
+      "runner_up_us": 6.951799999999997
+    },
+    {
+      "shape": [
+        32,
+        5120,
+        8704
+      ],
+      "output_dtype": "bf16",
+      "config_id": 23,
+      "kernel": "swapped_64x32x256_static_pingpong",
+      "swizzle": 8,
+      "raster_order": 2,
+      "raster": "along_n",
+      "latency_us": 14.263899999999996,
+      "fallback_us": 14.585250000000013,
+      "runner_up_us": 14.263899999999996
+    },
+    {
+      "shape": [
+        32,
+        5120,
+        8704
+      ],
+      "output_dtype": "fp16",
+      "config_id": 23,
+      "kernel": "swapped_64x32x256_static_pingpong",
+      "swizzle": 4,
+      "raster_order": 1,
+      "raster": "along_m",
+      "latency_us": 14.259250000000018,
+      "fallback_us": 14.556449999999998,
+      "runner_up_us": 14.28295
+    },
+    {
+      "shape": [
+        32,
+        7168,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 12.26384999999999,
+      "fallback_us": 12.26384999999999,
+      "runner_up_us": 12.26384999999999
+    },
+    {
+      "shape": [
+        32,
+        7168,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 12.212549999999993,
+      "fallback_us": 12.212549999999993,
+      "runner_up_us": 12.254199999999992
+    },
+    {
+      "shape": [
+        32,
+        8192,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 11.888049999999987,
+      "fallback_us": 11.888049999999987,
+      "runner_up_us": 11.888049999999987
+    },
+    {
+      "shape": [
+        32,
+        8192,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 11.921199999999981,
+      "fallback_us": 11.921199999999981,
+      "runner_up_us": 11.89735
+    },
+    {
+      "shape": [
+        32,
+        17408,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 20.172649999999994,
+      "fallback_us": 20.172649999999994,
+      "runner_up_us": 20.084699999999998
+    },
+    {
+      "shape": [
+        32,
+        17408,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 20.188799999999965,
+      "fallback_us": 20.188799999999965,
+      "runner_up_us": 20.10374999999999
+    },
+    {
+      "shape": [
+        64,
+        5120,
+        3072
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 8.507249999999994,
+      "fallback_us": 8.507249999999994,
+      "runner_up_us": 8.472049999999973
+    },
+    {
+      "shape": [
+        64,
+        5120,
+        3072
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 8.526249999999981,
+      "fallback_us": 8.526249999999981,
+      "runner_up_us": 8.484649999999998
+    },
+    {
+      "shape": [
+        64,
+        5120,
+        8704
+      ],
+      "output_dtype": "bf16",
+      "config_id": 6,
+      "kernel": "normal_64x64x128_pingpong",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 19.783799999999996,
+      "fallback_us": 20.244750000000003,
+      "runner_up_us": 19.86224999999999
+    },
+    {
+      "shape": [
+        64,
+        5120,
+        8704
+      ],
+      "output_dtype": "fp16",
+      "config_id": 6,
+      "kernel": "normal_64x64x128_pingpong",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 19.7744,
+      "fallback_us": 20.263900000000017,
+      "runner_up_us": 19.79785
+    },
+    {
+      "shape": [
+        64,
+        7168,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 15.601649999999987,
+      "fallback_us": 15.601649999999987,
+      "runner_up_us": 15.587249999999983
+    },
+    {
+      "shape": [
+        64,
+        7168,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 15.582300000000009,
+      "fallback_us": 15.582300000000009,
+      "runner_up_us": 15.56959999999999
+    },
+    {
+      "shape": [
+        64,
+        8192,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 17.470249999999997,
+      "fallback_us": 17.470249999999997,
+      "runner_up_us": 17.3069
+    },
+    {
+      "shape": [
+        64,
+        8192,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 17.544150000000005,
+      "fallback_us": 17.544150000000005,
+      "runner_up_us": 17.294249999999998
+    },
+    {
+      "shape": [
+        64,
+        17408,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": 10,
+      "kernel": "normal_64x128x128_pingpong",
+      "swizzle": 1,
+      "raster_order": 1,
+      "raster": "along_m",
+      "latency_us": 26.198549999999976,
+      "fallback_us": 37.14260000000002,
+      "runner_up_us": 26.29404999999999
+    },
+    {
+      "shape": [
+        64,
+        17408,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": 11,
+      "kernel": "normal_64x128x128_static_pingpong",
+      "swizzle": 2,
+      "raster_order": 1,
+      "raster": "along_m",
+      "latency_us": 26.307050000000004,
+      "fallback_us": 37.1727,
+      "runner_up_us": 26.32595
+    },
+    {
+      "shape": [
+        96,
+        5120,
+        3072
+      ],
+      "output_dtype": "bf16",
+      "config_id": 10,
+      "kernel": "normal_64x128x128_pingpong",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 12.353399999999983,
+      "fallback_us": 12.809299999999984,
+      "runner_up_us": 12.364500000000016
+    },
+    {
+      "shape": [
+        96,
+        5120,
+        3072
+      ],
+      "output_dtype": "fp16",
+      "config_id": 10,
+      "kernel": "normal_64x128x128_pingpong",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 12.347100000000001,
+      "fallback_us": 12.807750000000004,
+      "runner_up_us": 12.379050000000015
+    },
+    {
+      "shape": [
+        96,
+        5120,
+        8704
+      ],
+      "output_dtype": "bf16",
+      "config_id": 16,
+      "kernel": "normal_128x128x128_stream_k",
+      "swizzle": 4,
+      "raster_order": 1,
+      "raster": "along_m",
+      "latency_us": 27.6224,
+      "fallback_us": 32.47670000000001,
+      "runner_up_us": 27.631949999999982
+    },
+    {
+      "shape": [
+        96,
+        5120,
+        8704
+      ],
+      "output_dtype": "fp16",
+      "config_id": 16,
+      "kernel": "normal_128x128x128_stream_k",
+      "swizzle": 2,
+      "raster_order": 1,
+      "raster": "along_m",
+      "latency_us": 27.578999999999997,
+      "fallback_us": 32.44079999999999,
+      "runner_up_us": 27.580400000000008
+    },
+    {
+      "shape": [
+        96,
+        7168,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 20.550600000000003,
+      "fallback_us": 20.550600000000003,
+      "runner_up_us": 20.23969999999998
+    },
+    {
+      "shape": [
+        96,
+        7168,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 20.58374999999999,
+      "fallback_us": 20.58374999999999,
+      "runner_up_us": 20.362899999999996
+    },
+    {
+      "shape": [
+        96,
+        8192,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": 16,
+      "kernel": "normal_128x128x128_stream_k",
+      "swizzle": 4,
+      "raster_order": 2,
+      "raster": "along_n",
+      "latency_us": 23.03689999999998,
+      "fallback_us": 23.572550000000003,
+      "runner_up_us": 23.042849999999994
+    },
+    {
+      "shape": [
+        96,
+        8192,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 23.518049999999995,
+      "fallback_us": 23.518049999999995,
+      "runner_up_us": 23.113250000000015
+    },
+    {
+      "shape": [
+        96,
+        17408,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": 12,
+      "kernel": "normal_128x128x128_pingpong",
+      "swizzle": 1,
+      "raster_order": 2,
+      "raster": "along_n",
+      "latency_us": 38.66680000000001,
+      "fallback_us": 46.68770000000003,
+      "runner_up_us": 38.66960000000002
+    },
+    {
+      "shape": [
+        96,
+        17408,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": 14,
+      "kernel": "normal_128x128x128_static_pingpong",
+      "swizzle": 4,
+      "raster_order": 1,
+      "raster": "along_m",
+      "latency_us": 38.68705000000001,
+      "fallback_us": 46.795099999999984,
+      "runner_up_us": 38.7024
+    },
+    {
+      "shape": [
+        512,
+        5120,
+        3072
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 25.431799999999996,
+      "fallback_us": 25.431799999999996,
+      "runner_up_us": 25.29434999999998
+    },
+    {
+      "shape": [
+        512,
+        5120,
+        3072
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 25.424949999999995,
+      "fallback_us": 25.424949999999995,
+      "runner_up_us": 25.307399999999994
+    },
+    {
+      "shape": [
+        512,
+        5120,
+        8704
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 64.9698,
+      "fallback_us": 64.9698,
+      "runner_up_us": 64.9698
+    },
+    {
+      "shape": [
+        512,
+        5120,
+        8704
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 64.8982,
+      "fallback_us": 64.8982,
+      "runner_up_us": 64.8982
+    },
+    {
+      "shape": [
+        512,
+        7168,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 59.40965000000002,
+      "fallback_us": 59.40965000000002,
+      "runner_up_us": 59.40965000000002
+    },
+    {
+      "shape": [
+        512,
+        7168,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 59.38485000000001,
+      "fallback_us": 59.38485000000001,
+      "runner_up_us": 58.44754999999998
+    },
+    {
+      "shape": [
+        512,
+        8192,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 72.60415000000003,
+      "fallback_us": 72.60415000000003,
+      "runner_up_us": 72.38024999999999
+    },
+    {
+      "shape": [
+        512,
+        8192,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 72.35615000000001,
+      "fallback_us": 72.35615000000001,
+      "runner_up_us": 72.31904999999998
+    },
+    {
+      "shape": [
+        512,
+        17408,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 135.66990000000004,
+      "fallback_us": 135.66990000000004,
+      "runner_up_us": 135.29369999999994
+    },
+    {
+      "shape": [
+        512,
+        17408,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 135.32805,
+      "fallback_us": 135.32805,
+      "runner_up_us": 135.2576
+    },
+    {
+      "shape": [
+        1024,
+        5120,
+        3072
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 47.519399999999976,
+      "fallback_us": 47.519399999999976,
+      "runner_up_us": 47.519399999999976
+    },
+    {
+      "shape": [
+        1024,
+        5120,
+        3072
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 47.51780000000003,
+      "fallback_us": 47.51780000000003,
+      "runner_up_us": 47.42804999999997
+    },
+    {
+      "shape": [
+        1024,
+        5120,
+        8704
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 123.95194999999997,
+      "fallback_us": 123.95194999999997,
+      "runner_up_us": 123.85295000000004
+    },
+    {
+      "shape": [
+        1024,
+        5120,
+        8704
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 123.9587,
+      "fallback_us": 123.9587,
+      "runner_up_us": 123.83160000000002
+    },
+    {
+      "shape": [
+        1024,
+        7168,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 108.84384999999997,
+      "fallback_us": 108.84384999999997,
+      "runner_up_us": 108.84384999999997
+    },
+    {
+      "shape": [
+        1024,
+        7168,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 108.70514999999996,
+      "fallback_us": 108.70514999999996,
+      "runner_up_us": 108.91480000000001
+    },
+    {
+      "shape": [
+        1024,
+        8192,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 132.36520000000002,
+      "fallback_us": 132.36520000000002,
+      "runner_up_us": 132.14905
+    },
+    {
+      "shape": [
+        1024,
+        8192,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 131.44510000000005,
+      "fallback_us": 131.44510000000005,
+      "runner_up_us": 131.45350000000002
+    },
+    {
+      "shape": [
+        1024,
+        17408,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 259.1859999999999,
+      "fallback_us": 259.1859999999999,
+      "runner_up_us": 257.3184
+    },
+    {
+      "shape": [
+        1024,
+        17408,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 258.6704,
+      "fallback_us": 258.6704,
+      "runner_up_us": 257.25775000000004
+    },
+    {
+      "shape": [
+        2048,
+        5120,
+        3072
+      ],
+      "output_dtype": "bf16",
+      "config_id": 12,
+      "kernel": "normal_128x128x128_pingpong",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 94.96410000000003,
+      "fallback_us": 97.08979999999998,
+      "runner_up_us": 95.00029999999995
+    },
+    {
+      "shape": [
+        2048,
+        5120,
+        3072
+      ],
+      "output_dtype": "fp16",
+      "config_id": 12,
+      "kernel": "normal_128x128x128_pingpong",
+      "swizzle": 4,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 95.17120000000003,
+      "fallback_us": 97.27149999999997,
+      "runner_up_us": 95.18315
+    },
+    {
+      "shape": [
+        2048,
+        5120,
+        8704
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 245.1178,
+      "fallback_us": 245.1178,
+      "runner_up_us": 241.1307
+    },
+    {
+      "shape": [
+        2048,
+        5120,
+        8704
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 245.17530000000002,
+      "fallback_us": 245.17530000000002,
+      "runner_up_us": 240.83870000000002
+    },
+    {
+      "shape": [
+        2048,
+        7168,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 219.39134999999996,
+      "fallback_us": 219.39134999999996,
+      "runner_up_us": 219.50654999999998
+    },
+    {
+      "shape": [
+        2048,
+        7168,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 217.98289999999997,
+      "fallback_us": 217.98289999999997,
+      "runner_up_us": 218.27855000000014
+    },
+    {
+      "shape": [
+        2048,
+        8192,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 245.01394999999994,
+      "fallback_us": 245.01394999999994,
+      "runner_up_us": 244.88624999999996
+    },
+    {
+      "shape": [
+        2048,
+        8192,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 244.66314999999992,
+      "fallback_us": 244.66314999999992,
+      "runner_up_us": 244.64844999999997
+    },
+    {
+      "shape": [
+        2048,
+        17408,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 506.15595000000013,
+      "fallback_us": 506.15595000000013,
+      "runner_up_us": 504.59474999999986
+    },
+    {
+      "shape": [
+        2048,
+        17408,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 500.7281499999999,
+      "fallback_us": 500.7281499999999,
+      "runner_up_us": 500.7281499999999
+    },
+    {
+      "shape": [
+        4096,
+        5120,
+        3072
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 182.6692,
+      "fallback_us": 182.6692,
+      "runner_up_us": 180.24615
+    },
+    {
+      "shape": [
+        4096,
+        5120,
+        3072
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 184.02874999999997,
+      "fallback_us": 184.02874999999997,
+      "runner_up_us": 180.75790000000006
+    },
+    {
+      "shape": [
+        4096,
+        5120,
+        8704
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 515.1068500000001,
+      "fallback_us": 515.1068500000001,
+      "runner_up_us": 506.0887000000001
+    },
+    {
+      "shape": [
+        4096,
+        5120,
+        8704
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 511.57325000000003,
+      "fallback_us": 511.57325000000003,
+      "runner_up_us": 505.44884999999977
+    },
+    {
+      "shape": [
+        4096,
+        7168,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": 12,
+      "kernel": "normal_128x128x128_pingpong",
+      "swizzle": 8,
+      "raster_order": 2,
+      "raster": "along_n",
+      "latency_us": 432.3550500000001,
+      "fallback_us": 449.26115,
+      "runner_up_us": 435.18340000000006
+    },
+    {
+      "shape": [
+        4096,
+        7168,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": 12,
+      "kernel": "normal_128x128x128_pingpong",
+      "swizzle": 8,
+      "raster_order": 2,
+      "raster": "along_n",
+      "latency_us": 431.49424999999985,
+      "fallback_us": 445.5900500000001,
+      "runner_up_us": 433.84575000000007
+    },
+    {
+      "shape": [
+        4096,
+        8192,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": 12,
+      "kernel": "normal_128x128x128_pingpong",
+      "swizzle": 2,
+      "raster_order": 2,
+      "raster": "along_n",
+      "latency_us": 475.0352,
+      "fallback_us": 492.90475000000004,
+      "runner_up_us": 475.9049500000001
+    },
+    {
+      "shape": [
+        4096,
+        8192,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": 12,
+      "kernel": "normal_128x128x128_pingpong",
+      "swizzle": 1,
+      "raster_order": 2,
+      "raster": "along_n",
+      "latency_us": 474.70424999999994,
+      "fallback_us": 492.6635000000001,
+      "runner_up_us": 475.39514999999994
+    },
+    {
+      "shape": [
+        4096,
+        17408,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 1017.6476500000001,
+      "fallback_us": 1017.6476500000001,
+      "runner_up_us": 1019.8016999999998
+    },
+    {
+      "shape": [
+        4096,
+        17408,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 1012.954,
+      "fallback_us": 1012.954,
+      "runner_up_us": 1013.42435
+    },
+    {
+      "shape": [
+        8192,
+        5120,
+        3072
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 358.861,
+      "fallback_us": 358.861,
+      "runner_up_us": 358.03219999999993
+    },
+    {
+      "shape": [
+        8192,
+        5120,
+        3072
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 359.75255000000004,
+      "fallback_us": 359.75255000000004,
+      "runner_up_us": 357.55159999999995
+    },
+    {
+      "shape": [
+        8192,
+        5120,
+        8704
+      ],
+      "output_dtype": "bf16",
+      "config_id": 16,
+      "kernel": "normal_128x128x128_stream_k",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 1096.6863000000003,
+      "fallback_us": 1148.63425,
+      "runner_up_us": 1122.3111000000004
+    },
+    {
+      "shape": [
+        8192,
+        5120,
+        8704
+      ],
+      "output_dtype": "fp16",
+      "config_id": 12,
+      "kernel": "normal_128x128x128_pingpong",
+      "swizzle": 2,
+      "raster_order": 1,
+      "raster": "along_m",
+      "latency_us": 1048.9024499999998,
+      "fallback_us": 1119.9332000000002,
+      "runner_up_us": 1051.6632999999997
+    },
+    {
+      "shape": [
+        8192,
+        7168,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 826.5590500000002,
+      "fallback_us": 826.5590500000002,
+      "runner_up_us": 826.7110499999999
+    },
+    {
+      "shape": [
+        8192,
+        7168,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 834.6761999999999,
+      "fallback_us": 834.6761999999999,
+      "runner_up_us": 822.2799999999997
+    },
+    {
+      "shape": [
+        8192,
+        8192,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 919.0796,
+      "fallback_us": 919.0796,
+      "runner_up_us": 907.6540500000003
+    },
+    {
+      "shape": [
+        8192,
+        8192,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 915.1342000000001,
+      "fallback_us": 915.1342000000001,
+      "runner_up_us": 904.5861999999997
+    },
+    {
+      "shape": [
+        8192,
+        17408,
+        5120
+      ],
+      "output_dtype": "bf16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 2259.9094999999998,
+      "fallback_us": 2259.9094999999998,
+      "runner_up_us": 2259.9094999999998
+    },
+    {
+      "shape": [
+        8192,
+        17408,
+        5120
+      ],
+      "output_dtype": "fp16",
+      "config_id": -1,
+      "kernel": "builtin_fallback",
+      "swizzle": 1,
+      "raster_order": 0,
+      "raster": "heuristic",
+      "latency_us": 2250.1324999999997,
+      "fallback_us": 2250.1324999999997,
+      "runner_up_us": 2225.2642
+    }
+  ]
+}

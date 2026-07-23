@@ -35,6 +35,8 @@ wheelhouse/
 /benchmarks/results/*
 !/benchmarks/results/README.md
 !/benchmarks/results/native_w6a8_dispatch.json
+!/benchmarks/results/persistent_workspace.json
+!/benchmarks/results/runtime_autotune_v4.json
 /autotune_results/
 /autotune_*.csv
 /profiler_*.csv

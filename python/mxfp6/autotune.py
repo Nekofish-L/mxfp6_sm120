@@ -29,7 +29,7 @@ from ._loader import load_library
 
 
 AUTOTUNE_SCHEMA = 1
-CANDIDATE_ABI = "native-w6a8-29-v3"
+CANDIDATE_ABI = "native-w6a8-29-v4"
 TIMING_POLICY = "gemm-kernels-two-stage-v3"
 FALLBACK_CONFIG_ID = -1
 
@@ -451,7 +451,7 @@ def _candidate_configs(m: int, k: int) -> tuple[list[W6A8Config], list[int]]:
     return coarse, list(kernel_ids)
 
 
-def _autotune(
+def _autotune_impl(
     a: torch.Tensor,
     b: torch.Tensor,
     sfa: torch.Tensor,
@@ -616,6 +616,28 @@ def _autotune(
         runner_up_us,
         repeats,
     )
+
+
+def _autotune(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    sfa: torch.Tensor,
+    sfb: torch.Tensor,
+    m: int,
+    n: int,
+    k: int,
+    out_dtype: torch.dtype,
+) -> AutotuneResult:
+    # Candidate and fallback probes are not production selections. Suppress
+    # planner collection until the selected override is installed and the
+    # caller performs its normal warmup launch.
+    previous = torch.ops.mxfp6._set_workspace_collection(a, False)
+    try:
+        return _autotune_impl(
+            a, b, sfa, sfb, m, n, k, out_dtype
+        )
+    finally:
+        torch.ops.mxfp6._set_workspace_collection(a, previous)
 
 
 def _install(

@@ -179,6 +179,23 @@ config = mxfp6.warmup_w6a8(
 )
 ```
 
+Stream-K kernels can reuse a self-resetting workspace after all production
+shapes and selected launch configs have been warmed:
+
+```python
+mxfp6.begin_workspace_planning(device)
+for activation, weight in production_problems:
+    mxfp6.warmup_w6a8(activation, weight, autotune=True)
+stats = mxfp6.finalize_workspace_planning(device)
+```
+
+Planning launches use CUTLASS's compatibility initialization path. After
+finalization, each CUDA stream receives a fixed lane whose barrier tail is
+cleared once; subsequent launches use `update()` and do not enqueue a
+workspace memset. Warm every stream eagerly before capturing its CUDA Graph.
+`mxfp6.workspace_stats()` reports arena capacity and lane count, while
+`mxfp6.workspace_barriers_zero()` provides a synchronizing validation hook.
+
 Logical E3M2 code and UE8M0 scale utilities remain available for serialization
 and tests:
 
@@ -264,6 +281,14 @@ Small-batch W6A8/W6A6 and quantizer microbenchmarks are available separately:
 ```bash
 python3 benchmarks/compare_small_batch.py --flush-l2-mb=0
 python3 benchmarks/quantization.py
+python3 benchmarks/compare_persistent_workspace.py \
+  --library build/mxfp6_torch.so \
+  --json benchmarks/results/persistent_workspace.json
+python3 tests/stress_persistent_workspace.py \
+  --library build/mxfp6_torch.so --iterations 10000
+MXFP6_AUTOTUNE_WARMUP=5 MXFP6_AUTOTUNE_ITERATIONS=20 \
+MXFP6_AUTOTUNE_REPEATS=5 python3 benchmarks/retune_runtime.py \
+  --devices=0,1,2,3 --library build/mxfp6_torch.so
 ```
 
 ## CUTLASS development
@@ -272,7 +297,8 @@ The runtime build requires the small-tile SM120 patch. The profiler patch adds
 the wider candidate grid used for offline kernel search:
 
 - `patches/cutlass/0001-sm120-mxfp6-small-tile-runtime.patch`;
-- `patches/cutlass/0002-sm120-mxfp6-profiler-search.patch`.
+- `patches/cutlass/0002-sm120-mxfp6-profiler-search.patch`;
+- `patches/cutlass/0003-sm120-streamk-persistent-workspace.patch`.
 
 Apply or inspect the queue with:
 

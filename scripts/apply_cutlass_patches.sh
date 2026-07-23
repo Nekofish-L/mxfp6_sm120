@@ -37,6 +37,7 @@ fi
 
 patches=(
   "${ROOT}/patches/cutlass/0001-sm120-mxfp6-small-tile-runtime.patch"
+  "${ROOT}/patches/cutlass/0003-sm120-streamk-persistent-workspace.patch"
 )
 if [[ "${runtime_only}" -eq 0 ]]; then
   patches+=("${ROOT}/patches/cutlass/0002-sm120-mxfp6-profiler-search.patch")

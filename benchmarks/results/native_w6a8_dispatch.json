@@ -10,7 +10,7 @@
   "weight_storage": "packed E3M2/UE8M0 (MXFP6), group size 32",
   "output": ["float16", "bfloat16"],
   "accumulator": "float32",
-  "candidate_abi": "native-w6a8-29-v3",
+  "candidate_abi": "native-w6a8-29-v4",
   "batch_sizes": [1, 16, 32, 64, 96, 512, 1024, 2048, 4096, 8192],
   "selection": "native CUTLASS profiler shortlist plus exhaustive family validation on RTX 5090",
   "fused_launch_uses_pdl": true,
@@ -43,6 +43,17 @@
     "schedulers": ["pingpong", "cooperative", "static_persistent", "stream_k"],
     "stream_k_policy": "exact overrides plus underfilled-tail fallback",
     "implementation": "csrc/torch_extension.cu:launch_w6a8_policy"
+  },
+  "runtime_retune": {
+    "date_utc": "2026-07-23",
+    "result": "benchmarks/results/runtime_autotune_v4.json",
+    "scope": "50 Qwen3.5-27B TP2 shapes, FP16 and BF16 output",
+    "measurement": "warm cache, warmup 5, 20 iterations, 5 repeats",
+    "repeat_stability": {
+      "same_kernel_family": "94/100",
+      "same_exact_config": "80/100"
+    },
+    "note": "Per-build runtime overrides remain cache entries; checked-in fallback dispatch is retained for marginal or unstable winners. The stable FP16 8192x5120x8704 winner was promoted from Stream-K to 128x128x128 pingpong."
   },
   "benchmark": {
     "date_utc": "2026-07-21",

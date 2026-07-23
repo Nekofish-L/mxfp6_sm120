@@ -47,6 +47,64 @@ def _require_sm120(device: torch.device) -> None:
         )
 
 
+def _workspace_anchor(
+    device: torch.device | str | int | None,
+) -> torch.Tensor:
+    if device is None:
+        resolved = torch.device("cuda", torch.cuda.current_device())
+    elif isinstance(device, int) and not isinstance(device, bool):
+        resolved = torch.device("cuda", device)
+    else:
+        resolved = torch.device(device)
+    if resolved.type != "cuda":
+        raise ValueError(f"workspace device must be CUDA; got {resolved}")
+    if resolved.index is None:
+        resolved = torch.device("cuda", torch.cuda.current_device())
+    _require_sm120(resolved)
+    load_library()
+    return torch.empty(0, device=resolved, dtype=torch.uint8)
+
+
+def begin_workspace_planning(
+    device: torch.device | str | int | None = None,
+) -> None:
+    """Collect Stream-K workspace layouts selected during subsequent warmup.
+
+    Planning keeps the compatibility path active, including CUTLASS's normal
+    one-time-per-call barrier initialization. Call
+    :func:`finalize_workspace_planning` after all production shapes and
+    autotuned configs have run.
+    """
+    anchor = _workspace_anchor(device)
+    torch.ops.mxfp6.begin_workspace_planning(anchor)
+
+
+def finalize_workspace_planning(
+    device: torch.device | str | int | None = None,
+) -> dict[str, int]:
+    """Freeze the arena capacity and allocate its current-stream lane."""
+    anchor = _workspace_anchor(device)
+    stats = torch.ops.mxfp6.finalize_workspace_planning(anchor)
+    return {str(key): int(value) for key, value in stats.items()}
+
+
+def workspace_stats(
+    device: torch.device | str | int | None = None,
+) -> dict[str, int]:
+    """Return planner capacity and launch counters for ``device``."""
+    anchor = _workspace_anchor(device)
+    stats = torch.ops.mxfp6.workspace_stats(anchor)
+    return {str(key): int(value) for key, value in stats.items()}
+
+
+def workspace_barriers_zero(
+    device: torch.device | str | int | None = None,
+) -> bool:
+    """Synchronize and verify every frozen lane's barrier tail is zero."""
+    anchor = _workspace_anchor(device)
+    return bool(torch.ops.mxfp6.workspace_barriers_zero(anchor))
+
+
 def _validate_problem(m: int, n: int, k: int) -> None:
     if m <= 0:
         raise ValueError(f"m must be positive; got {m}")

@@ -1,0 +1,97 @@
+diff --git a/include/cutlass/gemm/kernel/sm100_tile_scheduler_stream_k.hpp b/include/cutlass/gemm/kernel/sm100_tile_scheduler_stream_k.hpp
+index e1ba758..5c2cd1c 100644
+--- a/include/cutlass/gemm/kernel/sm100_tile_scheduler_stream_k.hpp
++++ b/include/cutlass/gemm/kernel/sm100_tile_scheduler_stream_k.hpp
+@@ -394,6 +394,66 @@ public:
+     return UnderlyingStreamKScheduler::compute_epilogue(work_tile_info, params_.sk_params_);
+   }
+ 
++  struct WorkspaceLayout {
++    size_t reduction_bytes;
++    size_t barrier_bytes;
++    bool resettable;
++  };
++
++  template <class ProblemShape, class ElementAccumulator>
++  static WorkspaceLayout
++  get_workspace_layout(
++    Arguments const& args,
++    ProblemShape problem_shape,
++    KernelHardwareInfo const& hw_info,
++    uint32_t reduction_warp_groups,
++    [[maybe_unused]] const uint32_t epilogue_subtile = 1,
++    uint32_t num_accumulator_mtxs = 1,
++    uint32_t ktile_start_alignment_count = 1) {
++
++    auto problem_shape_mnkl = cute::append<4>(problem_shape, 1);
++    auto cs = cutlass::detail::select_cluster_shape(
++      ClusterShape{}, hw_info.cluster_shape);
++    TileShape tile_shape;
++
++    dim3 problem_blocks = get_tiled_cta_shape_mnl(
++      problem_shape_mnkl, tile_shape, cs);
++    uint32_t k_tile_per_output_tile = cute::size(cute::ceil_div(
++      cute::shape<2>(problem_shape_mnkl), cute::shape<2>(TileShape{})));
++
++    size_t barrier_workspace_size = 0;
++    size_t reduction_workspace_size = 0;
++    using StreamKParams = typename Params::UnderlyingStreamKParams;
++    StreamKParams::get_workspace_component_sizes(
++      problem_blocks,
++      k_tile_per_output_tile,
++      to_gemm_coord(tile_shape),
++      to_gemm_coord(cs),
++      barrier_workspace_size,
++      reduction_workspace_size,
++      hw_info,
++      args.splits,
++      args.max_swizzle_size,
++      args.raster_order,
++      ForceDataParallel
++        ? Params::DecompositionMode::DataParallel
++        : args.decomposition_mode,
++      args.reduction_mode,
++      reduction_warp_groups,
++      sizeof_bits<typename UnderlyingStreamKScheduler::BarrierType>::value,
++      sizeof_bits<ElementAccumulator>::value,
++      EpilogueSubtiles,
++      num_accumulator_mtxs,
++      ktile_start_alignment_count,
++      /*bypass_sm90_occupancy_calculation=*/true);
++
++    return {
++      reduction_workspace_size,
++      barrier_workspace_size,
++      /*resettable=*/true
++    };
++  }
++
+   template <class ProblemShape, class ElementAccumulator>
+   static size_t
+   get_workspace_size(
+diff --git a/include/cutlass/gemm/kernel/sm90_tile_scheduler_stream_k.hpp b/include/cutlass/gemm/kernel/sm90_tile_scheduler_stream_k.hpp
+index f2a6403..6271584 100644
+--- a/include/cutlass/gemm/kernel/sm90_tile_scheduler_stream_k.hpp
++++ b/include/cutlass/gemm/kernel/sm90_tile_scheduler_stream_k.hpp
+@@ -543,7 +543,20 @@ public:
+     }
+     else {
+       // Wait until the preceding split added its accumulators
+-      BarrierManager::wait_eq(barrier_idx, lock_workspace, barrier_group_thread_idx, lock_idx, work_tile_info.K_idx);
++      // The final accumulator matrix is the last user of this lock in the
++      // current GEMM. Reset it as part of the acquire so a persistent
++      // workspace can be reused by the next launch without a host-side
++      // memset. Earlier matrices still need to observe the completed value.
++      if (idx_accumulator_mtxs + 1 == num_accumulator_mtxs) {
++        BarrierManager::wait_eq_reset(
++          barrier_idx, lock_workspace, barrier_group_thread_idx, lock_idx,
++          work_tile_info.K_idx);
++      }
++      else {
++        BarrierManager::wait_eq(
++          barrier_idx, lock_workspace, barrier_group_thread_idx, lock_idx,
++          work_tile_info.K_idx);
++      }
+ 
+       // The block computing the final split for the tile adds previously-reduced partials
+       // to its accumulators and computes the epilogue.

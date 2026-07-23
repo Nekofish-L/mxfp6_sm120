@@ -19,7 +19,9 @@ from .ops import (
     TUNED_M,
     TUNED_NK,
     autotune_w6a8,
+    begin_workspace_planning,
     expand_fp6_to_fp8,
+    finalize_workspace_planning,
     gemm,
     gemm_from_codes,
     gemm_from_float,
@@ -37,9 +39,11 @@ from .ops import (
     unpack_operand,
     unpack_scales,
     warmup_w6a8,
+    workspace_barriers_zero,
+    workspace_stats,
 )
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "MXFP8Tensor",
@@ -52,7 +56,9 @@ __all__ = [
     "__version__",
     "autotune_cache_directory",
     "autotune_w6a8",
+    "begin_workspace_planning",
     "expand_fp6_to_fp8",
+    "finalize_workspace_planning",
     "gemm",
     "gemm_from_codes",
     "gemm_from_float",
@@ -75,4 +81,6 @@ __all__ = [
     "unpack_operand",
     "unpack_scales",
     "warmup_w6a8",
+    "workspace_barriers_zero",
+    "workspace_stats",
 ]

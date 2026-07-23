@@ -24,10 +24,14 @@ file(READ
 file(READ
   "${CUTLASS_DIR}/include/cutlass/gemm/collective/builders/sm120_blockwise_mma_builder.inl"
   MXFP6_CUTLASS_SM120_BLOCKWISE_BUILDER)
+file(READ
+  "${CUTLASS_DIR}/include/cutlass/gemm/kernel/sm100_tile_scheduler_stream_k.hpp"
+  MXFP6_CUTLASS_SM120_STREAMK_SCHEDULER)
 if(NOT MXFP6_CUTLASS_SM120_BLOCKSCALED_BUILDER MATCHES "sSFATileShape_M" OR
-   NOT MXFP6_CUTLASS_SM120_BLOCKWISE_BUILDER MATCHES "SmemCopyOpB")
+   NOT MXFP6_CUTLASS_SM120_BLOCKWISE_BUILDER MATCHES "SmemCopyOpB" OR
+   NOT MXFP6_CUTLASS_SM120_STREAMK_SCHEDULER MATCHES "get_workspace_layout")
   message(FATAL_ERROR
-    "The required SM120 small-tile CUTLASS patch is not applied. Run: "
+    "The required SM120 runtime CUTLASS patches are not applied. Run: "
     "bash scripts/apply_cutlass_patches.sh --runtime-only")
 endif()
 

@@ -171,7 +171,7 @@ def test_w6a8_candidate_registry(mxfp6) -> None:
     a6 = mxfp6.pack_operand(a_codes, sfa)
     b = mxfp6.pack_operand(b_codes, sfb)
     a8 = torch.ops.mxfp6.expand_fp6_to_fp8(a6.values, m, k)
-    assert torch.ops.mxfp6.w6a8_config_abi(a8) == "native-w6a8-29-v3"
+    assert torch.ops.mxfp6.w6a8_config_abi(a8) == "native-w6a8-29-v4"
     for out_dtype in (torch.float16, torch.bfloat16):
         torch.ops.mxfp6.set_w6a8_config(
             a8, m, n, k, -1, 1, 0, out_dtype
@@ -427,6 +427,90 @@ def test_float_nondefault_stream(mxfp6) -> None:
     print("PASS fused W6A8 non-default current-stream semantics")
 
 
+def test_persistent_workspace(mxfp6) -> None:
+    """Exercise resettable Stream-K lanes through CUDA Graph replay."""
+    m, n, k = 1, 128, 8704
+    a_codes, b_codes, sfa, sfb = make_problem(m, n, k, 2028)
+    a6 = mxfp6.pack_operand(a_codes, sfa)
+    b = mxfp6.pack_operand(b_codes, sfb)
+    a8 = torch.ops.mxfp6.expand_fp6_to_fp8(a6.values, m, k)
+    torch.ops.mxfp6.set_w6a8_config(
+        a8, m, n, k, 3, 1, 0, torch.bfloat16
+    )
+    arguments = (
+        a8,
+        b.values,
+        a6.scales,
+        b.scales,
+        m,
+        n,
+        k,
+        1.0,
+        torch.bfloat16,
+    )
+    split_k_arguments = (
+        a6.values,
+        b.values,
+        a6.scales,
+        b.scales,
+        m,
+        n,
+        k,
+        1.0,
+        torch.float16,
+    )
+
+    mxfp6.begin_workspace_planning()
+    previous_collection = torch.ops.mxfp6._set_workspace_collection(
+        a8, False
+    )
+    assert previous_collection
+    torch.ops.mxfp6.gemm_w6a8(*arguments)
+    torch.ops.mxfp6._set_workspace_collection(a8, previous_collection)
+    assert mxfp6.workspace_stats()["layouts"] == 0
+    reference = torch.ops.mxfp6.gemm_w6a8(*arguments)
+    split_k_reference = torch.ops.mxfp6.gemm(*split_k_arguments)
+    torch.cuda.synchronize()
+    planning_stats = mxfp6.workspace_stats()
+    assert planning_stats["layouts"] >= 1
+    assert planning_stats["arena_bytes"] > 0
+
+    finalized_stats = mxfp6.finalize_workspace_planning()
+    assert finalized_stats["frozen"] == 1
+    assert finalized_stats["lanes"] == 1
+    torch.cuda.synchronize()
+
+    capture_stream = torch.cuda.Stream()
+    capture_stream.wait_stream(torch.cuda.current_stream())
+    with torch.cuda.stream(capture_stream):
+        eager = torch.ops.mxfp6.gemm_w6a8(*arguments)
+        split_k_eager = torch.ops.mxfp6.gemm(*split_k_arguments)
+    capture_stream.synchronize()
+    torch.testing.assert_close(eager, reference, rtol=0, atol=0)
+    torch.testing.assert_close(
+        split_k_eager, split_k_reference, rtol=0, atol=0
+    )
+    assert mxfp6.workspace_stats()["lanes"] == 2
+
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph, stream=capture_stream):
+        captured = torch.ops.mxfp6.gemm_w6a8(*arguments)
+    stress_iterations = int(
+        os.environ.get("MXFP6_PERSISTENT_STRESS_ITERATIONS", "100")
+    )
+    if stress_iterations <= 0:
+        raise ValueError("MXFP6_PERSISTENT_STRESS_ITERATIONS must be positive")
+    for _ in range(stress_iterations):
+        graph.replay()
+        torch.ops.mxfp6.gemm(*split_k_arguments)
+    torch.cuda.synchronize()
+
+    torch.testing.assert_close(captured, reference, rtol=0, atol=0)
+    assert mxfp6.workspace_barriers_zero()
+    assert mxfp6.workspace_stats()["fallback_launches"] == 0
+    print("PASS persistent Stream-K workspace and CUDA Graph stream lanes")
+
+
 def test_humming_backend(mxfp6) -> None:
     m, n, k = 512, 256, 128
     a_codes, b_codes, sfa, sfb = make_problem(m, n, k, 1206)
@@ -479,6 +563,7 @@ def main() -> None:
     test_large_m_mixed_gemm(mxfp6)
     test_nondefault_stream(mxfp6)
     test_float_nondefault_stream(mxfp6)
+    test_persistent_workspace(mxfp6)
     if options.humming:
         test_humming_backend(mxfp6)
     print("All MXFP6 tool tests passed")

@@ -1,0 +1,80 @@
+{
+  "device": "NVIDIA GeForce RTX 5090",
+  "output_dtype": "bf16",
+  "iterations": 500,
+  "repeats": 9,
+  "workspace": {
+    "layouts": 2,
+    "max_reduction_bytes": 4194304,
+    "max_barrier_bytes": 512,
+    "arena_bytes": 4194816,
+    "lanes": 1,
+    "total_arena_bytes": 4194816,
+    "planning": 0,
+    "frozen": 1,
+    "persistent_launches": 10100,
+    "fallback_launches": 0
+  },
+  "results": [
+    {
+      "shape": [
+        1,
+        8192,
+        5120
+      ],
+      "config_id": 3,
+      "legacy_total_us": 19.970367431640625,
+      "persistent_total_us": 18.7326717376709,
+      "speedup": 1.066071498572238,
+      "legacy_kernel_us": 11.167999999999665,
+      "persistent_kernel_us": 11.136000000000422,
+      "legacy_memset_events": 500,
+      "persistent_memset_events": 0
+    },
+    {
+      "shape": [
+        16,
+        8192,
+        5120
+      ],
+      "config_id": 3,
+      "legacy_total_us": 22.097408294677734,
+      "persistent_total_us": 22.168319702148438,
+      "speedup": 0.9968012276788019,
+      "legacy_kernel_us": 15.071500000000015,
+      "persistent_kernel_us": 15.072000000000116,
+      "legacy_memset_events": 0,
+      "persistent_memset_events": 0
+    },
+    {
+      "shape": [
+        128,
+        8192,
+        5120
+      ],
+      "config_id": 16,
+      "legacy_total_us": 30.685504913330078,
+      "persistent_total_us": 24.32454490661621,
+      "speedup": 1.2615037621930474,
+      "legacy_kernel_us": 24.67199999999866,
+      "persistent_kernel_us": 24.064000000000306,
+      "legacy_memset_events": 500,
+      "persistent_memset_events": 0
+    },
+    {
+      "shape": [
+        512,
+        8192,
+        5120
+      ],
+      "config_id": 16,
+      "legacy_total_us": 86.0481948852539,
+      "persistent_total_us": 85.54598236083984,
+      "speedup": 1.0058706734150962,
+      "legacy_kernel_us": 85.95100000000093,
+      "persistent_kernel_us": 85.05500000000029,
+      "legacy_memset_events": 0,
+      "persistent_memset_events": 0
+    }
+  ]
+}
