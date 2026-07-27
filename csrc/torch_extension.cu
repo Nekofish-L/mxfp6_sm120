@@ -881,8 +881,7 @@ at::Tensor launch_w6a8_128(at::Tensor const& a,
 
 // Stable candidate IDs used by the Python first-use autotuner. All candidates
 // are native kernels compiled into this extension; JIT here means selecting a
-// precompiled implementation for a new shape and caching that decision, not
-// invoking the optional Humming backend.
+// precompiled implementation for a new shape and caching that decision.
 at::Tensor launch_w6a8_config(at::Tensor const& a,
                               at::Tensor const& b,
                               at::Tensor const& sfa,

@@ -3,7 +3,7 @@
 The kernels themselves are AOT-compiled into ``mxfp6_torch``.  For a shape
 without a checked-in exact override, this module benchmarks a shape-aware
 shortlist once, validates the winner, installs it in the C++ dispatcher, and
-persists the decision for later processes.  No Humming code is used here.
+persists the decision for later processes.
 """
 
 from __future__ import annotations

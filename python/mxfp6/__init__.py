@@ -6,12 +6,6 @@ from .autotune import (
     cache_directory as autotune_cache_directory,
     is_autotune_enabled,
 )
-from .humming_backend import (
-    HummingMXFP6Weight,
-    gemm_humming,
-    is_humming_available,
-    prepare_humming_weight,
-)
 from .ops import (
     MXFP8Tensor,
     PackedMXFP6Tensor,
@@ -48,7 +42,6 @@ __version__ = "0.1.1"
 __all__ = [
     "MXFP8Tensor",
     "PackedMXFP6Tensor",
-    "HummingMXFP6Weight",
     "SCALE_VECTOR_SIZE",
     "TUNED_M",
     "TUNED_NK",
@@ -62,18 +55,15 @@ __all__ = [
     "gemm",
     "gemm_from_codes",
     "gemm_from_float",
-    "gemm_humming",
     "gemm_packed",
     "gemm_w6a8",
     "is_available",
     "is_autotune_enabled",
-    "is_humming_available",
     "is_tuned_shape",
     "load_library",
     "pack_fp6",
     "pack_operand",
     "pack_scales",
-    "prepare_humming_weight",
     "quantize_activation",
     "quantize_mxfp6",
     "quantize_mxfp8",

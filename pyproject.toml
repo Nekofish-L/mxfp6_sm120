@@ -17,23 +17,11 @@ classifiers = [
   "Operating System :: POSIX :: Linux",
 ]
 
-[project.optional-dependencies]
-humming = [
-  "cuda-bindings",
-  "filelock",
-  "jinja2>=3.1",
-  "numpy",
-  "packaging",
-  "pyelftools",
-  "triton",
-]
-
 [tool.setuptools]
 package-dir = {"" = "python"}
 
 [tool.setuptools.packages.find]
 where = ["python"]
-exclude = ["mxfp6._vendor.__pycache__"]
 
 [tool.setuptools.package-data]
-mxfp6 = ["*.so", "*.txt", "metadata.json", "_vendor/**/*"]
+mxfp6 = ["*.so", "*.txt", "metadata.json"]

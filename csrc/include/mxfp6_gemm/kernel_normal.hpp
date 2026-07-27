@@ -132,10 +132,10 @@ using TargetKernel64x64x128Pingpong = KernelConfig<
     cute::_64, cute::_64, cute::_128,
     cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120>;
 
-// Humming-style large-M path: preserve the public packed-W6 activation and
-// weight representation, expand only the activation into a temporary E4M3
-// tensor, and issue SM120's faster E4M3 x E3M2 mixed MMA. The weight remains
-// physically packed at six bits throughout.
+// Large-M mixed path: preserve the public packed-W6 activation and weight
+// representation, expand only the activation into a temporary E4M3 tensor,
+// and issue SM120's faster E4M3 x E3M2 mixed MMA. The weight remains physically
+// packed at six bits throughout.
 using ElementPairA8 = cutlass::mx_float8_t<cutlass::float_e4m3_t>;
 using KernelW6A8_64x64x128Pingpong = KernelConfig<
     cute::_64, cute::_64, cute::_128,

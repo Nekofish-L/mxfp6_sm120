@@ -9,8 +9,7 @@ D[M, N] = A[M, K] @ B[N, K].T
 Persistent weights are bit-packed E3M2 with one UE8M0 scale per 32 values.
 FP16 or BF16 activations are dynamically mapped 16-to-8 into E4M3/UE8M0 and
 consumed by a native CUTLASS W6A8 kernel. Accumulation is FP32 and output is
-selectable FP16 or BF16 directly in the CUTLASS epilogue. Production dispatch
-is implemented entirely in this repository and does not call Humming.
+selectable FP16 or BF16 directly in the CUTLASS epilogue.
 
 The 16-to-8 activation mapping is intentional. It removes repeated
 activation-side six-bit unpacking from the MMA mainloop, while persistent
@@ -23,7 +22,7 @@ The following results were measured on one NVIDIA GeForce RTX 5090 using:
 
 - PyTorch `2.11.0+cu130`, CUDA 13.0;
 - vLLM `0.20.3.dev4+ge38d84f55.d20260715`;
-- pinned Humming revision `694298e9`;
+- external Humming reference revision `694298e9`;
 - Qwen3.5-27B TP2 linear shapes, five `(N,K)` pairs per batch;
 - BF16 activation input, FP16 output, warm cache, 20 warmups and 100 measured
   iterations;
@@ -89,8 +88,6 @@ cooperative, static-persistent and selective Stream-K scheduling.
 - Ninja is recommended.
 
 CUTLASS is pinned at `e6233cbac5d7c7a865c19c91cd684ceece19513c`.
-The optional Humming reference is pinned at
-`694298e9eb25ffdfc088353b49ba537ebf304479`.
 
 ## Installation
 
@@ -104,7 +101,7 @@ cd mxfp6_sm120
 For an existing clone:
 
 ```bash
-git submodule update --init --depth 1 third_party/cutlass third_party/humming
+git submodule update --init --depth 1 third_party/cutlass
 ```
 
 Build a wheel against the active PyTorch ABI:
@@ -112,12 +109,6 @@ Build a wheel against the active PyTorch ABI:
 ```bash
 ./scripts/build_wheel.sh
 python3 -m pip install --no-deps dist/mxfp6_sm120-*.whl
-```
-
-Install the optional Humming comparison dependencies when needed:
-
-```bash
-python3 -m pip install --no-build-isolation '.[humming]'
 ```
 
 The wheel build applies the required runtime CUTLASS patch idempotently. Use
@@ -208,14 +199,6 @@ restored_codes, restored_scales = mxfp6.unpack_operand(packed_weight)
 
 Each code uses its low six bits. UE8M0 byte `0x7f` represents scale 1.0.
 
-Humming is an explicit reference backend only:
-
-```python
-packed_a6 = mxfp6.quantize_mxfp6(a)
-humming_weight = mxfp6.prepare_humming_weight(packed_weight)
-reference = mxfp6.gemm(packed_a6, humming_weight)
-```
-
 ## Runtime autotuning
 
 Unknown W6A8 shapes use first-use selection over 29 precompiled native CUTLASS
@@ -249,7 +232,7 @@ The default cache is `$XDG_CACHE_HOME/mxfp6/autotune`, or
 
 ## Benchmarking
 
-Reproduce the table above:
+Reproduce the native and vLLM measurements from the table above:
 
 ```bash
 CUDA_VISIBLE_DEVICES=0 MXFP6_AUTOTUNE=0 \
@@ -257,7 +240,7 @@ python3 benchmarks/benchmark.py \
   --library build/mxfp6_torch.so \
   --activation-input bf16 \
   --output-dtype fp16 \
-  --compare-humming --compare-fp8 \
+  --compare-fp8 \
   --warmup 20 --iterations 100 --flush-l2-mb 0
 ```
 
@@ -333,10 +316,10 @@ benchmarks/results/    Reviewed dispatch and measurement metadata
 tests/                 CUDA correctness and stream tests
 patches/cutlass/       Versioned SM120 CUTLASS fixes
 scripts/               Build and patch helpers
-third_party/           Pinned CUTLASS and Humming submodules
+third_party/           Pinned CUTLASS submodule
 ```
 
 ## License
 
-The project is released under the BSD 3-Clause License. CUTLASS and Humming
-retain their upstream licenses.
+The project is released under the BSD 3-Clause License. CUTLASS retains its
+upstream license.

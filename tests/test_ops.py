@@ -511,33 +511,9 @@ def test_persistent_workspace(mxfp6) -> None:
     print("PASS persistent Stream-K workspace and CUDA Graph stream lanes")
 
 
-def test_humming_backend(mxfp6) -> None:
-    m, n, k = 512, 256, 128
-    a_codes, b_codes, sfa, sfb = make_problem(m, n, k, 1206)
-    a = mxfp6.pack_operand(a_codes, sfa)
-    b = mxfp6.pack_operand(b_codes, sfb)
-    humming_b = mxfp6.prepare_humming_weight(b)
-    assert (
-        humming_b.values.numel() * humming_b.values.element_size()
-        == n * k * 6 // 8
-    )
-    for out_dtype in (torch.float16, torch.bfloat16):
-        actual = mxfp6.gemm(a, humming_b, out_dtype=out_dtype)
-        expected = mxfp6.gemm(a, b, out_dtype=out_dtype)
-        assert actual.dtype == out_dtype
-        torch.testing.assert_close(actual, expected, rtol=2e-3, atol=0.5)
-    print(
-        "PASS FP16/BF16 Humming W6A8 bridge correctness and six-bit "
-        "weight storage"
-    )
-
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--library", type=Path)
-    parser.add_argument(
-        "--humming", action="store_true", help="also JIT and test the Humming backend"
-    )
     options = parser.parse_args()
     if options.library is not None:
         os.environ["MXFP6_LIBRARY_PATH"] = str(options.library.resolve())
@@ -564,8 +540,6 @@ def main() -> None:
     test_nondefault_stream(mxfp6)
     test_float_nondefault_stream(mxfp6)
     test_persistent_workspace(mxfp6)
-    if options.humming:
-        test_humming_backend(mxfp6)
     print("All MXFP6 tool tests passed")
 
 

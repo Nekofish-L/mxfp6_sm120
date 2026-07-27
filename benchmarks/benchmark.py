@@ -392,22 +392,6 @@ def benchmark_torch_scaled_mm(
     )
 
 
-def benchmark_humming(
-    run,
-    iterations: int,
-    warmup: int,
-    flush_l2_mb: int,
-) -> Timing:
-    """Measure the Humming W6A8 GEMM kernel in isolation."""
-    return benchmark_operation(
-        run,
-        lambda name: "humming<" in name,
-        warmup,
-        iterations,
-        flush_l2_mb,
-    )
-
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -456,18 +440,6 @@ def main() -> None:
         default=False,
         help="also run torch._scaled_mm with losslessly expanded FP8 inputs",
     )
-    parser.add_argument(
-        "--compare-humming",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help="also run the bundled Humming W6A8 kernel for every eligible shape",
-    )
-    parser.add_argument(
-        "--humming-min-m",
-        type=int,
-        default=1,
-        help="minimum M for the Humming comparison (default: 1)",
-    )
     options = parser.parse_args()
 
     if not torch.cuda.is_available():
@@ -483,11 +455,10 @@ def main() -> None:
         options.warmup < 0
         or options.iterations <= 0
         or options.flush_l2_mb < 0
-        or options.humming_min_m <= 0
     ):
         raise ValueError(
             "warmup/flush-l2-mb must be nonnegative and "
-            "iterations/humming-min-m must be positive"
+            "iterations must be positive"
         )
 
     os.environ["MXFP6_LIBRARY_PATH"] = str(options.library.resolve())
@@ -521,14 +492,11 @@ def main() -> None:
     )
     vllm_fp8_kernel_speedups: list[tuple[int, float]] = []
     torch_fp8_speedups: list[tuple[int, float]] = []
-    humming_kernel_speedups: list[tuple[int, float]] = []
-    humming_checked = False
 
     for index, (m, n, k) in enumerate(options.shapes):
         layer = SHAPE_NAMES.get((n, k), "custom")
         tensors = make_inputs(m, n, k, options.seed + index)
-        a, b, sfa, sfb, a_codes, _, sfa_logical, sfb_logical = tensors
-        packed_a = mxfp6.PackedMXFP6Tensor(a, sfa, m, k, sfa_logical)
+        _, b, _, sfb, a_codes, _, _, sfb_logical = tensors
         packed_b = mxfp6.PackedMXFP6Tensor(b, sfb, n, k, sfb_logical)
         source = None
         if options.activation_input != "packed":
@@ -631,47 +599,6 @@ def main() -> None:
             torch_fp8_speedups.append(
                 (m, torch_fp8_timing.kernel_us / timing.kernel_us)
             )
-        if options.compare_humming:
-            humming_skip_reasons = []
-            if m < options.humming_min_m:
-                humming_skip_reasons.append(f"M<{options.humming_min_m}")
-            if n % 256:
-                humming_skip_reasons.append("N is not divisible by 256")
-            if humming_skip_reasons:
-                comparison += (
-                    " | Humming skipped ("
-                    + ", ".join(humming_skip_reasons)
-                    + ")"
-                )
-            else:
-                humming_b = mxfp6.prepare_humming_weight(packed_b)
-                run_humming = lambda: mxfp6.gemm(
-                    packed_a, humming_b, out_dtype=out_dtype
-                )
-                if not humming_checked or options.check_all:
-                    torch.testing.assert_close(
-                        run_humming(),
-                        torch.ops.mxfp6.gemm(
-                            a, b, sfa, sfb, m, n, k, 1.0, out_dtype
-                        ),
-                        rtol=2e-3,
-                        atol=0.5,
-                    )
-                    humming_checked = True
-                humming_timing = benchmark_humming(
-                    run_humming,
-                    options.iterations,
-                    options.warmup,
-                    options.flush_l2_mb,
-                )
-                comparison += (
-                    f" | Humming gemm={humming_timing.kernel_us:8.3f} us | "
-                    f"native GEMM speedup="
-                    f"{humming_timing.kernel_us / timing.kernel_us:5.3f}x"
-                )
-                humming_kernel_speedups.append(
-                    (m, humming_timing.kernel_us / timing.kernel_us)
-                )
         conversion_name = "expand" if source is None else "quant"
         if timing.conversion_us > 0.0:
             total_name = f"gemm+{conversion_name}"
@@ -742,27 +669,6 @@ def main() -> None:
             f"  overall: {overall:.3f}x over "
             f"{len(torch_fp8_speedups)} shapes"
         )
-
-    if humming_kernel_speedups:
-        print("MXFP6 isolated-GEMM speedup over Humming by batch:")
-        for batch in sorted({m for m, _ in humming_kernel_speedups}):
-            values = [
-                value for m, value in humming_kernel_speedups if m == batch
-            ]
-            geometric_mean = math.exp(
-                sum(math.log(value) for value in values) / len(values)
-            )
-            print(
-                f"  bs{batch:<4}: {geometric_mean:.3f}x "
-                f"over {len(values)} shapes"
-            )
-        kernel_overall = math.exp(
-            sum(math.log(value) for _, value in humming_kernel_speedups)
-            / len(humming_kernel_speedups)
-        )
-        print(f"  overall: {kernel_overall:.3f}x over "
-              f"{len(humming_kernel_speedups)} shapes")
-
 
 if __name__ == "__main__":
     main()

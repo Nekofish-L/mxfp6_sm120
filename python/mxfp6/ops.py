@@ -10,7 +10,6 @@ from ._loader import load_library
 
 if TYPE_CHECKING:
     from .autotune import W6A8Config
-    from .humming_backend import HummingMXFP6Weight
 
 
 SCALE_VECTOR_SIZE = 32
@@ -618,7 +617,7 @@ def warmup_w6a8(
 
 def gemm(
     a: torch.Tensor | MXFP8Tensor | PackedMXFP6Tensor,
-    b: PackedMXFP6Tensor | HummingMXFP6Weight,
+    b: PackedMXFP6Tensor,
     alpha: float = 1.0,
     *,
     out_dtype: torch.dtype = torch.float16,
@@ -629,8 +628,6 @@ def gemm(
     for every batch size. :class:`MXFP8Tensor` skips that conversion. Packed
     MXFP6 activation inputs retain the legacy W6A6-compatible API.
 
-    A :class:`~mxfp6.HummingMXFP6Weight` selects the optional Humming reference
-    backend only when explicitly supplied; ordinary weights never route to it.
     """
     out_dtype = _validate_output_dtype(out_dtype)
     if isinstance(a, torch.Tensor):
@@ -651,16 +648,8 @@ def gemm(
             "PackedMXFP6Tensor"
         )
 
-    # Keep Humming optional and lazily imported. This also avoids starting its
-    # background JIT launcher for users of the native W6A6 path.
-    from .humming_backend import HummingMXFP6Weight, gemm_humming
-
-    if isinstance(b, HummingMXFP6Weight):
-        return gemm_humming(a, b, alpha, out_dtype=out_dtype)
     if not isinstance(b, PackedMXFP6Tensor):
-        raise TypeError(
-            "b must be a PackedMXFP6Tensor or HummingMXFP6Weight instance"
-        )
+        raise TypeError("b must be a PackedMXFP6Tensor instance")
     if a.k != b.k:
         raise ValueError(f"a.k and b.k must match; got {a.k} and {b.k}")
     if a.device != b.device:
