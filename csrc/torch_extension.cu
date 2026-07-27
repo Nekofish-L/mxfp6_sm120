@@ -1,5 +1,7 @@
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
+#include <cstdlib>
 #include <iterator>
 #include <limits>
 #include <mutex>
@@ -29,6 +31,30 @@
 using namespace cute;
 
 namespace {
+
+bool stream_k_enabled() {
+  static bool const enabled = [] {
+    char const* raw = std::getenv("MXFP6_STREAM_K");
+    if (raw == nullptr) {
+      return true;
+    }
+    std::string value(raw);
+    auto const not_space = [](unsigned char character) {
+      return !std::isspace(character);
+    };
+    value.erase(
+        value.begin(), std::find_if(value.begin(), value.end(), not_space));
+    value.erase(
+        std::find_if(value.rbegin(), value.rend(), not_space).base(),
+        value.end());
+    std::transform(
+        value.begin(), value.end(), value.begin(), [](unsigned char character) {
+          return static_cast<char>(std::tolower(character));
+        });
+    return value != "0" && value != "false";
+  }();
+  return enabled;
+}
 
 enum class RasterOrder {
   Heuristic,
@@ -630,6 +656,15 @@ at::Tensor launch_swapped_policy(at::Tensor const& a,
   int64_t const output_elements = m * n;
   int const stream_k_splits = output_elements <= 524288 ? 4 : 1;
 
+  if (!stream_k_enabled()) {
+    if (m <= 16) {
+      return launch_swapped<kernels::Kernel64x16x128Stage3Pingpong>(
+          a, b, sfa, sfb, m, n, k, alpha, device_index);
+    }
+    return launch_swapped<kernels::Kernel64x32x128Stage3Pingpong>(
+        a, b, sfa, sfb, m, n, k, alpha, device_index);
+  }
+
   if (k >= 8192) {
     if (m <= 8) {
       return launch_swapped<kernels::Kernel128x8StreamK>(
@@ -739,6 +774,23 @@ at::Tensor launch_normal_policy(at::Tensor const& a,
   namespace kernels = mxfp6_gemm::normal;
   int64_t const output_elements = m * n;
   int const stream_k_splits = output_elements <= 524288 ? 4 : 1;
+
+  if (!stream_k_enabled()) {
+    if (output_elements <= 131072 && n <= 1024) {
+      return launch_normal<kernels::Kernel64x16x256Pingpong>(
+          a, b, sfa, sfb, m, n, k, alpha, device_index);
+    }
+    if (output_elements <= 262144) {
+      return launch_normal<kernels::Kernel64x32x128Stage3Pingpong>(
+          a, b, sfa, sfb, m, n, k, alpha, device_index);
+    }
+    if (output_elements <= 16777216) {
+      return launch_normal<kernels::Kernel64x64x128Stage4Pingpong>(
+          a, b, sfa, sfb, m, n, k, alpha, device_index);
+    }
+    return launch_normal<kernels::Kernel128x128x128Pingpong>(
+        a, b, sfa, sfb, m, n, k, alpha, device_index);
+  }
 
   if (k <= 512) {
     if (output_elements <= 262144) {
@@ -854,6 +906,9 @@ at::Tensor launch_w6a8_128(at::Tensor const& a,
                            RasterOrder raster,
                            bool use_pdl) {
   namespace kernels = mxfp6_gemm::normal;
+  if (kernel == W6A8Kernel128::StreamK && !stream_k_enabled()) {
+    kernel = W6A8Kernel128::Pingpong;
+  }
   switch (kernel) {
     case W6A8Kernel128::Pingpong:
       return launch_normal<kernels::KernelW6A8_128x128x128Pingpong>(
@@ -918,6 +973,12 @@ at::Tensor launch_w6a8_config(at::Tensor const& a,
           a, b, sfa, sfb, m, n, k, alpha, device_index,
           swizzle_value, raster, 1, sm_count, use_pdl);
     case 3:
+      if (!stream_k_enabled()) {
+        return launch_swapped<
+            swapped::KernelW6A8_128x8Stage4StaticCooperative>(
+            a, b, sfa, sfb, m, n, k, alpha, device_index,
+            swizzle_value, raster, 1, sm_count, use_pdl);
+      }
       return launch_swapped<swapped::KernelW6A8_128x8StreamK>(
           a, b, sfa, sfb, m, n, k, alpha, device_index,
           swizzle_value, raster, 1, sm_count, use_pdl);
@@ -1116,7 +1177,13 @@ at::Tensor launch_w6a8_policy(at::Tensor const& a,
           a, b, sfa, sfb, m, n, k, alpha, device_index,
           1, RasterOrder::AlongM, 1, sm_count, use_pdl);
     }
-    return launch_swapped<swapped::KernelW6A8_128x8StreamK>(
+    if (stream_k_enabled()) {
+      return launch_swapped<swapped::KernelW6A8_128x8StreamK>(
+          a, b, sfa, sfb, m, n, k, alpha, device_index,
+          2, RasterOrder::AlongM, 1, sm_count, use_pdl);
+    }
+    return launch_swapped<
+        swapped::KernelW6A8_128x8Stage4StaticCooperative>(
         a, b, sfa, sfb, m, n, k, alpha, device_index,
         2, RasterOrder::AlongM, 1, sm_count, use_pdl);
   }

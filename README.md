@@ -180,6 +180,18 @@ for activation, weight in production_problems:
 stats = mxfp6.finalize_workspace_planning(device)
 ```
 
+Stream-K is enabled by default. Set `MXFP6_STREAM_K=0` or
+`MXFP6_STREAM_K=false` before the first MXFP6 operation to disable every
+Stream-K dispatch and remove its workspace-planning requirement:
+
+```bash
+MXFP6_STREAM_K=0 python3 your_application.py
+```
+
+When disabled, built-in dispatch and runtime autotuning exclude Stream-K
+kernels, and cached tuning decisions are isolated from the default policy.
+The workspace APIs remain callable but collect zero layouts.
+
 Planning launches use CUTLASS's compatibility initialization path. After
 finalization, each CUDA stream receives a fixed lane whose barrier tail is
 cleared once; subsequent launches use `update()` and do not enqueue a

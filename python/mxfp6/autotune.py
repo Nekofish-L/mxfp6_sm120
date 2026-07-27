@@ -66,6 +66,7 @@ KERNEL_NAMES = (
 )
 RASTER_NAMES = ("heuristic", "along_m", "along_n")
 SWIZZLES = (1, 2, 4, 8)
+STREAM_K_CONFIG_IDS = frozenset((3, 16))
 
 
 @dataclass(frozen=True)
@@ -110,6 +111,14 @@ def _env_bool(name: str, default: bool) -> bool:
 def is_autotune_enabled() -> bool:
     """Return whether first-use tuning is enabled (enabled by default)."""
     return _env_bool("MXFP6_AUTOTUNE", True)
+
+
+def is_stream_k_enabled() -> bool:
+    """Return whether Stream-K kernels are enabled (enabled by default)."""
+    raw = os.environ.get("MXFP6_STREAM_K")
+    if raw is None:
+        return True
+    return raw.strip().lower() not in ("0", "false")
 
 
 def should_tune_exact_shapes() -> bool:
@@ -202,6 +211,7 @@ def _descriptor(
         "candidate_abi": CANDIDATE_ABI,
         "timing_policy": TIMING_POLICY,
         "library": _library_fingerprint(),
+        "stream_k_enabled": is_stream_k_enabled(),
         "device": _device_descriptor(device_index),
         "problem": {
             "m": m,
@@ -360,7 +370,15 @@ def _kernel_ids(m: int, k: int) -> tuple[int, ...]:
     else:
         kernels = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     if k < 1024:
-        kernels = [kernel for kernel in kernels if kernel not in (3, 16)]
+        kernels = [
+            kernel for kernel in kernels
+            if kernel not in STREAM_K_CONFIG_IDS
+        ]
+    if not is_stream_k_enabled():
+        kernels = [
+            kernel for kernel in kernels
+            if kernel not in STREAM_K_CONFIG_IDS
+        ]
     return tuple(kernels)
 
 

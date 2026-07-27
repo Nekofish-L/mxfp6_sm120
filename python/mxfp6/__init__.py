@@ -5,6 +5,7 @@ from .autotune import (
     W6A8Config,
     cache_directory as autotune_cache_directory,
     is_autotune_enabled,
+    is_stream_k_enabled,
 )
 from .ops import (
     MXFP8Tensor,
@@ -59,6 +60,7 @@ __all__ = [
     "gemm_w6a8",
     "is_available",
     "is_autotune_enabled",
+    "is_stream_k_enabled",
     "is_tuned_shape",
     "load_library",
     "pack_fp6",

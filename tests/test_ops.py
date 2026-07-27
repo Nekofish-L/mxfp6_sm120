@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import os
 import sys
 from pathlib import Path
@@ -217,6 +218,18 @@ def test_w6a8_candidate_registry(mxfp6) -> None:
             a8, m, n, k, -1, 1, 0, torch.bfloat16
         )
     print("PASS FP16/BF16 W6A8 candidate ABI and C++ override registry")
+
+
+def test_stream_k_autotune_filter(mxfp6) -> None:
+    """Keep Stream-K out of candidate search when integration disables it."""
+    autotune = importlib.import_module("mxfp6.autotune")
+    kernel_ids = autotune._kernel_ids(512, 5120)
+    stream_k_ids = autotune.STREAM_K_CONFIG_IDS
+    if mxfp6.is_stream_k_enabled():
+        assert stream_k_ids.intersection(kernel_ids)
+    else:
+        assert stream_k_ids.isdisjoint(kernel_ids)
+    print("PASS Stream-K runtime-autotune candidate filtering")
 
 
 def test_float_w6a8_gemm(mxfp6) -> None:
@@ -460,6 +473,30 @@ def test_persistent_workspace(mxfp6) -> None:
         torch.float16,
     )
 
+    if not mxfp6.is_stream_k_enabled():
+        mxfp6.begin_workspace_planning()
+        actual = torch.ops.mxfp6.gemm_w6a8(*arguments)
+        split_k_actual = torch.ops.mxfp6.gemm(*split_k_arguments)
+        torch.cuda.synchronize()
+        planning_stats = mxfp6.workspace_stats()
+        assert planning_stats["layouts"] == 0
+        assert planning_stats["arena_bytes"] == 0
+        finalized_stats = mxfp6.finalize_workspace_planning()
+        assert finalized_stats["frozen"] == 1
+        assert finalized_stats["lanes"] == 0
+        expected = reference_gemm(
+            a_codes, b_codes, sfa, sfb, torch.bfloat16
+        )
+        torch.testing.assert_close(actual, expected, rtol=2e-3, atol=0.5)
+        torch.testing.assert_close(
+            split_k_actual,
+            reference_gemm(a_codes, b_codes, sfa, sfb),
+            rtol=2e-3,
+            atol=0.5,
+        )
+        print("PASS MXFP6_STREAM_K disables Stream-K and workspace layouts")
+        return
+
     mxfp6.begin_workspace_planning()
     previous_collection = torch.ops.mxfp6._set_workspace_collection(
         a8, False
@@ -531,6 +568,7 @@ def main() -> None:
     test_scale_tools(mxfp6)
     test_dynamic_quantization(mxfp6)
     test_w6a8_candidate_registry(mxfp6)
+    test_stream_k_autotune_filter(mxfp6)
     test_float_w6a8_gemm(mxfp6)
     test_warmup_api(mxfp6)
     test_random_scale_gemm(mxfp6)
