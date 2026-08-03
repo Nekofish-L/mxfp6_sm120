@@ -30,7 +30,7 @@ from ._loader import load_library
 
 AUTOTUNE_SCHEMA = 1
 CANDIDATE_ABI = "native-w6a8-29-v4"
-TIMING_POLICY = "gemm-kernels-two-stage-v3"
+TIMING_POLICY = "gemm-cuda-events-two-stage-v4"
 FALLBACK_CONFIG_ID = -1
 
 KERNEL_NAMES = (
@@ -433,29 +433,39 @@ def _measure_config(
     torch.cuda.synchronize(a.device)
     samples = []
     for _ in range(repeats):
-        with torch.profiler.profile(
-            activities=[torch.profiler.ProfilerActivity.CUDA],
-            acc_events=True,
-        ) as profiler:
+        if flush is None:
+            start = torch.cuda.Event(enable_timing=True)
+            end = torch.cuda.Event(enable_timing=True)
+            start.record()
             for _ in range(iterations):
-                if flush is not None:
-                    flush.zero_()
                 _run_config(
                     config, a, b, sfa, sfb, m, n, k, out_dtype
                 )
+            end.record()
+            starts = [start]
+            ends = [end]
+        else:
+            starts = [
+                torch.cuda.Event(enable_timing=True)
+                for _ in range(iterations)
+            ]
+            ends = [
+                torch.cuda.Event(enable_timing=True)
+                for _ in range(iterations)
+            ]
+            for start, end in zip(starts, ends, strict=True):
+                flush.zero_()
+                start.record()
+                _run_config(
+                    config, a, b, sfa, sfb, m, n, k, out_dtype
+                )
+                end.record()
         torch.cuda.synchronize(a.device)
-        gemm_device_times = [
-            event.self_device_time_total
-            for event in profiler.events()
-            if event.device_type.name == "CUDA"
-            and "cutlass" in event.name.lower()
+        elapsed_us = [
+            start.elapsed_time(end) * 1_000
+            for start, end in zip(starts, ends, strict=True)
         ]
-        if len(gemm_device_times) < iterations:
-            raise RuntimeError(
-                f"expected at least {iterations} GEMM device events; "
-                f"found {len(gemm_device_times)}"
-            )
-        samples.append(sum(gemm_device_times) / iterations)
+        samples.append(sum(elapsed_us) / iterations)
     return statistics.median(samples)
 
 
