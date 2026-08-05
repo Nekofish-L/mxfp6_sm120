@@ -1240,6 +1240,19 @@ at::Tensor launch_w6a8_policy(at::Tensor const& a,
         1, RasterOrder::Heuristic, 1, 0, use_pdl);
   }
 
+  if (target_nk && m == 40 && n == 5120 && k == 3072) {
+    return launch_swapped<swapped::KernelW6A8_64x32x128Stage3Pingpong>(
+        a, b, sfa, sfb, m, n, k, alpha, device_index,
+        1, RasterOrder::AlongM, 1, 0, use_pdl);
+  }
+
+  if (target_nk && m == 48 && n == 5120 && k == 3072) {
+    return launch_swapped<
+        swapped::KernelW6A8_64x32x128Stage3StaticPingpong>(
+        a, b, sfa, sfb, m, n, k, alpha, device_index,
+        4, RasterOrder::AlongN, 1, sm_count, use_pdl);
+  }
+
   if (target_nk && m == 64) {
     if (n == 5120 && k == 3072) {
       return launch_normal<normal::KernelW6A8_64x64x128Stage4StaticPingpong>(
