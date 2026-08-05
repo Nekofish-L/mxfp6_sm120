@@ -685,7 +685,9 @@ def gemm_from_codes(
 
 def is_tuned_shape(m: int, n: int, k: int) -> bool:
     """Return whether a problem has an exact target-shape override."""
-    return m in TUNED_M and (n, k) in TUNED_NK
+    if m in TUNED_M and (n, k) in TUNED_NK:
+        return True
+    return m in (40, 48) and (n, k) == (5120, 3072)
 
 
 def is_available() -> bool:
