@@ -389,15 +389,18 @@ def test_small_w6a8_dispatch(mxfp6) -> None:
 
 
 def test_tuned_transition_gemm(mxfp6) -> None:
-    """Exercise native and mixed exact dispatch at M=32, 64, and 96."""
+    """Exercise native and mixed exact dispatch around batch transitions."""
     shapes = (
         (32, 8192, 5120),
+        (40, 5120, 3072),
+        (48, 5120, 3072),
         (64, 5120, 3072),
         (64, 5120, 8704),
         (96, 7168, 5120),
         (96, 17408, 5120),
     )
     for index, (m, n, k) in enumerate(shapes):
+        assert mxfp6.is_tuned_shape(m, n, k)
         a_codes, b_codes, sfa, sfb = make_problem(m, n, k, 3200 + index)
         actual = mxfp6.gemm(
             mxfp6.pack_operand(a_codes, sfa),
