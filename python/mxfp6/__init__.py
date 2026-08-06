@@ -4,6 +4,7 @@ from ._loader import load_library
 from .autotune import (
     W6A8Config,
     cache_directory as autotune_cache_directory,
+    is_autotune_cache_only,
     is_autotune_enabled,
     is_stream_k_enabled,
 )
@@ -59,6 +60,7 @@ __all__ = [
     "gemm_packed",
     "gemm_w6a8",
     "is_available",
+    "is_autotune_cache_only",
     "is_autotune_enabled",
     "is_stream_k_enabled",
     "is_tuned_shape",

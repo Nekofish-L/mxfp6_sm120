@@ -213,8 +213,12 @@ Each code uses its low six bits. UE8M0 byte `0x7f` represents scale 1.0.
 
 ## Runtime autotuning
 
-Unknown W6A8 shapes use first-use selection over 29 precompiled native CUTLASS
-families. This is AOT kernel selection, not runtime NVRTC compilation.
+Unknown W6A8 shapes use first-use selection from precompiled native CUTLASS
+families. The default searches all 29 families through `M=512`, where that
+recovers the small/medium-prefill swapped-tile winners. Above `M=512`, it uses
+the stable normal-family shortlist: measured family gaps are small there, and
+ranking a much larger set from finite samples can select a lucky-but-slower
+candidate. This is AOT kernel selection, not runtime NVRTC compilation.
 `autotune_w6a8` accepts FP16/BF16 or prequantized MXFP8 activation input, and
 its cache and in-process overrides are isolated by output dtype:
 
@@ -225,22 +229,49 @@ its cache and in-process overrides are isolated by output dtype:
    build, GPU, shape, output dtype and measurement policy.
 
 Later calls use the in-process override; later processes load the JSON cache
-without profiling. Tuning and file I/O are disabled during CUDA Graph capture
-and `torch.compile` tracing.
+without profiling. `MXFP6_AUTOTUNE=cache_only` makes this deployment behavior
+strict: a cache miss leaves the native static dispatcher in place rather than
+profiling in a live eager-prefill request. Tuning and file I/O are disabled
+during CUDA Graph capture and `torch.compile` tracing.
+
+For the Qwen3.5-27B TP2 target projections, that static eager-prefill path
+also has two bounded post-graph rules for `1024 < M < 2048`: the shallow-K
+`5120x3072` projection picks the 64x128 ping-pong tile when its final wave is
+fuller than the 128x128 alternative, while the deep-K `7168x5120` and
+`8192x5120` projections retain Stream-K for an exceptionally short final
+wave. They avoid known cache-miss holes without broadening the online search;
+other shapes and larger-M limits remain on the generic dispatcher until an
+offline cache is supplied.
+
+The default cadence follows FlashInfer's three warmups and ten measured
+launches per timing sample, then takes the median of three samples. It keeps
+warm-cache ranking by default (`MXFP6_AUTOTUNE_FLUSH_L2_MB=0`).
 
 Useful controls:
 
 ```bash
-MXFP6_AUTOTUNE=0                    # checked-in/static fallback only
+MXFP6_AUTOTUNE=0                    # checked-in/static dispatch only
+MXFP6_AUTOTUNE=cache_only           # load cache hits; static dispatch on miss
 MXFP6_AUTOTUNE_VERBOSE=1            # print tune and cache-hit decisions
 MXFP6_AUTOTUNE_CACHE_DIR=/local/dir # override the persistent cache directory
-MXFP6_AUTOTUNE_FLUSH_L2_MB=256      # tune with explicit cache flushing
+MXFP6_AUTOTUNE_WARMUP=3             # default; FlashInfer-aligned warmup count
+MXFP6_AUTOTUNE_ITERATIONS=10        # default launches per timing sample
+MXFP6_AUTOTUNE_REPEATS=3            # default median sample count
+MXFP6_AUTOTUNE_FLUSH_L2_MB=0        # default warm-cache ranking (256 = flush)
+MXFP6_AUTOTUNE_ALL_FAMILIES_MAX_M=512 # raise for offline full-family search
 MXFP6_AUTOTUNE_EXACT=1              # retune checked-in exact shapes
 MXFP6_AUTOTUNE_EXHAUSTIVE=1         # offline: refine every eligible family
 ```
 
 The default cache is `$XDG_CACHE_HOME/mxfp6/autotune`, or
 `~/.cache/mxfp6/autotune` when `XDG_CACHE_HOME` is unset.
+
+For serving, generate or distribute the cache during a separate warmup job,
+then launch workers with `MXFP6_AUTOTUNE=cache_only`. This mirrors
+FlashInfer's inference path: cache lookup is allowed, while an out-of-range
+shape falls back immediately instead of starting a profiler. In this mode,
+even `force=True` cannot start profiling; use `MXFP6_AUTOTUNE=1` for the
+separate cache-generation job.
 
 ## Benchmarking
 
@@ -316,7 +347,8 @@ The CUTLASS profiler is a candidate generator rather than the production
 dispatcher. Ordered profiling, clock drift, warm weights and minimum-selection
 bias can change a winner. Promote a fixed configuration only after independent
 randomized validation. General atomic work stealing is not used for uniform
-interior tiles; Stream-K is retained only for underfilled tail waves.
+interior tiles; Stream-K is retained only for underfilled tail waves, including
+the bounded eager-prefill short-tail rule above.
 
 ## Repository layout
 

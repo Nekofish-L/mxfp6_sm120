@@ -7,7 +7,9 @@ import argparse
 import importlib
 import os
 import sys
+import tempfile
 from pathlib import Path
+from unittest import mock
 
 import torch
 
@@ -232,6 +234,131 @@ def test_stream_k_autotune_filter(mxfp6) -> None:
     print("PASS Stream-K runtime-autotune candidate filtering")
 
 
+def test_hybrid_autotune_candidate_policy(mxfp6) -> None:
+    """Keep the validated all-family/safe-large-M boundary intentional."""
+    autotune = importlib.import_module("mxfp6.autotune")
+    with mock.patch.dict(
+        os.environ,
+        {"MXFP6_AUTOTUNE_ALL_FAMILIES_MAX_M": "512"},
+        clear=False,
+    ):
+        expected_small = set(range(len(autotune.KERNEL_NAMES)))
+        expected_large = set(range(6, 17))
+        if not mxfp6.is_stream_k_enabled():
+            expected_small.difference_update(autotune.STREAM_K_CONFIG_IDS)
+            expected_large.difference_update(autotune.STREAM_K_CONFIG_IDS)
+        assert set(autotune._kernel_ids(512, 5120)) == expected_small
+        assert autotune._kernel_ids(513, 5120) == tuple(sorted(expected_large))
+    print("PASS hybrid runtime-autotune candidate policy")
+
+
+def test_autotune_cache_only(mxfp6) -> None:
+    """A deployment cache miss must not profile, while a hit installs."""
+    autotune = importlib.import_module("mxfp6.autotune")
+    ops = importlib.import_module("mxfp6.ops")
+    m, n, k = 17, 136, 128
+    a_codes, b_codes, sfa, sfb = make_problem(m, n, k, 6820)
+    a6 = mxfp6.pack_operand(a_codes, sfa)
+    b = mxfp6.pack_operand(b_codes, sfb)
+    a8 = mxfp6.MXFP8Tensor(
+        torch.ops.mxfp6.expand_fp6_to_fp8(a6.values, m, k),
+        a6.scales,
+        m,
+        k,
+    )
+    out_dtype = torch.float16
+    device_index = a8.device.index
+    if device_index is None:
+        device_index = torch.cuda.current_device()
+    descriptor = autotune._descriptor(device_index, m, n, k, out_dtype)
+    cache_key = autotune._cache_key(descriptor)
+    decision_key = (device_index, cache_key)
+    ready_key = ops._autotune_process_key(a8.device, m, n, k, out_dtype)
+
+    def clear_process_state() -> None:
+        with autotune._STATE_LOCK:
+            autotune._DECISIONS.pop(decision_key, None)
+        with ops._AUTOTUNE_STATE_LOCK:
+            ops._AUTOTUNE_READY.discard(ready_key)
+
+    torch.ops.mxfp6.set_w6a8_config(
+        a8.values, m, n, k, -1, 1, 0, out_dtype
+    )
+    try:
+        with tempfile.TemporaryDirectory() as cache_dir:
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "MXFP6_AUTOTUNE": "cache_only",
+                    "MXFP6_AUTOTUNE_CACHE_DIR": cache_dir,
+                },
+                clear=False,
+            ):
+                assert mxfp6.is_autotune_enabled()
+                assert mxfp6.is_autotune_cache_only()
+                clear_process_state()
+                with mock.patch.object(
+                    autotune,
+                    "_autotune",
+                    side_effect=AssertionError("cache_only profiled a miss"),
+                ) as profiler:
+                    mxfp6.gemm_w6a8(a8, b, out_dtype=out_dtype)
+                    mxfp6.gemm_w6a8(a8, b, out_dtype=out_dtype)
+                    assert mxfp6.autotune_w6a8(
+                        a8, b, out_dtype=out_dtype, force=True
+                    ) is None
+                    assert not profiler.called
+                with ops._AUTOTUNE_STATE_LOCK:
+                    assert ready_key in ops._AUTOTUNE_READY
+                assert not list(Path(cache_dir).glob("*.json"))
+
+                expected_config = autotune.W6A8Config(5, 2, 1)
+                autotune._write_entry(
+                    cache_key,
+                    descriptor,
+                    autotune.AutotuneResult(
+                        expected_config, 1.0, 2.0, 1.5, 3
+                    ),
+                )
+                clear_process_state()
+                with mock.patch.object(
+                    ops, "is_tuned_shape", return_value=True
+                ), mock.patch.object(
+                    autotune,
+                    "_autotune",
+                    side_effect=AssertionError("cache_only profiled a hit"),
+                ) as profiler:
+                    # Cache-only must also check a cache entry that overrides
+                    # a shape otherwise covered by the built-in static table.
+                    actual_config = mxfp6.autotune_w6a8(
+                        a8, b, out_dtype=out_dtype
+                    )
+                    assert actual_config == expected_config
+                    assert not profiler.called
+                actual = mxfp6.gemm_w6a8(a8, b, out_dtype=out_dtype)
+                expected = torch.ops.mxfp6.gemm_w6a8_config(
+                    a8.values,
+                    b.values,
+                    a8.scales,
+                    b.scales,
+                    m,
+                    n,
+                    k,
+                    1.0,
+                    expected_config.config_id,
+                    expected_config.swizzle,
+                    expected_config.raster_order,
+                    out_dtype,
+                )
+                torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+    finally:
+        clear_process_state()
+        torch.ops.mxfp6.set_w6a8_config(
+            a8.values, m, n, k, -1, 1, 0, out_dtype
+        )
+    print("PASS cache-only autotune cache hit/miss behavior")
+
+
 def test_float_w6a8_gemm(mxfp6) -> None:
     """Compare fused and prequantized native W6A8 against an FP32 reference."""
     for index, (m, n, k, dtype) in enumerate(
@@ -360,6 +487,31 @@ def test_large_m_mixed_gemm(mxfp6) -> None:
         "PASS packed-W6 large-M mixed GEMM "
         f"{m}x{n}x{k}: max_abs={max_abs:g}"
     )
+
+
+def test_eager_prefill_static_heuristics(mxfp6) -> None:
+    """Exercise the cache-miss large-prefill fallback windows."""
+    shapes = (
+        (1025, 5120, 3072),  # 64x128 wave-balance choice
+        (1537, 7168, 5120),  # deep-K QKV short-tail Stream-K
+        (1281, 8192, 5120),  # deep-K GDN-in short-tail Stream-K
+    )
+    with mock.patch.dict(os.environ, {"MXFP6_AUTOTUNE": "0"}, clear=False):
+        for index, (m, n, k) in enumerate(shapes):
+            assert not mxfp6.is_tuned_shape(m, n, k)
+            a_codes, b_codes, sfa, sfb = make_problem(
+                m, n, k, 1210 + index
+            )
+            a = mxfp6.pack_operand(a_codes, sfa)
+            b = mxfp6.pack_operand(b_codes, sfb)
+            actual = mxfp6.gemm(a, b)
+            reference = reference_gemm(a_codes, b_codes, sfa, sfb)
+            torch.testing.assert_close(actual, reference, rtol=2e-3, atol=0.25)
+            max_abs = (actual - reference).abs().max().item()
+            print(
+                "PASS eager-prefill static heuristic "
+                f"{m}x{n}x{k}: max_abs={max_abs:g}"
+            )
 
 
 def test_small_w6a8_dispatch(mxfp6) -> None:
@@ -572,12 +724,15 @@ def main() -> None:
     test_dynamic_quantization(mxfp6)
     test_w6a8_candidate_registry(mxfp6)
     test_stream_k_autotune_filter(mxfp6)
+    test_hybrid_autotune_candidate_policy(mxfp6)
+    test_autotune_cache_only(mxfp6)
     test_float_w6a8_gemm(mxfp6)
     test_warmup_api(mxfp6)
     test_random_scale_gemm(mxfp6)
     test_small_w6a8_dispatch(mxfp6)
     test_tuned_transition_gemm(mxfp6)
     test_large_m_mixed_gemm(mxfp6)
+    test_eager_prefill_static_heuristics(mxfp6)
     test_nondefault_stream(mxfp6)
     test_float_nondefault_stream(mxfp6)
     test_persistent_workspace(mxfp6)

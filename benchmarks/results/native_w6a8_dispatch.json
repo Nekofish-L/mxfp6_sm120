@@ -41,7 +41,7 @@
     "orientation": "normal",
     "tile_portfolio": [[64, 64, 128], [64, 64, 256], [64, 128, 128], [128, 128, 128]],
     "schedulers": ["pingpong", "cooperative", "static_persistent", "stream_k"],
-    "stream_k_policy": "exact overrides plus underfilled-tail fallback",
+    "stream_k_policy": "exact overrides, generic underfilled-tail fallback, and bounded 1024<M<2048 eager-prefill short-tail rules",
     "implementation": "csrc/torch_extension.cu:launch_w6a8_policy"
   },
   "runtime_retune": {

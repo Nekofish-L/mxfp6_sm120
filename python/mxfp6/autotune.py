@@ -1,9 +1,9 @@
 """First-use native W6A8 autotuning with a persistent dispatch cache.
 
 The kernels themselves are AOT-compiled into ``mxfp6_torch``.  For a shape
-without a checked-in exact override, this module benchmarks a shape-aware
-shortlist once, validates the winner, installs it in the C++ dispatcher, and
-persists the decision for later processes.
+without a checked-in exact override, this module benchmarks an M-aware
+candidate policy once, validates the winner, installs it in the C++ dispatcher,
+and persists the decision for later processes.
 """
 
 from __future__ import annotations
@@ -30,8 +30,13 @@ from ._loader import load_library
 
 AUTOTUNE_SCHEMA = 1
 CANDIDATE_ABI = "native-w6a8-29-v4"
+CANDIDATE_POLICY = "hybrid-all-families-through-m512-v2"
 TIMING_POLICY = "gemm-cuda-events-two-stage-v4"
 FALLBACK_CONFIG_ID = -1
+DEFAULT_AUTOTUNE_WARMUP = 3
+DEFAULT_AUTOTUNE_ITERATIONS = 10
+DEFAULT_AUTOTUNE_REPEATS = 3
+DEFAULT_ALL_FAMILIES_MAX_M = 512
 
 KERNEL_NAMES = (
     "swapped_128x8_static_cooperative",
@@ -109,8 +114,26 @@ def _env_bool(name: str, default: bool) -> bool:
 
 
 def is_autotune_enabled() -> bool:
-    """Return whether first-use tuning is enabled (enabled by default)."""
-    return _env_bool("MXFP6_AUTOTUNE", True)
+    """Return whether the autotune cache/tuner is enabled."""
+    return autotune_mode() != "off"
+
+
+def autotune_mode() -> str:
+    """Return ``on``, ``off``, or deployment-safe ``cache_only`` mode."""
+    raw = os.environ.get("MXFP6_AUTOTUNE")
+    if raw is None:
+        return "on"
+    value = raw.strip().lower()
+    if value == "cache_only":
+        return "cache_only"
+    if value in ("", "0", "false", "no", "off"):
+        return "off"
+    return "on"
+
+
+def is_autotune_cache_only() -> bool:
+    """Return whether misses may read cache entries but must not profile."""
+    return autotune_mode() == "cache_only"
 
 
 def is_stream_k_enabled() -> bool:
@@ -148,6 +171,14 @@ def _nonnegative_env_int(name: str, default: int) -> int:
     if value < 0:
         raise ValueError(f"{name} must be nonnegative; got {value}")
     return value
+
+
+def _all_families_max_m() -> int:
+    """Return the largest M that receives full-family coarse search."""
+    return _nonnegative_env_int(
+        "MXFP6_AUTOTUNE_ALL_FAMILIES_MAX_M",
+        DEFAULT_ALL_FAMILIES_MAX_M,
+    )
 
 
 def _output_dtype_name(out_dtype: torch.dtype) -> str:
@@ -209,6 +240,13 @@ def _descriptor(
     return {
         "schema": AUTOTUNE_SCHEMA,
         "candidate_abi": CANDIDATE_ABI,
+        # The candidate set changed independently of the native ABI; fold the
+        # policy into the cache key so decisions tuned under another M regime
+        # are retuned rather than replayed.
+        "candidate_policy": {
+            "name": CANDIDATE_POLICY,
+            "all_families_max_m": _all_families_max_m(),
+        },
         "timing_policy": TIMING_POLICY,
         "library": _library_fingerprint(),
         "stream_k_enabled": is_stream_k_enabled(),
@@ -229,9 +267,15 @@ def _descriptor(
                 "exhaustive" if _use_exhaustive_search() else "two_stage"
             ),
             "flush_l2_mb": flush_l2_mb,
-            "warmup": _positive_env_int("MXFP6_AUTOTUNE_WARMUP", 2),
-            "iterations": _positive_env_int("MXFP6_AUTOTUNE_ITERATIONS", 5),
-            "repeats": _positive_env_int("MXFP6_AUTOTUNE_REPEATS", 3),
+            "warmup": _positive_env_int(
+                "MXFP6_AUTOTUNE_WARMUP", DEFAULT_AUTOTUNE_WARMUP
+            ),
+            "iterations": _positive_env_int(
+                "MXFP6_AUTOTUNE_ITERATIONS", DEFAULT_AUTOTUNE_ITERATIONS
+            ),
+            "repeats": _positive_env_int(
+                "MXFP6_AUTOTUNE_REPEATS", DEFAULT_AUTOTUNE_REPEATS
+            ),
             "minimum_improvement": float(
                 os.environ.get("MXFP6_AUTOTUNE_MIN_IMPROVEMENT", "0.02")
             ),
@@ -360,7 +404,15 @@ def can_autotune_now() -> bool:
 
 
 def _kernel_ids(m: int, k: int) -> tuple[int, ...]:
-    if m <= 16:
+    # Every AOT kernel family is geometrically valid for any M, and M-regime
+    # shortlists provably excluded winners through M=512 (notably swapped
+    # 64x32x128-stage3 at n=5120, k=3072). Above that point the observed
+    # family gaps are small enough for finite-sample ranking noise to dominate
+    # the larger search. Keep the stable normal-family shortlist there; an
+    # offline run can still opt into every family by raising the threshold.
+    if m <= _all_families_max_m():
+        kernels = list(range(len(KERNEL_NAMES)))
+    elif m <= 16:
         kernels = [0, 1, 2, 3, 4, 5]
     elif m <= 32:
         kernels = [
@@ -489,9 +541,15 @@ def _autotune_impl(
     k: int,
     out_dtype: torch.dtype,
 ) -> AutotuneResult:
-    warmup = _positive_env_int("MXFP6_AUTOTUNE_WARMUP", 2)
-    iterations = _positive_env_int("MXFP6_AUTOTUNE_ITERATIONS", 5)
-    repeats = _positive_env_int("MXFP6_AUTOTUNE_REPEATS", 3)
+    warmup = _positive_env_int(
+        "MXFP6_AUTOTUNE_WARMUP", DEFAULT_AUTOTUNE_WARMUP
+    )
+    iterations = _positive_env_int(
+        "MXFP6_AUTOTUNE_ITERATIONS", DEFAULT_AUTOTUNE_ITERATIONS
+    )
+    repeats = _positive_env_int(
+        "MXFP6_AUTOTUNE_REPEATS", DEFAULT_AUTOTUNE_REPEATS
+    )
     flush_mb = _nonnegative_env_int("MXFP6_AUTOTUNE_FLUSH_L2_MB", 0)
     flush = None
     if flush_mb:
@@ -707,14 +765,19 @@ def ensure_w6a8_tuned(
 ) -> W6A8Config | None:
     """Install a cached/native winner, tuning this shape once on a miss.
 
-    Returns ``None`` when autotuning is disabled or unsafe in the current
-    capture/compile context. A fallback decision is represented by config ID
-    ``-1`` and is also cached, preventing repeated unsuccessful searches.
+    In ``cache_only`` mode, a miss returns ``None`` without profiling so the
+    caller retains the native static dispatcher; this remains true even when
+    ``force=True``. Returns ``None`` when autotuning is disabled or unsafe in
+    the current capture/compile context. A fallback decision is represented by
+    config ID ``-1`` and is also cached, preventing repeated unsuccessful
+    searches.
     """
     if not force and not is_autotune_enabled():
         return None
     if _is_compiling_or_capturing():
         return None
+    cache_only = is_autotune_cache_only()
+    cache_lookup = not force or cache_only
     device_index = a.device.index
     if device_index is None:
         device_index = torch.cuda.current_device()
@@ -729,20 +792,20 @@ def ensure_w6a8_tuned(
     descriptor = _descriptor(device_index, m, n, k, out_dtype)
     key = _cache_key(descriptor)
     process_key = (device_index, key)
-    if not force:
+    if cache_lookup:
         with _STATE_LOCK:
             existing = _DECISIONS.get(process_key)
         if existing is not None:
             return existing
 
     with _get_key_lock(key):
-        if not force:
+        if cache_lookup:
             with _STATE_LOCK:
                 existing = _DECISIONS.get(process_key)
             if existing is not None:
                 return existing
 
-        cached = None if force else _read_entry(key, descriptor)
+        cached = _read_entry(key, descriptor) if cache_lookup else None
         if cached is not None:
             _install(a, m, n, k, cached, out_dtype)
             with _STATE_LOCK:
@@ -752,6 +815,12 @@ def ensure_w6a8_tuned(
                 f"{cached.raster}/sw{cached.swizzle}"
             )
             return cached
+
+        if cache_only:
+            _verbose(
+                f"cache miss {m}x{n}x{k}; using native static dispatcher"
+            )
+            return None
 
         result: AutotuneResult | None = None
         try:

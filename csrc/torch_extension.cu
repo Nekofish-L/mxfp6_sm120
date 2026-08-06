@@ -346,6 +346,45 @@ bool is_target_nk(int64_t n, int64_t k) {
       (n == 5120 && k == 8704);
 }
 
+int64_t output_tile_count(int64_t m, int64_t n, int64_t tile_m) {
+  return round_up(m, tile_m) / tile_m * (round_up(n, 128) / 128);
+}
+
+int64_t final_wave_tiles(int64_t tiles, int sm_count) {
+  int64_t const tail = tiles % sm_count;
+  // A modulo-zero tail is a completely occupied final wave, not an empty one.
+  return tail == 0 ? sm_count : tail;
+}
+
+// Cache-only serving deliberately keeps an unknown eager-prefill shape on the
+// static path.  These two rules cover the repeatable post-graph tail-wave
+// holes seen on Qwen3.5-27B TP2 without starting a runtime profile.  Keep the
+// scope below the checked-in M=2048 entry: larger prefill limits should use an
+// offline cache until they have their own profiler evidence.
+bool use_eager_prefill_64x128(int64_t m, int64_t n, int64_t k,
+                               int sm_count) {
+  if (m < 1024 || m >= 2048 || n != 5120 || k != 3072) {
+    return false;
+  }
+  int64_t const tiles_64 = output_tile_count(m, n, 64);
+  int64_t const tiles_128 = output_tile_count(m, n, 128);
+  return final_wave_tiles(tiles_64, sm_count) >
+      final_wave_tiles(tiles_128, sm_count);
+}
+
+bool use_eager_prefill_stream_k(int64_t m, int64_t n, int64_t k,
+                                 int sm_count) {
+  if (!stream_k_enabled() || m < 1024 || m >= 2048 || k != 5120 ||
+      (n != 7168 && n != 8192)) {
+    return false;
+  }
+  int64_t const tail = output_tile_count(m, n, 128) % sm_count;
+  // Beyond the generic four-wave cutoff, retain Stream-K only for a very
+  // short final wave.  One third of an RTX 5090's SMs is conservative across
+  // the measured QKV and GDN-in windows, while avoiding its nearby regressions.
+  return tail > 0 && tail <= sm_count / 3;
+}
+
 void check_input(at::Tensor const& tensor,
                  char const* name,
                  c10::Device device) {
@@ -1387,6 +1426,18 @@ at::Tensor launch_w6a8_policy(at::Tensor const& a,
                ? RasterOrder::AlongM
                : RasterOrder::AlongN,
         use_pdl);
+  }
+
+  if (use_eager_prefill_64x128(m, n, k, sm_count)) {
+    return launch_normal<normal::KernelW6A8_64x128x128Pingpong>(
+        a, b, sfa, sfb, m, n, k, alpha, device_index,
+        1, RasterOrder::Heuristic, 1, 0, use_pdl);
+  }
+
+  if (use_eager_prefill_stream_k(m, n, k, sm_count)) {
+    return launch_w6a8_128(
+        a, b, sfa, sfb, m, n, k, alpha, device_index, sm_count,
+        W6A8Kernel128::StreamK, 1, RasterOrder::Heuristic, use_pdl);
   }
 
   if (m <= 8) {
