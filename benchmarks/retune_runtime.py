@@ -182,9 +182,9 @@ def main() -> None:
         "batch_sizes": list(options.batch_sizes),
         "output_dtypes": list(options.output_dtypes),
         "measurement": {
-            "warmup": int(os.environ.get("MXFP6_AUTOTUNE_WARMUP", "2")),
+            "warmup": int(os.environ.get("MXFP6_AUTOTUNE_WARMUP", "3")),
             "iterations": int(
-                os.environ.get("MXFP6_AUTOTUNE_ITERATIONS", "5")
+                os.environ.get("MXFP6_AUTOTUNE_ITERATIONS", "10")
             ),
             "repeats": int(os.environ.get("MXFP6_AUTOTUNE_REPEATS", "3")),
             "minimum_improvement": float(

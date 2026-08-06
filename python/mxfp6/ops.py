@@ -140,13 +140,21 @@ def _needs_w6a8_autotune(
 ) -> bool:
     from .autotune import (
         can_autotune_now,
+        is_autotune_cache_only,
         is_autotune_enabled,
         should_tune_exact_shapes,
     )
 
     if not is_autotune_enabled() or not can_autotune_now():
         return False
-    if is_tuned_shape(m, n, k) and not should_tune_exact_shapes():
+    # In deployment cache-only mode, exact built-in shapes may still have a
+    # machine-local cached override. A miss will return to that built-in path
+    # without profiling, so it is safe (and useful) to check the cache.
+    if (
+        is_tuned_shape(m, n, k)
+        and not should_tune_exact_shapes()
+        and not is_autotune_cache_only()
+    ):
         return False
     key = _autotune_process_key(device, m, n, k, out_dtype)
     with _AUTOTUNE_STATE_LOCK:
@@ -165,12 +173,20 @@ def _ensure_w6a8_autotuned(
     out_dtype: torch.dtype,
     force: bool = False,
 ) -> W6A8Config | None:
-    from .autotune import ensure_w6a8_tuned
+    from .autotune import (
+        can_autotune_now,
+        ensure_w6a8_tuned,
+        is_autotune_cache_only,
+    )
 
+    cache_only = is_autotune_cache_only()
     config = ensure_w6a8_tuned(
         a, b, sfa, sfb, m, n, k, out_dtype=out_dtype, force=force
     )
-    if config is not None:
+    # Cache-only misses deliberately return None. Remember that result for the
+    # process so an eager-prefill shape does not repeatedly touch the cache on
+    # every request; deployment caches are expected to be immutable in-process.
+    if config is not None or (cache_only and can_autotune_now()):
         key = _autotune_process_key(a.device, m, n, k, out_dtype)
         with _AUTOTUNE_STATE_LOCK:
             _AUTOTUNE_READY.add(key)
@@ -505,8 +521,10 @@ def autotune_w6a8(
     """Preselect and persist a native W6A8 config before graph capture.
 
     This explicit entry is useful during model warmup. Ordinary unknown-shape
-    calls invoke the same tuner automatically; checked-in exact shapes keep
-    their deterministic dispatch unless ``force=True``.
+    calls invoke the same tuner automatically unless deployment uses
+    ``MXFP6_AUTOTUNE=cache_only``. In normal tuning mode, checked-in exact
+    shapes keep deterministic dispatch unless ``force=True``; cache-only mode
+    also checks those shapes for a persistent override.
     """
     out_dtype = _validate_output_dtype(out_dtype)
     if not isinstance(b, PackedMXFP6Tensor):
@@ -525,9 +543,12 @@ def autotune_w6a8(
     _require_sm120(a.device)
     load_library()
     if not force and is_tuned_shape(a.rows, b.rows, a.k):
-        from .autotune import should_tune_exact_shapes
+        from .autotune import (
+            is_autotune_cache_only,
+            should_tune_exact_shapes,
+        )
 
-        if not should_tune_exact_shapes():
+        if not should_tune_exact_shapes() and not is_autotune_cache_only():
             return None
     return _ensure_w6a8_autotuned(
         a.values,
