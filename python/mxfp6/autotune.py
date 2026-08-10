@@ -29,7 +29,7 @@ from ._loader import load_library
 
 
 AUTOTUNE_SCHEMA = 1
-CANDIDATE_ABI = "native-w6a8-29-v4"
+CANDIDATE_ABI = "native-w6a8-30-v5"
 CANDIDATE_POLICY = "hybrid-all-families-through-m512-v2"
 TIMING_POLICY = "gemm-cuda-events-two-stage-v4"
 FALLBACK_CONFIG_ID = -1
@@ -68,6 +68,7 @@ KERNEL_NAMES = (
     "swapped_128x32_stage2_cooperative",
     "swapped_128x32_static_cooperative",
     "swapped_128x32_stage2_static_cooperative",
+    "swapped_64x16x128_stage3_static_pingpong",
 )
 RASTER_NAMES = ("heuristic", "along_m", "along_n")
 SWIZZLES = (1, 2, 4, 8)
@@ -413,7 +414,7 @@ def _kernel_ids(m: int, k: int) -> tuple[int, ...]:
     if m <= _all_families_max_m():
         kernels = list(range(len(KERNEL_NAMES)))
     elif m <= 16:
-        kernels = [0, 1, 2, 3, 4, 5]
+        kernels = [0, 1, 2, 3, 4, 5, 29]
     elif m <= 32:
         kernels = [
             4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16,

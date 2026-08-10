@@ -177,7 +177,7 @@ def main() -> None:
 
     payload = {
         "schema_version": 1,
-        "candidate_abi": "native-w6a8-29-v4",
+        "candidate_abi": "native-w6a8-30-v5",
         "devices": list(options.devices),
         "batch_sizes": list(options.batch_sizes),
         "output_dtypes": list(options.output_dtypes),

@@ -1126,9 +1126,14 @@ at::Tensor launch_w6a8_config(at::Tensor const& a,
           swapped::KernelW6A8_128x32Stage2StaticCooperative>(
           a, b, sfa, sfb, m, n, k, alpha, device_index,
           swizzle_value, raster, 1, sm_count, use_pdl);
+    case 29:
+      return launch_swapped<
+          swapped::KernelW6A8_64x16x128Stage3StaticPingpong>(
+          a, b, sfa, sfb, m, n, k, alpha, device_index,
+          swizzle_value, raster, 1, sm_count, use_pdl);
   }
   TORCH_CHECK(false, "unknown W6A8 config_id ", config_id,
-              "; expected an integer in [0, 28]");
+              "; expected an integer in [0, 29]");
 }
 
 bool set_w6a8_config_cuda(at::Tensor const& anchor,
@@ -1152,8 +1157,8 @@ bool set_w6a8_config_cuda(at::Tensor const& anchor,
     w6a8_overrides.erase(key);
     return true;
   }
-  TORCH_CHECK(config_id <= 28,
-              "config_id must be in [0, 28], or negative to erase; got ",
+  TORCH_CHECK(config_id <= 29,
+              "config_id must be in [0, 29], or negative to erase; got ",
               config_id);
   check_swizzle(swizzle);
   parse_raster_order(raster_order);
@@ -1163,7 +1168,7 @@ bool set_w6a8_config_cuda(at::Tensor const& anchor,
 
 std::string w6a8_config_abi_cuda(at::Tensor const& anchor) {
   TORCH_CHECK(anchor.is_cuda(), "anchor must be a CUDA tensor");
-  return "native-w6a8-29-v4";
+  return "native-w6a8-30-v5";
 }
 
 // Native W6A8 dispatcher. The persistent B operand remains packed E3M2 while
@@ -1229,24 +1234,33 @@ at::Tensor launch_w6a8_policy(at::Tensor const& a,
 
   if (target_nk && m == 16) {
     if (n == 8192 && k == 5120) {
-      return launch_swapped<swapped::KernelW6A8_64x16x256StaticPingpong>(
+      return launch_swapped<
+          swapped::KernelW6A8_64x16x128Stage3StaticPingpong>(
           a, b, sfa, sfb, m, n, k, alpha, device_index,
-          2, RasterOrder::AlongM, 1, sm_count, use_pdl);
+          2, RasterOrder::AlongN, 1, sm_count, use_pdl);
     }
     if (n == 5120 && k == 3072) {
-      return launch_swapped<swapped::KernelW6A8_64x16x256StaticPingpong>(
+      return launch_swapped<
+          swapped::KernelW6A8_64x16x128Stage3StaticPingpong>(
           a, b, sfa, sfb, m, n, k, alpha, device_index,
-          2, RasterOrder::AlongM, 1, sm_count, use_pdl);
+          2, RasterOrder::AlongN, 1, sm_count, use_pdl);
     }
     if (n == 7168 && k == 5120) {
-      return launch_swapped<swapped::KernelW6A8_64x16x256StaticPingpong>(
+      return launch_swapped<
+          swapped::KernelW6A8_64x16x128Stage3StaticPingpong>(
           a, b, sfa, sfb, m, n, k, alpha, device_index,
-          4, RasterOrder::AlongM, 1, sm_count, use_pdl);
+          1, RasterOrder::AlongM, 1, sm_count, use_pdl);
     }
     if (n == 17408 && k == 5120) {
       return launch_swapped<swapped::KernelW6A8_128x16Stage4StaticCooperative>(
           a, b, sfa, sfb, m, n, k, alpha, device_index,
           1, RasterOrder::AlongM, 1, sm_count, use_pdl);
+    }
+    if (n == 5120 && k == 8704) {
+      return launch_swapped<
+          swapped::KernelW6A8_64x16x128Stage3StaticPingpong>(
+          a, b, sfa, sfb, m, n, k, alpha, device_index,
+          2, RasterOrder::AlongN, 1, sm_count, use_pdl);
     }
     return launch_swapped<swapped::KernelW6A8_64x16x256StaticPingpong>(
         a, b, sfa, sfb, m, n, k, alpha, device_index,
