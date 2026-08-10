@@ -174,7 +174,7 @@ def test_w6a8_candidate_registry(mxfp6) -> None:
     a6 = mxfp6.pack_operand(a_codes, sfa)
     b = mxfp6.pack_operand(b_codes, sfb)
     a8 = torch.ops.mxfp6.expand_fp6_to_fp8(a6.values, m, k)
-    assert torch.ops.mxfp6.w6a8_config_abi(a8) == "native-w6a8-29-v4"
+    assert torch.ops.mxfp6.w6a8_config_abi(a8) == "native-w6a8-30-v5"
     for out_dtype in (torch.float16, torch.bfloat16):
         torch.ops.mxfp6.set_w6a8_config(
             a8, m, n, k, -1, 1, 0, out_dtype
@@ -183,7 +183,7 @@ def test_w6a8_candidate_registry(mxfp6) -> None:
             a8, b.values, a6.scales, b.scales, m, n, k, 1.0, out_dtype
         )
         assert reference.dtype == out_dtype
-        for config_id in range(29):
+        for config_id in range(30):
             actual = torch.ops.mxfp6.gemm_w6a8_config(
                 a8,
                 b.values,
@@ -519,9 +519,11 @@ def test_small_w6a8_dispatch(mxfp6) -> None:
     shapes = (
         (1, 5120, 3072),    # 128x8, five-stage cooperative
         (1, 5120, 8704),    # 128x8 Stream-K
-        (16, 8192, 5120),   # 64x16x256 ping-pong
+        (16, 8192, 5120),   # 64x16x128 stage-3 ping-pong
+        (16, 5120, 3072),   # 64x16x128 stage-3 ping-pong
+        (16, 7168, 5120),   # 64x16x128 stage-3 ping-pong
         (16, 17408, 5120),  # 128x16 cooperative
-        (16, 5120, 8704),   # deep-K exact 64x16x256 policy
+        (16, 5120, 8704),   # deep-K 64x16x128 stage-3 ping-pong
     )
     for index, (m, n, k) in enumerate(shapes):
         a_codes, b_codes, sfa, sfb = make_problem(m, n, k, 1800 + index)
