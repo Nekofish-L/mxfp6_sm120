@@ -65,6 +65,66 @@ formats or weight footprints are identical. Full dispatch and measurement
 metadata are recorded in
 [`benchmarks/results/native_w6a8_dispatch.json`](benchmarks/results/native_w6a8_dispatch.json).
 
+### Qwen3.5-35B-A3B MoE
+
+The package also contains SM120 TP2 decode specializations for
+Qwen3.5-35B-A3B-MXFP6. The batch-one path merges the shared expert into the
+routed schedule and uses three programmatically dependent cooperative kernels:
+
+1. router GEMV, exact top-8 selection, shared gate and input MXFP8 quantization;
+2. 128x8x256 W1, BF16 SiLU-and-mul and output MXFP8 quantization, with
+   batch-specialized split-K;
+3. W2 plus routed/shared weighted reduction, with a two-way split-K B=1
+   specialization.
+
+All intermediate tensors are caller-owned, so the complete layer and vLLM
+custom all-reduce can be captured in one CUDA Graph. On two RTX 5090 GPUs
+with real layer-0 checkpoint weights:
+
+| Batch | vLLM FP8 | Native MXFP6 | Speedup |
+|---:|---:|---:|---:|
+| 1 | 29.5 us | 16.4 us | 1.802x |
+| 2 | 34.8 us | 20.5 us | 1.699x |
+| 4 | 32.8 us | 26.6 us | 1.232x |
+| 8 | 53.3 us | 39.0 us | 1.369x |
+
+The baseline uses vLLM's runtime Triton FP8-block experts, auxiliary-stream
+shared expert and graph-registered custom all-reduce. The MXFP6 result includes
+the same custom all-reduce. Median latency uses 9 repeats of 1000 graph
+replays. At batch one the FP8/MXFP6 outputs had relative RMS error 0.1119
+and cosine similarity 0.9938. The exact measurement metadata is checked in as
+[`benchmarks/results/qwen35_moe_tp2.json`](benchmarks/results/qwen35_moe_tp2.json).
+
+For batches 16 through 96, the production path keeps the dense shared expert
+on an auxiliary stream and specializes the routed path instead. A fused router
+performs exact top-8 selection, activation quantization and indirect routing.
+W1 uses a multidimensional TMA descriptor to interleave the checkpoint's gate
+and up projections without a weight reorder, then fuses SiLU-and-mul with the
+next MXFP8 quantization. W2 uses a sparse grouped kernel with batch-dependent
+CTA wave sizing. The shared and routed outputs join before local reduction and
+vLLM's graph-registered custom all-reduce. The complete layer is one CUDA
+Graph, with no per-layer host launch gaps.
+
+The following TP2 results use real layer-0 weights, two RTX 5090 GPUs, 40
+warmups and the median of 9 repeats of 700 CUDA Graph replays:
+
+| Batch | vLLM FP8 | Native MXFP6 | Speedup |
+|---:|---:|---:|---:|
+| 16 | 120.9 us | 92.2 us | 1.311x |
+| 24 | 161.8 us | 126.5 us | 1.279x |
+| 32 | 188.2 us | 146.8 us | 1.282x |
+| 36 | 192.4 us | 150.7 us | 1.277x |
+| 40 | 204.2 us | 161.7 us | 1.263x |
+| 48 | 226.0 us | 177.2 us | 1.275x |
+| 56 | 227.7 us | 182.4 us | 1.248x |
+| 64 | 238.6 us | 188.4 us | 1.267x |
+| 80 | 255.7 us | 196.8 us | 1.300x |
+| 96 | 265.9 us | 207.6 us | 1.281x |
+
+The geometric-mean TP2 speedup over these ten batches is 1.278x. The matching
+single-rank layer measurement is 1.299x; the lower TP2 ratio comes from the
+same 8--11 us custom-all-reduce tail being included in both formats.
+
 ## Supported shapes
 
 The public operator accepts:
@@ -155,6 +215,37 @@ output = mxfp6.gemm_w6a8(
     quantized_a, packed_weight, out_dtype=torch.bfloat16
 )
 ```
+
+The allocation-free Qwen3.5 TP2 batch-one schedule is exposed directly by the
+independent package:
+
+```python
+workspace = mxfp6.Qwen35MoeB1Workspace.allocate("cuda")
+
+# combined_gate: [257, 2048] BF16, routed gate followed by shared gate
+# w1: [257, 512, 1536] packed FP6, routed experts followed by shared expert
+# w2: [257, 2048, 192] packed FP6, routed experts followed by shared expert
+def moe_layer():
+    return mxfp6.qwen35_moe_b1_out(
+        workspace,
+        hidden_states,
+        combined_gate,
+        w1,
+        w1_scales,
+        w2,
+        w2_scales,
+    )
+
+moe_layer()
+torch.cuda.synchronize()
+graph = torch.cuda.CUDAGraph()
+with torch.cuda.graph(graph):
+    output = moe_layer()
+```
+
+`mxfp6` itself imports only PyTorch. The real-checkpoint comparison in
+`benchmarks/benchmark_qwen35_moe_layer.py` optionally imports vLLM solely for
+the FP8 runtime baseline and its custom TP all-reduce.
 
 The public warmup entry accepts either the original FP16/BF16 activation or an
 `MXFP8Tensor`, optionally runs dtype-specific autotuning, executes the
@@ -315,6 +406,16 @@ python3 tests/stress_persistent_workspace.py \
 MXFP6_AUTOTUNE_WARMUP=5 MXFP6_AUTOTUNE_ITERATIONS=20 \
 MXFP6_AUTOTUNE_REPEATS=5 python3 benchmarks/retune_runtime.py \
   --devices=0,1,2,3 --library build/mxfp6_torch.so
+```
+
+The real Qwen3.5 MoE layer benchmark accepts either a single process with an
+emulated TP2 shard or two `torchrun` workers:
+
+```bash
+torchrun --nproc-per-node=2 \
+  benchmarks/benchmark_qwen35_moe_layer.py \
+  --batch-sizes 1 --mx-mode array \
+  --warmup 20 --iterations 1000 --repeats 9
 ```
 
 ## CUTLASS development

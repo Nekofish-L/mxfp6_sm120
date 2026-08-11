@@ -221,6 +221,21 @@ __global__ void unpack_fp6_scalar_kernel(
   destination[3] = (packed >> 18) & 0x3f;
 }
 
+__global__ void pad_fp6_vector_kernel(
+    uint8_t const* input,
+    uint8_t* output,
+    int64_t segments) {
+  int64_t const segment =
+      static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+  if (segment >= segments) {
+    return;
+  }
+  auto const* source =
+      reinterpret_cast<uint32_t const*>(input + segment * 12);
+  reinterpret_cast<uint4*>(output)[segment] =
+      uint4{source[0], source[1], source[2], 0};
+}
+
 template <class Layout>
 __global__ void pack_scales_kernel(
     uint8_t const* logical,
@@ -331,6 +346,33 @@ at::Tensor unpack_fp6_cuda(
   return output;
 }
 
+at::Tensor pad_fp6_cuda(at::Tensor const& packed) {
+  check_cuda_byte_tensor(packed, "packed");
+  TORCH_CHECK(
+      packed.dim() >= 1 && packed.size(-1) > 0 &&
+          packed.size(-1) % 12 == 0,
+      "packed last dimension must be a positive multiple of 12");
+  TORCH_CHECK(
+      packed.numel() <=
+          std::numeric_limits<int64_t>::max() / 4 * 3,
+      "padded FP6 size overflows int64");
+
+  c10::cuda::CUDAGuard guard(packed.device());
+  auto output_sizes = packed.sizes().vec();
+  output_sizes.back() = output_sizes.back() / 12 * 16;
+  auto output = at::empty(output_sizes, packed.options());
+  int64_t const segments = packed.numel() / 12;
+  auto stream = c10::cuda::getCurrentCUDAStream(packed.get_device());
+  launch_1d(
+      segments,
+      stream.stream(),
+      pad_fp6_vector_kernel,
+      packed.data_ptr<uint8_t>(),
+      output.data_ptr<uint8_t>(),
+      segments);
+  return output;
+}
+
 at::Tensor expand_fp6_to_fp8_cuda(
     at::Tensor const& packed, int64_t rows, int64_t k) {
   check_cuda_byte_tensor(packed, "packed");
@@ -360,17 +402,22 @@ at::Tensor pack_scales_cuda(
     at::Tensor const& logical, int64_t rows, int64_t k) {
   check_cuda_byte_tensor(logical, "logical scales");
   check_matrix_shape(rows, k);
-  TORCH_CHECK(k % 128 == 0,
-              "k must be divisible by 128 for the SM120 scale atom; got ", k);
+  TORCH_CHECK(k % kScaleVectorSize == 0,
+              "k must be divisible by 32 for the SM120 scale atom; got ", k);
   int64_t const k_blocks = k / kScaleVectorSize;
+  int64_t const packed_k_blocks = round_up(k_blocks, 4);
   TORCH_CHECK(logical.numel() == rows * k_blocks,
               "logical scales must contain exactly ", rows * k_blocks,
               " bytes; got ", logical.numel());
 
   int64_t const padded_rows = round_up(rows, 128);
-  auto output = at::empty({padded_rows * k_blocks}, logical.options());
+  auto output = at::empty(
+      {padded_rows * packed_k_blocks}, logical.options());
   c10::cuda::CUDAGuard guard(logical.device());
   auto stream = c10::cuda::getCurrentCUDAStream(logical.get_device());
+  C10_CUDA_CHECK(cudaMemsetAsync(
+      output.data_ptr<uint8_t>(), kUe8m0One,
+      static_cast<size_t>(output.numel()), stream.stream()));
   using ScaleConfig = cutlass::detail::Sm1xxBlockScaledConfig<32>;
   auto const layout = ScaleConfig::tile_atom_to_shape_SFA(cute::make_shape(
       static_cast<int>(rows), 1, static_cast<int>(k), 1));
@@ -386,10 +433,11 @@ at::Tensor unpack_scales_cuda(
     at::Tensor const& packed, int64_t rows, int64_t k) {
   check_cuda_byte_tensor(packed, "packed scales");
   check_matrix_shape(rows, k);
-  TORCH_CHECK(k % 128 == 0,
-              "k must be divisible by 128 for the SM120 scale atom; got ", k);
+  TORCH_CHECK(k % kScaleVectorSize == 0,
+              "k must be divisible by 32 for the SM120 scale atom; got ", k);
   int64_t const k_blocks = k / kScaleVectorSize;
-  int64_t const packed_size = round_up(rows, 128) * k_blocks;
+  int64_t const packed_size =
+      round_up(rows, 128) * round_up(k_blocks, 4);
   TORCH_CHECK(packed.numel() == packed_size,
               "packed scales must contain exactly ", packed_size,
               " bytes; got ", packed.numel());

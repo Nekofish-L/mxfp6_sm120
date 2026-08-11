@@ -45,8 +45,8 @@ void check_quant_input(at::Tensor const& input) {
   int64_t const m = input.size(0);
   int64_t const k = input.size(1);
   TORCH_CHECK(m > 0, "M must be positive; got ", m);
-  TORCH_CHECK(k > 0 && k % 128 == 0,
-              "K must be a positive multiple of 128; got ", k);
+  TORCH_CHECK(k > 0 && k % kScaleVectorSize == 0,
+              "K must be a positive multiple of 32; got ", k);
   TORCH_CHECK(m <= std::numeric_limits<int>::max() &&
                   k <= std::numeric_limits<int>::max(),
               "M and K must fit in a 32-bit integer");
@@ -67,10 +67,12 @@ __device__ __forceinline__ uint16_t quantize_pair(float first,
   }
 }
 
-template <class Source, int OutputBits, class ScaleLayout>
+template <class Source, int OutputBits, bool PackedScaleLayout,
+          class ScaleLayout>
 __global__ void quantize_mx_kernel(Source const* input,
                                    uint8_t* output,
                                    uint8_t* scales,
+                                   uint8_t* logical_scales,
                                    int groups_per_row,
                                    int64_t total_groups,
                                    ScaleLayout scale_layout) {
@@ -117,12 +119,20 @@ __global__ void quantize_mx_kernel(Source const* input,
       0xffffffffu, inverse_scale, 0, kThreadsPerGroup);
 
   if (valid && thread_in_group == 0) {
-    int const row = static_cast<int>(group / groups_per_row);
-    int const k_group =
-        static_cast<int>(group - static_cast<int64_t>(row) * groups_per_row);
-    auto const scale_offset = scale_layout(cute::make_coord(
-        row, k_group * kScaleVectorSize, 0));
-    scales[scale_offset] = scale_code;
+    if constexpr (PackedScaleLayout) {
+      int const row = static_cast<int>(group / groups_per_row);
+      int const k_group =
+          static_cast<int>(group -
+                           static_cast<int64_t>(row) * groups_per_row);
+      auto const scale_offset = scale_layout(cute::make_coord(
+          row, k_group * kScaleVectorSize, 0));
+      scales[scale_offset] = scale_code;
+      if (logical_scales != nullptr) {
+        logical_scales[group] = scale_code;
+      }
+    } else {
+      scales[group] = scale_code;
+    }
   }
 
   uint16_t pairs[kElementsPerThread / 2];
@@ -180,7 +190,7 @@ __global__ void quantize_mx_kernel(Source const* input,
   }
 }
 
-template <int OutputBits>
+template <int OutputBits, bool PackedScaleLayout = true>
 std::tuple<at::Tensor, at::Tensor> quantize_mx(
     at::Tensor const& input) {
   check_quant_input(input);
@@ -189,6 +199,7 @@ std::tuple<at::Tensor, at::Tensor> quantize_mx(
   int64_t const k = input.size(1);
   int64_t const values = m * k;
   int64_t const groups_per_row = k / kScaleVectorSize;
+  int64_t const packed_groups_per_row = round_up(groups_per_row, 4);
   int64_t const total_groups = m * groups_per_row;
   int64_t const padded_rows = round_up(m, 128);
 
@@ -196,13 +207,16 @@ std::tuple<at::Tensor, at::Tensor> quantize_mx(
   at::Tensor output = OutputBits == 8
       ? at::empty({m, k}, byte_options)
       : at::empty({values * 3 / 4}, byte_options);
-  at::Tensor scales = at::empty(
-      {padded_rows * groups_per_row}, byte_options);
+  at::Tensor scales = PackedScaleLayout
+      ? at::empty({padded_rows * packed_groups_per_row}, byte_options)
+      : at::empty({m, groups_per_row}, byte_options);
 
   auto stream = c10::cuda::getCurrentCUDAStream(input.get_device());
-  C10_CUDA_CHECK(cudaMemsetAsync(
-      scales.data_ptr<uint8_t>(), kUe8m0One,
-      static_cast<size_t>(scales.numel()), stream.stream()));
+  if constexpr (PackedScaleLayout) {
+    C10_CUDA_CHECK(cudaMemsetAsync(
+        scales.data_ptr<uint8_t>(), kUe8m0One,
+        static_cast<size_t>(scales.numel()), stream.stream()));
+  }
 
   using ScaleConfig = cutlass::detail::Sm1xxBlockScaledConfig<32>;
   auto const scale_layout = ScaleConfig::tile_atom_to_shape_SFA(
@@ -212,17 +226,17 @@ std::tuple<at::Tensor, at::Tensor> quantize_mx(
               "quantization launch grid is too large");
 
   if (input.scalar_type() == at::kHalf) {
-    quantize_mx_kernel<at::Half, OutputBits><<<
+    quantize_mx_kernel<at::Half, OutputBits, PackedScaleLayout><<<
         static_cast<int>(block_count), kThreads, 0, stream.stream()>>>(
         input.data_ptr<at::Half>(), output.data_ptr<uint8_t>(),
-        scales.data_ptr<uint8_t>(), static_cast<int>(groups_per_row),
-        total_groups, scale_layout);
+        scales.data_ptr<uint8_t>(), nullptr,
+        static_cast<int>(groups_per_row), total_groups, scale_layout);
   } else {
-    quantize_mx_kernel<at::BFloat16, OutputBits><<<
+    quantize_mx_kernel<at::BFloat16, OutputBits, PackedScaleLayout><<<
         static_cast<int>(block_count), kThreads, 0, stream.stream()>>>(
         input.data_ptr<at::BFloat16>(), output.data_ptr<uint8_t>(),
-        scales.data_ptr<uint8_t>(), static_cast<int>(groups_per_row),
-        total_groups, scale_layout);
+        scales.data_ptr<uint8_t>(), nullptr,
+        static_cast<int>(groups_per_row), total_groups, scale_layout);
   }
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   return {output, scales};
@@ -233,6 +247,160 @@ std::tuple<at::Tensor, at::Tensor> quantize_mx(
 std::tuple<at::Tensor, at::Tensor> quantize_mxfp8_cuda(
     at::Tensor const& input) {
   return quantize_mx<8>(input);
+}
+
+std::tuple<at::Tensor, at::Tensor> quantize_mxfp8_logical_cuda(
+    at::Tensor const& input) {
+  return quantize_mx<8, false>(input);
+}
+
+std::tuple<at::Tensor, at::Tensor, at::Tensor>
+quantize_mxfp8_dual_cuda(at::Tensor const& input) {
+  check_quant_input(input);
+  c10::cuda::CUDAGuard guard(input.device());
+  int64_t const m = input.size(0);
+  int64_t const k = input.size(1);
+  int64_t const groups_per_row = k / kScaleVectorSize;
+  int64_t const packed_groups_per_row = round_up(groups_per_row, 4);
+  int64_t const total_groups = m * groups_per_row;
+  int64_t const padded_rows = round_up(m, 128);
+  auto byte_options = input.options().dtype(at::kByte);
+  auto output = at::empty({m, k}, byte_options);
+  auto logical_scales =
+      at::empty({m, groups_per_row}, byte_options);
+  auto packed_scales = at::empty(
+      {padded_rows * packed_groups_per_row}, byte_options);
+
+  auto stream =
+      c10::cuda::getCurrentCUDAStream(input.get_device());
+  C10_CUDA_CHECK(cudaMemsetAsync(
+      packed_scales.data_ptr<uint8_t>(), kUe8m0One,
+      static_cast<size_t>(packed_scales.numel()), stream.stream()));
+  using ScaleConfig =
+      cutlass::detail::Sm1xxBlockScaledConfig<32>;
+  auto const scale_layout =
+      ScaleConfig::tile_atom_to_shape_SFA(
+          cute::make_shape(
+              static_cast<int>(m), 1,
+              static_cast<int>(k), 1));
+  int64_t const block_count =
+      ceil_div(total_groups, kGroupsPerBlock);
+  TORCH_CHECK(
+      block_count <= std::numeric_limits<int>::max(),
+      "quantization launch grid is too large");
+
+  if (input.scalar_type() == at::kHalf) {
+    quantize_mx_kernel<at::Half, 8, true><<<
+        static_cast<int>(block_count),
+        kThreads,
+        0,
+        stream.stream()>>>(
+            input.data_ptr<at::Half>(),
+            output.data_ptr<uint8_t>(),
+            packed_scales.data_ptr<uint8_t>(),
+            logical_scales.data_ptr<uint8_t>(),
+            static_cast<int>(groups_per_row),
+            total_groups,
+            scale_layout);
+  } else {
+    quantize_mx_kernel<at::BFloat16, 8, true><<<
+        static_cast<int>(block_count),
+        kThreads,
+        0,
+        stream.stream()>>>(
+            input.data_ptr<at::BFloat16>(),
+            output.data_ptr<uint8_t>(),
+            packed_scales.data_ptr<uint8_t>(),
+            logical_scales.data_ptr<uint8_t>(),
+            static_cast<int>(groups_per_row),
+            total_groups,
+            scale_layout);
+  }
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  return {output, logical_scales, packed_scales};
+}
+
+void quantize_mxfp8_dual_out_cuda(
+    at::Tensor& output,
+    at::Tensor& logical_scales,
+    at::Tensor& packed_scales,
+    at::Tensor const& input) {
+  check_quant_input(input);
+  c10::cuda::CUDAGuard guard(input.device());
+  auto const device = input.device();
+  int64_t const m = input.size(0);
+  int64_t const k = input.size(1);
+  int64_t const groups_per_row = k / kScaleVectorSize;
+  int64_t const packed_groups_per_row =
+      round_up(groups_per_row, 4);
+  int64_t const total_groups = m * groups_per_row;
+  int64_t const padded_rows = round_up(m, 128);
+  TORCH_CHECK(
+      output.is_cuda() && output.device() == device &&
+          output.scalar_type() == at::kByte &&
+          output.is_contiguous() &&
+          output.sizes() == input.sizes(),
+      "output must be contiguous CUDA uint8 [M,K]");
+  TORCH_CHECK(
+      logical_scales.is_cuda() &&
+          logical_scales.device() == device &&
+          logical_scales.scalar_type() == at::kByte &&
+          logical_scales.is_contiguous() &&
+          logical_scales.dim() == 2 &&
+          logical_scales.size(0) == m &&
+          logical_scales.size(1) == groups_per_row,
+      "logical_scales must be contiguous CUDA uint8 [M,K/32]");
+  TORCH_CHECK(
+      packed_scales.is_cuda() &&
+          packed_scales.device() == device &&
+          packed_scales.scalar_type() == at::kByte &&
+          packed_scales.is_contiguous() &&
+          packed_scales.numel() >=
+              padded_rows * packed_groups_per_row,
+      "packed_scales is too small for the SM120 scale layout");
+
+  using ScaleConfig =
+      cutlass::detail::Sm1xxBlockScaledConfig<32>;
+  auto const scale_layout =
+      ScaleConfig::tile_atom_to_shape_SFA(
+          cute::make_shape(
+              static_cast<int>(m), 1,
+              static_cast<int>(k), 1));
+  int64_t const block_count =
+      ceil_div(total_groups, kGroupsPerBlock);
+  TORCH_CHECK(
+      block_count <= std::numeric_limits<int>::max(),
+      "quantization launch grid is too large");
+  auto stream =
+      c10::cuda::getCurrentCUDAStream(input.get_device());
+  if (input.scalar_type() == at::kHalf) {
+    quantize_mx_kernel<at::Half, 8, true><<<
+        static_cast<int>(block_count),
+        kThreads,
+        0,
+        stream.stream()>>>(
+            input.data_ptr<at::Half>(),
+            output.data_ptr<uint8_t>(),
+            packed_scales.data_ptr<uint8_t>(),
+            logical_scales.data_ptr<uint8_t>(),
+            static_cast<int>(groups_per_row),
+            total_groups,
+            scale_layout);
+  } else {
+    quantize_mx_kernel<at::BFloat16, 8, true><<<
+        static_cast<int>(block_count),
+        kThreads,
+        0,
+        stream.stream()>>>(
+            input.data_ptr<at::BFloat16>(),
+            output.data_ptr<uint8_t>(),
+            packed_scales.data_ptr<uint8_t>(),
+            logical_scales.data_ptr<uint8_t>(),
+            static_cast<int>(groups_per_row),
+            total_groups,
+            scale_layout);
+  }
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
 std::tuple<at::Tensor, at::Tensor> quantize_mxfp6_cuda(
