@@ -1,8 +1,111 @@
+diff --git a/include/cutlass/epilogue/collective/builders/sm120_builder.inl b/include/cutlass/epilogue/collective/builders/sm120_builder.inl
+index 1a0f9f6..56948bd 100644
+--- a/include/cutlass/epilogue/collective/builders/sm120_builder.inl
++++ b/include/cutlass/epilogue/collective/builders/sm120_builder.inl
+@@ -84,6 +84,11 @@ sm120_get_tma_dispatch_policy() {
+   using StrideD = cutlass::detail::TagToStrideC_t<GmemLayoutTagD>;
+   using InternalStrideD  = cute::remove_pointer_t<StrideD>;
+   constexpr bool IsGroupedGemmKernel = !cute::is_same_v<InternalStrideD, StrideD>;
++  constexpr bool IsPtrArrayGemmKernel =
++      IsGroupedGemmKernel ||
++      cute::is_same_v<Schedule, PtrArrayTmaWarpSpecialized> ||
++      cute::is_same_v<Schedule, PtrArrayTmaWarpSpecializedPingpong> ||
++      cute::is_same_v<Schedule, PtrArrayTmaWarpSpecializedCooperative>;
+ 
+   // For 120, a FragmentSize of 4 is used to match the
+   // output per thread from each MMA. Epilogue subtiles iterate over multiple of these
+@@ -104,7 +109,7 @@ sm120_get_tma_dispatch_policy() {
+ 
+   constexpr int NumEpilogueWarpGroups = GetNumEpilogueWarpGroups<Schedule>::value;
+ 
+-  if constexpr (IsGroupedGemmKernel) {
++  if constexpr (IsPtrArrayGemmKernel) {
+     return Sm120PtrArrayTmaWarpSpecialized<StagesC, StagesD, FragmentSize, ReuseSmem, 
+                                           DelayTmaStore, NumEpilogueWarpGroups>{};
+   } 
+@@ -485,6 +490,7 @@ struct CollectiveBuilder<
+     cute::enable_if_t<cute::is_same_v<Schedule, EpilogueScheduleAuto> ||
+                       cute::is_same_v<Schedule, TmaWarpSpecialized> ||
+                       cute::is_same_v<Schedule, TmaWarpSpecializedCooperative> ||
++                      cute::is_same_v<Schedule, PtrArrayTmaWarpSpecialized> ||
+                       cute::is_same_v<Schedule, PtrArrayTmaWarpSpecializedPingpong> ||
+                       cute::is_same_v<Schedule, PtrArrayTmaWarpSpecializedCooperative> ||
+                       cute::is_same_v<Schedule, SparseTmaWarpSpecializedCooperativeSm120>
 diff --git a/include/cutlass/gemm/collective/builders/sm120_blockscaled_mma_builder.inl b/include/cutlass/gemm/collective/builders/sm120_blockscaled_mma_builder.inl
-index 2835751f4179972f938ec5008c544248e111becf..08dab124cb32687d2cf8b91be1a71e9bb03ff97e 100755
+index 2835751..1a5435c 100755
 --- a/include/cutlass/gemm/collective/builders/sm120_blockscaled_mma_builder.inl
 +++ b/include/cutlass/gemm/collective/builders/sm120_blockscaled_mma_builder.inl
-@@ -196,12 +196,18 @@ struct CollectiveBuilder<
+@@ -73,10 +73,6 @@ struct CollectiveBuilder<
+        cute::is_base_of_v<KernelPtrArrayTmaWarpSpecializedCooperative, BuilderScheduleTag> ||
+        cute::is_same_v<KernelScheduleAuto, BuilderScheduleTag>)
+        &&
+-      !((cute::is_base_of_v<KernelTmaWarpSpecializedPingpong, BuilderScheduleTag> ||
+-         cute::is_base_of_v<KernelPtrArrayTmaWarpSpecializedPingpong, BuilderScheduleTag>) &&
+-        cute::tuple_element_t<1, TileShape_MNK>::value < 16)
+-       &&
+       // Alignment check
+       detail::sm1xx_blockscaled_gemm_is_aligned<typename detail::blockscaled::blockscaled_type<BuilderScheduleTag, ElementPairA>::data_type,
+                                                 AlignmentA,
+@@ -96,7 +92,9 @@ struct CollectiveBuilder<
+ 
+   static constexpr cute::UMMA::Major UmmaMajorA = cutlass::gemm::collective::detail::tag_to_umma_major_A<GmemLayoutATag>();
+   static constexpr cute::UMMA::Major UmmaMajorB = cutlass::gemm::collective::detail::tag_to_umma_major_B<GmemLayoutBTag>();
+-  static_assert((UmmaMajorA == UMMA::Major::K && UmmaMajorB == UMMA::Major::K), "Only TN layout is supported.");
++  static_assert(
++      UmmaMajorB == UMMA::Major::K,
++      "SM120 block-scaled RR kernels require a K-major B operand.");
+ 
+   static_assert(cute::is_static_v<TileShape_MNK>, "TileShape has to be static");
+   static_assert(cute::is_static_v<ClusterShape_MNK>, "Cluster has to be static");
+@@ -128,10 +126,17 @@ struct CollectiveBuilder<
+                                                                         GmemLayoutATag, GmemLayoutBTag, false /*IsSparse*/>(),
+                 "TileSize and MNK Major does not met with MMA Mix 8-bit TMA load requirement" );
+ 
++  // A cooperative SM120 kernel has exactly two 128-thread MMA warp groups.
++  // Wider CTA tiles are represented by multiple accumulator matrices; they
++  // must not grow the MMA atom layout beyond the 128-row hardware tile.
++  using NarrowNAtomLayoutM = decltype(
++      cute::min(size<0>(TileShape_MNK{}), _128{}) / _16{});
+   using AtomLayoutMNK = cute::conditional_t<IsCooperative,
+       cute::conditional_t<(size<1>(TileShape_MNK{}) >= 16), Layout<Shape<_4,_2,_1>>,
+-                          Layout<Shape<_8,_1,_1>>>,
+-      Layout<Shape<_2,_2,_1>>>;
++                          Layout<Shape<NarrowNAtomLayoutM,_1,_1>>>,
++      cute::conditional_t<(size<1>(TileShape_MNK{}) >= 16),
++                          Layout<Shape<_2,_2,_1>>,
++                          Layout<Shape<NarrowNAtomLayoutM,_1,_1>>>>;
+ 
+   using TiledMma = decltype(cute::make_tiled_mma(
+     cute::rr_blockscaled_op_selector_sm120<ElementA,
+@@ -163,13 +168,20 @@ struct CollectiveBuilder<
+   // Setup Config
+   using Sm1xxBlkScaledConfig = cutlass::detail::Sm1xxBlockScaledConfig<SFVectorSize>;
+ 
+-  using SmemLayoutAtomA = decltype(detail::sm120_rr_smem_selector<SmemAllocTypeA, decltype(size<2>(TileShape_MNK{}))>());
+-  using SmemLayoutAtomB = decltype(detail::sm120_rr_smem_selector<SmemAllocTypeB, decltype(size<2>(TileShape_MNK{}))>());
+-
+-  using SmemCopyAtomA = Copy_Atom<decltype(detail::sm120_rr_smem_copy_selector_A<ElementA,
+-                                                                                 ElementB,
+-                                                                                 UseMxf8f6f4
+-                                                                                 >()), SmemAllocTypeA>;
++  using SmemLayoutAtomA = decltype(detail::sm120_rr_smem_selector<
++      UmmaMajorA, SmemAllocTypeA,
++      decltype(size<0>(TileShape_MNK{})),
++      decltype(size<2>(TileShape_MNK{}))>());
++  using SmemLayoutAtomB = decltype(detail::sm120_rr_smem_selector<
++      UmmaMajorB, SmemAllocTypeB,
++      decltype(size<1>(TileShape_MNK{})),
++      decltype(size<2>(TileShape_MNK{}))>());
++
++  using SmemCopyAtomA = cute::conditional_t<
++      UmmaMajorA == UMMA::Major::MN,
++      Copy_Atom<UniversalCopy<uint8_t>, SmemAllocTypeA>,
++      Copy_Atom<decltype(detail::sm120_rr_smem_copy_selector_A<
++          ElementA, ElementB, UseMxf8f6f4>()), SmemAllocTypeA>>;
+   using SmemCopyAtomB = Copy_Atom<decltype(detail::sm120_rr_smem_copy_selector_B<ElementA,
+                                                                                  ElementB,
+                                                                                  UseMxf8f6f4,
+@@ -196,12 +208,23 @@ struct CollectiveBuilder<
    using kBasicBlockShape  = Shape<Int<(int)SFVectorSize>, Int<MMA_NSF>>;
    using kBasicBlockStride = Stride<_0, _1>;
    
@@ -12,18 +115,64 @@ index 2835751f4179972f938ec5008c544248e111becf..08dab124cb32687d2cf8b91be1a71e9b
 +  // 128-row granularity. A 32- or 64-row CTA selects its portion after the
 +  // transfer, mirroring the existing SFB treatment for TileN < 128.
 +  static constexpr int TileM = size<0>(TileShape_MNK{});
-+  static_assert(TileM % 32 == 0, "SM120 block-scaled TileM must be a multiple of 32");
++  static_assert(TileM % 16 == 0, "SM120 block-scaled TileM must be a multiple of 16");
 +  using sSFATileShape_M = Int<cute::max(TileM, 128)>;
++  using sSFTileShape_K =
++      Int<cute::max(size<2>(TileShape_MNK{}), 128)>;
 +  using sSF_strideMN = decltype(prepend(Blk_Elems{}, mnBasicBlockStride{}));
 +  using sSFA_shapeM       = decltype(prepend(sSFATileShape_M{} / Blk_MN{}, mnBasicBlockShape{}));
    using sSFA_strideM      = sSF_strideMN;
-   using sSF_shapeK        = decltype(prepend(make_shape( Blk_SF{}/Int<MMA_NSF>{},   size<2>(TileShape_MNK{}) / Int<(int)SFVectorSize>{} / Blk_SF{}),  kBasicBlockShape{}));
+-  using sSF_shapeK        = decltype(prepend(make_shape( Blk_SF{}/Int<MMA_NSF>{},   size<2>(TileShape_MNK{}) / Int<(int)SFVectorSize>{} / Blk_SF{}),  kBasicBlockShape{}));
++  using sSF_shapeK        = decltype(prepend(make_shape(
++      Blk_SF{} / Int<MMA_NSF>{},
++      sSFTileShape_K{} / Int<(int)SFVectorSize>{} / Blk_SF{}),
++      kBasicBlockShape{}));
    
 -  using sSFA_strideK      = decltype(prepend(make_stride(         Int<MMA_NSF>{},   size<0>(TileShape_MNK{}) / Blk_MN{} * Blk_Elems{}), kBasicBlockStride{}));
 +  using sSFA_strideK      = decltype(prepend(make_stride(         Int<MMA_NSF>{},   sSFATileShape_M{} / Blk_MN{} * Blk_Elems{}), kBasicBlockStride{}));
    using sSFA_shape        = decltype(make_shape(  sSFA_shapeM{},   sSF_shapeK{}));
    using sSFA_stride       = decltype(make_stride(sSFA_strideM{}, sSFA_strideK{}));
    using SmemLayoutAtomSFA = decltype(make_layout(  sSFA_shape{},  sSFA_stride{}));
+@@ -230,6 +253,12 @@ struct CollectiveBuilder<
+   using StridePairB = decltype(cute::make_tuple(StrideB{}, LayoutSFB{}));
+ 
+   static constexpr bool IsGroupedGemmKernel = !cute::is_same_v<InternalStrideA, StrideA>;
++  static constexpr bool IsPtrArrayGemmKernel =
++      IsGroupedGemmKernel ||
++      cute::is_base_of_v<KernelPtrArrayTmaWarpSpecializedCooperative,
++                         BuilderScheduleTag> ||
++      cute::is_base_of_v<KernelPtrArrayTmaWarpSpecializedPingpong,
++                         BuilderScheduleTag>;
+   static_assert(!IsGroupedGemmKernel || 
+                 cute::is_base_of_v<KernelPtrArrayTmaWarpSpecializedCooperative, BuilderScheduleTag> ||
+                 cute::is_base_of_v<KernelScheduleAuto, BuilderScheduleTag> ||
+@@ -246,7 +275,7 @@ struct CollectiveBuilder<
+   static constexpr auto CLCResponseStorage = IsGroupedGemmKernel ? 0 : (SchedulerPipelineStageCount * 
+       CLCResponseSize);
+   static constexpr auto TensorMapStorage = 
+-    IsGroupedGemmKernel ? sizeof(cute::TmaDescriptor) * 2 /* We have two tensormaps smem */ :
++    IsPtrArrayGemmKernel ? sizeof(cute::TmaDescriptor) * 4 :
+     0;
+ 
+   // TensorMapReady pipeline storage (specific to grouped/array kernels)
+@@ -264,7 +293,7 @@ struct CollectiveBuilder<
+     ReducedSmemCapacityBytes, SmemAllocTypeA, SmemAllocTypeB, TileShape_MNK, SmemLayoutAtomSFA, SmemLayoutAtomSFB>(StageCountType{});
+ 
+ 
+-  using KernelSchedule = cute::conditional_t<IsGroupedGemmKernel, 
++  using KernelSchedule = cute::conditional_t<IsPtrArrayGemmKernel,
+                                               // PtrArray
+                                               cute::conditional_t<IsCooperative, 
+                                                 KernelPtrArrayTmaWarpSpecializedCooperativeBlockScaledSm120<SchedulerPipelineStageCount>, 
+@@ -274,7 +303,7 @@ struct CollectiveBuilder<
+                                                 KernelTmaWarpSpecializedCooperativeBlockScaledSm120<SchedulerPipelineStageCount>, 
+                                                 KernelTmaWarpSpecializedPingpongBlockScaledSm120<SchedulerPipelineStageCount>>>;
+ 
+-  using DispatchPolicy = cute::conditional_t<IsGroupedGemmKernel,
++  using DispatchPolicy = cute::conditional_t<IsPtrArrayGemmKernel,
+                                               MainloopSm120ArrayTmaWarpSpecializedBlockScaled<PipelineStages,
+                                                                     SchedulerPipelineStageCount,
+                                                                     ClusterShape_MNK,
 diff --git a/include/cutlass/gemm/collective/builders/sm120_blockwise_mma_builder.inl b/include/cutlass/gemm/collective/builders/sm120_blockwise_mma_builder.inl
 index 6dd884c..8a76148 100644
 --- a/include/cutlass/gemm/collective/builders/sm120_blockwise_mma_builder.inl
@@ -46,7 +195,7 @@ index 6dd884c..8a76148 100644
  
    using CollectiveOp = CollectiveMma<
 diff --git a/include/cutlass/gemm/collective/builders/sm120_common.inl b/include/cutlass/gemm/collective/builders/sm120_common.inl
-index 7a8172cadd350a7ddd830157e656d0b5d3a61d7c..0276ff676695da3ee1423fb26ce1c6a8262dd25f 100644
+index 7a8172c..4bad81c 100644
 --- a/include/cutlass/gemm/collective/builders/sm120_common.inl
 +++ b/include/cutlass/gemm/collective/builders/sm120_common.inl
 @@ -81,7 +81,15 @@ auto
@@ -66,8 +215,435 @@ index 7a8172cadd350a7ddd830157e656d0b5d3a61d7c..0276ff676695da3ee1423fb26ce1c6a8
      }
      else if constexpr (sizeof_bits_v<ElementB> == 4) {
        if constexpr (TileShapeN < 16) {
+@@ -142,6 +150,51 @@ sm120_rr_smem_selector() {
+   }
+ }
+ 
++template <
++  cute::UMMA::Major Major,
++  class ElementType,
++  class MajorSize,
++  class KSize
++>
++CUTLASS_HOST_DEVICE constexpr
++auto
++sm120_rr_smem_selector() {
++  if constexpr (Major == cute::UMMA::Major::MN) {
++    if constexpr (
++        MajorSize{} %
++            size<0>(UMMA::Layout_MN_SW128_Atom<ElementType>{}) ==
++        0) {
++      return UMMA::Layout_MN_SW128_Atom<ElementType>{};
++    }
++    else if constexpr (
++        MajorSize{} %
++            size<0>(UMMA::Layout_MN_SW64_Atom<ElementType>{}) ==
++        0) {
++      return UMMA::Layout_MN_SW64_Atom<ElementType>{};
++    }
++    else if constexpr (
++        MajorSize{} %
++            size<0>(UMMA::Layout_MN_SW32_Atom<ElementType>{}) ==
++        0) {
++      return UMMA::Layout_MN_SW32_Atom<ElementType>{};
++    }
++    else if constexpr (
++        MajorSize{} %
++            size<0>(UMMA::Layout_MN_INTER_Atom<ElementType>{}) ==
++        0) {
++      return UMMA::Layout_MN_INTER_Atom<ElementType>{};
++    }
++    else {
++      static_assert(
++          cutlass::detail::dependent_false<ElementType>,
++          "No MN-major shared memory copy atom can be selected.");
++    }
++  }
++  else {
++    return sm120_rr_smem_selector<ElementType, KSize>();
++  }
++}
++
+ template <class ElementType, class MajorSize, class Sparsity>
+ CUTLASS_HOST_DEVICE constexpr
+ auto
+diff --git a/include/cutlass/gemm/collective/sm120_blockscaled_mma_array_tma.hpp b/include/cutlass/gemm/collective/sm120_blockscaled_mma_array_tma.hpp
+index bb7f633..2241b2c 100755
+--- a/include/cutlass/gemm/collective/sm120_blockscaled_mma_array_tma.hpp
++++ b/include/cutlass/gemm/collective/sm120_blockscaled_mma_array_tma.hpp
+@@ -198,26 +198,57 @@ struct CollectiveMma<
+ 
+   // SmemLayoutAtomSFA and SmemLayoutAtomSFB are for whole CTA tiles. We add the number of pipeline stages here.
+   // The number of pipeline stages is the same as the number of pipeline stages from AB Load <-> MainLoop
+-  using SmemLayoutSFA = decltype(make_layout(
++  using SmemLayoutSFAFull = decltype(make_layout(
+     append(shape(SmemLayoutAtomSFA{}), Int<DispatchPolicy::Stages>{}),
+     append(stride(SmemLayoutAtomSFA{}), size(filter_zeros(SmemLayoutAtomSFA{})))
+   ));
+ 
+-  using SmemLayoutSFB_ = decltype(make_layout(
++  using SmemLayoutSFBFull = decltype(make_layout(
+     append(shape(SmemLayoutAtomSFB{}), Int<DispatchPolicy::Stages>{}),
+     append(stride(SmemLayoutAtomSFB{}), size(filter_zeros(SmemLayoutAtomSFB{})))
+   ));
+ 
+-  using TileShapeSFB = cute::conditional_t<size<1>(TileShape{}) < 128,
+-    decltype(cute::make_shape(
++  static constexpr bool IsShortK = size<2>(TileShape{}) < 128;
++
++  using TileShapeSFA = decltype(cute::make_shape(
++      Int<cute::max(size<0>(TileShape{}), 128)>{},
++      shape<1>(TileShape{}),
++      Int<cute::max(size<2>(TileShape{}), 128)>{}));
++
++  using TileShapeSFAGlobal = decltype(cute::make_shape(
++      shape<0>(TileShape{}),
++      shape<1>(TileShape{}),
++      Int<cute::max(size<2>(TileShape{}), 128)>{}));
++
++  using TileShapeSFB = decltype(cute::make_shape(
+       shape<0>(TileShape{}),
+-      Int<128>{},
+-      shape<2>(TileShape{}))),
+-    TileShape>;
++      Int<cute::max(size<1>(TileShape{}), 128)>{},
++      Int<cute::max(size<2>(TileShape{}), 128)>{}));
++
++  using TileShapeSFBGlobal = decltype(cute::make_shape(
++      shape<0>(TileShape{}),
++      shape<1>(TileShape{}),
++      Int<cute::max(size<2>(TileShape{}), 128)>{}));
++
++  using SmemLayoutSFA = cute::conditional_t<
++    IsShortK || size<0>(TileShape{}) < 128,
++    decltype(cute::logical_divide(
++      SmemLayoutSFAFull{}, select<0,2>(TileShape{}))),
++    SmemLayoutSFAFull>;
+ 
+-  using SmemLayoutSFB = cute::conditional_t<size<1>(TileShape{}) < 128,
+-    decltype(cute::logical_divide(SmemLayoutSFB_{}, select<1,2>(TileShape{}))),
+-    SmemLayoutSFB_>;
++  using SmemLayoutSFAConsumer = SmemLayoutSFA;
++
++  using SmemLayoutSFB = cute::conditional_t<IsShortK,
++    SmemLayoutSFBFull,
++    cute::conditional_t<size<1>(TileShape{}) < 128,
++      decltype(cute::logical_divide(
++        SmemLayoutSFBFull{}, select<1,2>(TileShape{}))),
++      SmemLayoutSFBFull>>;
++
++  using SmemLayoutSFBConsumer = cute::conditional_t<IsShortK,
++    decltype(cute::logical_divide(
++      SmemLayoutSFBFull{}, select<1,2>(TileShape{}))),
++    SmemLayoutSFB>;
+ 
+   static_assert(rank(SmemLayoutA{}) == 3, "Smem layout must be rank 3.");
+   static_assert(rank(SmemLayoutB{}) == 3, "Smem layout must be rank 3.");
+@@ -254,6 +285,7 @@ struct CollectiveMma<
+ 
+   using SmemAllocTypeA = cute::conditional_t<IsF8F6F4, uint8_t, typename TiledMma::ValTypeA>;
+   using SmemAllocTypeB = cute::conditional_t<IsF8F6F4, uint8_t, typename TiledMma::ValTypeB>;
++  using TmaInternalElementSF = uint16_t;
+ 
+   // Set the bytes transferred in this TMA transaction (may involve multiple issues)
+   static constexpr uint32_t TmaTransactionBytesMK = static_cast<uint32_t>(
+@@ -301,6 +333,10 @@ struct CollectiveMma<
+     LayoutSFA layout_SFA{};
+     ElementSF const** ptr_SFB{nullptr};
+     LayoutSFB layout_SFB{};
++    int32_t fixed_group_m{};
++    int32_t fixed_group_n{};
++    int32_t fixed_group_k{};
++    bool fixed_group_tensor_properties{};
+   };
+ 
+   // Device side kernel params
+@@ -320,15 +356,16 @@ struct CollectiveMma<
+         make_shape(shape<1>(TileShape{}), shape<2>(TileShape{})),
+         _1{}));  // No programmatic multicast
+ 
+-    using TMA_SFA = decltype(make_tma_copy<uint16_t>(
++    using TMA_SFA = decltype(make_tma_copy<TmaInternalElementSF>(
+         GmemTiledCopySFA{},
+         make_tensor(static_cast<ElementSF const*>(nullptr), InternalLayoutSFA{}),
+         SmemLayoutSFA{}(_,_,cute::Int<0>{}),
+-        make_shape(shape<0>(TileShape{}), shape<2>(TileShape{})),
++        make_shape(
++          shape<0>(TileShapeSFA{}), shape<2>(TileShapeSFA{})),
+         _1{}));  // No programmatic multicast
+ 
+ 
+-    using TMA_SFB = decltype(make_tma_copy<uint16_t>(
++    using TMA_SFB = decltype(make_tma_copy<TmaInternalElementSF>(
+         GmemTiledCopySFB{},
+         make_tensor(static_cast<ElementSF const*>(nullptr), InternalLayoutSFB{}),
+         SmemLayoutSFB{}(_,_,cute::Int<0>{}),
+@@ -351,6 +388,7 @@ struct CollectiveMma<
+     LayoutSFA layout_SFA;
+     ElementSF const** ptr_SFB;
+     LayoutSFB layout_SFB;
++    bool fixed_group_tensor_properties;
+   };
+ 
+   //
+@@ -380,11 +418,23 @@ struct CollectiveMma<
+     InternalLayoutSFB layout_SFB;
+ 
+     if constexpr (IsGroupedGemmKernel) {
++      if (args.fixed_group_tensor_properties) {
++        init_M = args.fixed_group_m;
++        init_N = args.fixed_group_n;
++        init_K = args.fixed_group_k;
++      }
+       // Strides for Grouped Gemm will be replaced prior to the first access regardless.
+-      stride_a = InternalStrideA{};
+-      stride_b = InternalStrideB{};
+-      layout_SFA = Sm1xxBlkScaledConfig::tile_atom_to_shape_SFA(cute::make_shape(init_M, init_N, init_K, 1));
+-      layout_SFB = Sm1xxBlkScaledConfig::tile_atom_to_shape_SFA(cute::make_shape(init_M, init_N, init_K, 1));
++      stride_a = cutlass::make_cute_packed_stride(
++          InternalStrideA{}, make_shape(init_M, init_K, 1));
++      stride_b = cutlass::make_cute_packed_stride(
++          InternalStrideB{}, make_shape(init_N, init_K, 1));
++      int32_t const init_sf_k = cute::max(init_K, int32_t(128));
++      auto const init_sf_problem =
++          cute::make_shape(init_M, init_N, init_sf_k, 1);
++      layout_SFA =
++          Sm1xxBlkScaledConfig::tile_atom_to_shape_SFA(init_sf_problem);
++      layout_SFB =
++          Sm1xxBlkScaledConfig::tile_atom_to_shape_SFB(init_sf_problem);
+     }
+     else {
+       // Tensor shapes for Ptr-Array are initialized correctly only here.
+@@ -417,14 +467,17 @@ struct CollectiveMma<
+         make_shape(shape<1>(TileShape{}), shape<2>(TileShape{})),
+         _1{}); // No programmatic multicast
+ 
+-    typename Params::TMA_SFA tma_load_sfa = make_tma_copy<uint16_t>(
++    typename Params::TMA_SFA tma_load_sfa =
++        make_tma_copy<TmaInternalElementSF>(
+         GmemTiledCopySFA{},
+         tensor_sfa,
+         SmemLayoutSFA{}(_,_,cute::Int<0>{}),
+-        make_shape(shape<0>(TileShape{}), shape<2>(TileShape{})),
++        make_shape(
++          shape<0>(TileShapeSFA{}), shape<2>(TileShapeSFA{})),
+         _1{}); // No programmatic multicast
+ 
+-    typename Params::TMA_SFB tma_load_sfb = make_tma_copy<uint16_t>(
++    typename Params::TMA_SFB tma_load_sfb =
++        make_tma_copy<TmaInternalElementSF>(
+         GmemTiledCopySFB{},
+         tensor_sfb,
+         SmemLayoutSFB{}(_,_,cute::Int<0>{}),
+@@ -447,7 +500,8 @@ struct CollectiveMma<
+       reinterpret_cast<ElementSF const**>(args.ptr_SFA),
+       args.layout_SFA,
+       reinterpret_cast<ElementSF const**>(args.ptr_SFB),
+-      args.layout_SFB
++      args.layout_SFB,
++      args.fixed_group_tensor_properties
+     };
+   }
+ 
+@@ -672,8 +726,8 @@ struct CollectiveMma<
+     Tensor gA_mkl = local_tile(mA_mkl, TileShape{}, make_coord(_,_,_), Step<_1, X,_1>{});        // (BLK_M,BLK_K,m,k,l)
+     Tensor gB_nkl = local_tile(mB_nkl, TileShape{}, make_coord(_,_,_), Step< X,_1,_1>{});        // (BLK_N,BLK_K,n,k,l)
+ 
+-    Tensor gSFA_mkl = local_tile(mSFA_mkl, TileShape{}, make_coord(_,_,_), Step<_1, X,_1>{});    // (TILE_M,TILE_K,m,k,l)
+-    Tensor gSFB_nkl = local_tile(mSFB_nkl, TileShape{}, make_coord(_,_,_), Step< X,_1,_1>{});    // (TILE_N,TILE_K,n,k,l)
++    Tensor gSFA_mkl = local_tile(mSFA_mkl, TileShapeSFAGlobal{}, make_coord(_,_,_), Step<_1, X,_1>{}); // (TILE_M,TILE_K,m,k,l)
++    Tensor gSFB_nkl = local_tile(mSFB_nkl, TileShapeSFBGlobal{}, make_coord(_,_,_), Step< X,_1,_1>{}); // (TILE_N,TILE_K,n,k,l)
+ 
+     return cute::make_tuple(gA_mkl, gB_nkl, gSFA_mkl, gSFB_nkl);
+   }
+@@ -723,6 +777,10 @@ struct CollectiveMma<
+       // Partition the inputs based on the current block coordinates.
+       auto [m_coord, n_coord, k_coord, l_coord] = blk_coord;
+ 
++      auto broadcast_m = make_layout(
++        make_shape(Int<size<0>(TileShapeSFA{}) / size<0>(TileShape{})>{},
++                   Int<cute::numeric_limits<int>::max()>{}),
++        make_stride(_0{}, size<0>(TileShapeSFA{}) / size<0>(TileShape{})));
+       auto broadcast_n = make_layout(
+         make_shape(Int<size<1>(TileShapeSFB{}) / size<1>(TileShape{})>{},
+                    Int<cute::numeric_limits<int>::max()>{}),
+@@ -730,7 +788,7 @@ struct CollectiveMma<
+ 
+       Tensor gA =   gA_mkl(_,_,m_coord,_,l_coord);                                                     // (BLK_M,BLK_K,k)
+       Tensor gB =   gB_nkl(_,_,n_coord,_,l_coord);                                                     // (BLK_N,BLK_K,k)
+-      Tensor gSFA = gSFA_mkl(_,_,m_coord,_,l_coord);                                                   // (BLK_M,BLK_K,k)
++      Tensor gSFA = gSFA_mkl(_,_,broadcast_m(m_coord),_,l_coord);                                      // (BLK_M,BLK_K,k)
+       Tensor gSFB = gSFB_nkl(_,_,broadcast_n(n_coord),_,l_coord);                                      // (BLK_N,BLK_K,k)
+ 
+       // Partition source and destination tensors for tma copies
+@@ -814,15 +872,65 @@ struct CollectiveMma<
+ 
+     Tensor sA = make_tensor(make_smem_ptr(shared_tensors.smem_A.begin()), SmemLayoutA{});         // (BLK_M,BLK_K,PIPE)
+     Tensor sB = make_tensor(make_smem_ptr(shared_tensors.smem_B.begin()), SmemLayoutB{});         // (BLK_N,BLK_K,PIPE)
+-    Tensor sSFA = make_tensor(make_smem_ptr(shared_tensors.smem_SFA.begin()), SmemLayoutSFA{});   // (BLK_M,BLK_K,PIPE)
++    Tensor sSFA = [&]() {
++      if constexpr (!IsShortK && size<0>(TileShape{}) >= 128) {
++        return make_tensor(
++          make_smem_ptr(shared_tensors.smem_SFA.begin()),
++          SmemLayoutSFA{});
++      }
++      else {
++        Tensor temp = make_tensor(
++          make_smem_ptr(shared_tensors.smem_SFA.begin()),
++          SmemLayoutSFAConsumer{});
++        auto m = get<0>(blk_coord);
++        if constexpr (IsShortK) {
++          auto k = get<2>(blk_coord);
++          return temp(
++            make_coord(
++              _, m % (
++                size<0>(TileShapeSFA{}) / size<0>(TileShape{}))),
++            make_coord(
++              _, k % (
++                size<2>(TileShapeSFA{}) / size<2>(TileShape{}))),
++            _);
++        }
++        else {
++          return temp(
++            make_coord(
++              _, m % (
++                size<0>(TileShapeSFA{}) / size<0>(TileShape{}))),
++            _, _);
++        }
++      }
++    }();
+     Tensor sSFB = [&]() {
+-      if constexpr (size<1>(TileShape{}) >= 128) {
++      if constexpr (
++        !IsShortK && size<1>(TileShape{}) >= 128) {
+         return make_tensor(make_smem_ptr(shared_tensors.smem_SFB.begin()), SmemLayoutSFB{});      // (BLK_N,BLK_K,PIPE)
+       }
+       else {
+-        Tensor temp = make_tensor(make_smem_ptr(shared_tensors.smem_SFB.begin()), SmemLayoutSFB{});  // (BLK_SFB_N,BLK_K,PIPE)
++        Tensor temp = make_tensor(
++          make_smem_ptr(shared_tensors.smem_SFB.begin()),
++          SmemLayoutSFBConsumer{});
+         auto n = get<1>(blk_coord);
+-        return temp(make_coord(_,n % (size<1>(TileShapeSFB{}) / size<1>(TileShape{}))), _, _);
++        if constexpr (IsShortK) {
++          auto k = get<2>(blk_coord);
++          return temp(
++            make_coord(
++              _, n % (
++                size<1>(TileShapeSFB{}) / size<1>(TileShape{}))),
++            make_coord(
++              _, k % (
++                size<2>(TileShapeSFB{}) / size<2>(TileShape{}))),
++            _);
++        }
++        else {
++          return temp(
++            make_coord(
++              _, n % (
++                size<1>(TileShapeSFB{}) / size<1>(TileShape{}))),
++            _, _);
++        }
+       }
+     }();
+ 
+@@ -840,6 +948,13 @@ struct CollectiveMma<
+     Tensor tCrSFA = partition_fragment_SFA(sSFA(_,_,Int<0>{}), thread_mma);                  // (MMA,MMA_M,MMA_K)
+     Tensor tCrSFB = partition_fragment_SFB(sSFB(_,_,Int<0>{}), thread_mma);                  // (MMA,MMA_N,MMA_K)
+ 
++    // The compact K=64 path transposes A in global and shared memory so that
++    // the indivisible 128-value dimension of the 6-bit TMA descriptor is M.
++    // Retain the logical MMA coordinates for the MN-major unpack below.
++    Tensor cA = make_identity_tensor(
++        make_shape(size<0>(sA), size<1>(sA)));
++    Tensor tCcA = thread_mma.partition_A(cA);
++
+     //
+     // Copy from smem to registers
+     //
+@@ -912,7 +1027,65 @@ struct CollectiveMma<
+ 
+     auto copy_kblock = [&](auto k_block) {
+         // copy smem->rmem for A/B operand
+-      copy(smem_tiled_copy_A, tCsA_stage(_,_,k_block), tCrA_copy_view(_,_,k_block));
++      if constexpr (::cutlass::gemm::detail::is_major<0,StrideA>()) {
++        Tensor tCrA_block = tCrA(_,_,k_block);
++        Tensor tCcA_block = tCcA(_,_,k_block);
++        auto first_coord = tCcA_block(Int<0>{});
++        int lane = thread_idx & 31;
++        int m_base = int(get<0>(first_coord)) - (lane >> 2);
++        int k_base = int(get<1>(first_coord)) - ((lane & 3) << 2);
++        auto const& packed = *reinterpret_cast<uint128_t const*>(
++            &sA(m_base, k_base + lane, read_stage));
++
++        uint32_t loaded[4];
++        SM100_SU6_DU8x16_x4_LDSM_N::copy(
++            packed, loaded[0], loaded[1], loaded[2], loaded[3]);
++
++        int byte = (lane >> 2) & 3;
++        int m_group = lane >> 4;
++        int k_quarter = lane & 3;
++        int source_register = k_quarter >> 1;
++        int source_lane_base = ((k_quarter & 1) << 4) + m_group;
++
++        auto gather_word = [&](uint32_t source, int lane_base) {
++          uint32_t result = 0;
++          CUTE_UNROLL
++          for (int value = 0; value < 4; ++value) {
++            uint32_t word = __shfl_sync(
++                0xffffffff, source, lane_base + value * 4);
++            result |= ((word >> (byte * 8)) & 0xff) << (value * 8);
++          }
++          return result;
++        };
++
++        uint32_t low_m0[2] = {
++            gather_word(loaded[0], source_lane_base),
++            gather_word(loaded[1], source_lane_base)};
++        uint32_t low_m8[2] = {
++            gather_word(loaded[0], source_lane_base + 2),
++            gather_word(loaded[1], source_lane_base + 2)};
++        uint32_t high_m0[2] = {
++            gather_word(loaded[2], source_lane_base),
++            gather_word(loaded[3], source_lane_base)};
++        uint32_t high_m8[2] = {
++            gather_word(loaded[2], source_lane_base + 2),
++            gather_word(loaded[3], source_lane_base + 2)};
++        uint32_t transposed[4] = {
++            low_m0[source_register],
++            low_m8[source_register],
++            high_m0[source_register],
++            high_m8[source_register]};
++        CUTE_UNROLL
++        for (int value = 0; value < size(tCrA_block); ++value) {
++          tCrA_block(value) =
++              static_cast<typename decltype(tCrA_block)::value_type>(
++                  transposed[value >> 2] >> ((value & 3) * 8));
++        }
++      }
++      else {
++        copy(smem_tiled_copy_A, tCsA_stage(_,_,k_block),
++             tCrA_copy_view(_,_,k_block));
++      }
+       copy(smem_tiled_copy_B, tCsB_stage(_,_,k_block), tCrB_copy_view(_,_,k_block));
+ 
+       // Left shift A,B for FP4
+@@ -1134,9 +1307,11 @@ struct CollectiveMma<
+       tensormaps_replace_global_address(shared_tensormaps, mainloop_params, next_batch);
+ 
+       if constexpr (IsGroupedGemmKernel) {
+-        // Replacing global dims and strides for the next batch
+-        tensormaps_replace_global_tensor_properties(shared_tensormaps,
+-          mainloop_params, next_batch, problem_shape_mnkl);
++        if (!mainloop_params.fixed_group_tensor_properties) {
++          // Replacing global dims and strides for the next batch
++          tensormaps_replace_global_tensor_properties(shared_tensormaps,
++            mainloop_params, next_batch, problem_shape_mnkl);
++        }
+       }
+     }
+   }
 diff --git a/include/cutlass/gemm/collective/sm120_blockscaled_mma_tma.hpp b/include/cutlass/gemm/collective/sm120_blockscaled_mma_tma.hpp
-index 6a8f9ec8b1cfc8bc8bf9eb6f78a725453fa0f292..3f98bbc914420e00804c581ab69a681c72e53f53 100755
+index 6a8f9ec..3f98bbc 100755
 --- a/include/cutlass/gemm/collective/sm120_blockscaled_mma_tma.hpp
 +++ b/include/cutlass/gemm/collective/sm120_blockscaled_mma_tma.hpp
 @@ -193,11 +193,22 @@ struct CollectiveMma<
@@ -149,3 +725,202 @@ index 6a8f9ec8b1cfc8bc8bf9eb6f78a725453fa0f292..3f98bbc914420e00804c581ab69a681c
      Tensor sSFB = [&]() {
        if constexpr (size<1>(TileShape{}) >= 128) {
          return make_tensor(make_smem_ptr(shared_tensors.smem_SFB.begin()), SmemLayoutSFB{});  // (BLK_N,BLK_K,PIPE)
+diff --git a/include/cutlass/gemm/kernel/sm90_gemm_array_tma_warpspecialized_cooperative.hpp b/include/cutlass/gemm/kernel/sm90_gemm_array_tma_warpspecialized_cooperative.hpp
+index 27cf437..d76b15e 100644
+--- a/include/cutlass/gemm/kernel/sm90_gemm_array_tma_warpspecialized_cooperative.hpp
++++ b/include/cutlass/gemm/kernel/sm90_gemm_array_tma_warpspecialized_cooperative.hpp
+@@ -438,10 +438,16 @@ public:
+ #else
+ 
+     // Preconditions
+-    static_assert(size(TiledMma{}) == 256, "Cooperative kernel must have TiledMMA operating using 256 threads.");
+-    static_assert(size<0>(TileShape{}) >= 128,
+-        "Cooperative kernel requires Tile Size to be greater than or equal to 128 along the M-dimension.");
+-    static_assert(NumMmaWarpGroups == 2, "Cooperative kernels currently only support NumMmaWarpGroups == 2");
++    // SM120 RR block-scaled instructions also support a single 128-thread
++    // consumer warp group.  Keeping the existing producer warp group gives a
++    // 256-thread CTA, which is important for narrow-N grouped GEMMs where two
++    // CTAs can hide TMA latency on one SM.
++    static_assert(size(TiledMma{}) == 128 || size(TiledMma{}) == 256,
++        "Cooperative kernel requires one or two TiledMMA warp groups.");
++    static_assert(size<0>(TileShape{}) >= 64,
++        "Cooperative kernel requires Tile Size >= 64 along M.");
++    static_assert(NumMmaWarpGroups == 1 || NumMmaWarpGroups == 2,
++        "Cooperative kernels support one or two MMA warp groups.");
+ 
+     if constexpr (cutlass::epilogue::collective::detail::sm90_is_ptr_array_tma_dispatch_policy_v<typename CollectiveEpilogue::DispatchPolicy>) {
+       static_assert(NumMmaWarpGroups == CollectiveEpilogue::NumEpilogueWarpGroups,
+diff --git a/include/cutlass/gemm/kernel/sm90_tile_scheduler_group.hpp b/include/cutlass/gemm/kernel/sm90_tile_scheduler_group.hpp
+index f93c9c8..25bad50 100644
+--- a/include/cutlass/gemm/kernel/sm90_tile_scheduler_group.hpp
++++ b/include/cutlass/gemm/kernel/sm90_tile_scheduler_group.hpp
+@@ -52,6 +52,9 @@ class PersistentTileSchedulerSm90Group {
+ protected:
+   uint64_t current_work_linear_idx_ = 0;
+   uint64_t total_grid_size_ = 0;
++  uint64_t uniform_group_idx_ = 0;
++  uint32_t uniform_tile_idx_ = 0;
++  uint32_t explicit_work_count_ = 0;
+ 
+   // Tracking current group, its starting linear idx and total tiles
+   struct GroupInfo {
+@@ -132,6 +135,11 @@ public:
+     int max_swizzle_size = 1;
+     // Not applying Heuristics for Grouped problems, since largest dimension can change per group
+     RasterOrderOptions raster_order = RasterOrderOptions::AlongM;
++    bool uniform_groups = false;
++    uint32_t uniform_tiles_per_group = 0;
++    int32_t const* explicit_work_tiles = nullptr;
++    int32_t const* explicit_work_tile_count = nullptr;
++    uint32_t explicit_max_work_tiles = 0;
+   };
+ 
+   // Sink scheduler params as a member
+@@ -164,6 +172,19 @@ public:
+       problem_shapes,
+       hw_info,
+       tile_shape, cluster_shape);
++    if (arguments.uniform_groups) {
++      problem_blocks = Params::get_tiled_cta_shape_mnl(
++          to_gemm_coord(cluster_shape),
++          problem_shapes.groups() *
++              arguments.uniform_tiles_per_group,
++          1);
++    }
++    else if (arguments.explicit_work_tiles != nullptr) {
++      problem_blocks = Params::get_tiled_cta_shape_mnl(
++          to_gemm_coord(cluster_shape),
++          arguments.explicit_max_work_tiles,
++          1);
++    }
+ 
+     Params params;
+     params.initialize(
+@@ -175,6 +196,14 @@ public:
+       arguments.max_swizzle_size, 
+       arguments.raster_order
+     );
++    params.uniform_groups_ = arguments.uniform_groups;
++    params.uniform_tiles_per_group_ =
++        arguments.uniform_tiles_per_group;
++    params.explicit_work_tiles_ = arguments.explicit_work_tiles;
++    params.explicit_work_tile_count_ =
++        arguments.explicit_work_tile_count;
++    params.explicit_max_work_tiles_ =
++        arguments.explicit_max_work_tiles;
+ 
+     return params;
+   }
+@@ -196,6 +225,19 @@ public:
+       problem_shapes,
+       hw_info,
+       tile_shape, cluster_shape);
++    if (arguments.uniform_groups) {
++      problem_blocks = Params::get_tiled_cta_shape_mnl(
++          to_gemm_coord(cluster_shape),
++          problem_shapes.groups() *
++              arguments.uniform_tiles_per_group,
++          1);
++    }
++    else if (arguments.explicit_work_tiles != nullptr) {
++      problem_blocks = Params::get_tiled_cta_shape_mnl(
++          to_gemm_coord(cluster_shape),
++          arguments.explicit_max_work_tiles,
++          1);
++    }
+ 
+     return Params::get_grid_shape(
+       problem_blocks,
+@@ -280,11 +322,22 @@ public:
+     }
+ 
+     int lane_idx = canonical_lane_idx();
+-    if (lane_idx < params_.problem_shapes_.groups()) {
+-      cached_problem_shapes_[1] = params_.problem_shapes_.get_problem_shape(lane_idx);
++    if (!params_.uniform_groups_ &&
++        lane_idx < params_.problem_shapes_.groups()) {
++      cached_problem_shapes_[1] =
++          params_.problem_shapes_.get_problem_shape(lane_idx);
+     }
+ 
+     total_grid_size_ = uint64_t(gridDim.x) * uint64_t(gridDim.y) * uint64_t(gridDim.z);
++    if (params_.explicit_work_tiles_ != nullptr) {
++      explicit_work_count_ = static_cast<uint32_t>(
++          *params_.explicit_work_tile_count_);
++      return;
++    }
++    if (params_.uniform_groups_) {
++      uniform_group_idx_ = current_work_linear_idx_;
++      return;
++    }
+     uint64_t ctas_along_m, ctas_along_n;
+     ProblemShape problem_shape = params_.problem_shapes_.get_problem_shape(0);
+     if constexpr (is_tuple<decltype(cute::shape<0>(problem_shape))>::value ||
+@@ -438,6 +491,28 @@ public:
+   CUTLASS_DEVICE
+   WorkTileInfo
+   get_current_work_for_linear_idx(uint64_t linear_idx) {
++    if (scheduler_params.explicit_work_tiles_ != nullptr) {
++      if (linear_idx >= explicit_work_count_) {
++        return WorkTileInfo::invalid_work_tile();
++      }
++      int32_t const* tile =
++          scheduler_params.explicit_work_tiles_ + linear_idx * 4;
++      return {tile[0], tile[1], tile[2], tile[3]};
++    }
++    if (scheduler_params.uniform_groups_) {
++      uint64_t const tiles_per_group =
++          scheduler_params.uniform_tiles_per_group_;
++      if (tiles_per_group == 0 ||
++          uniform_group_idx_ >= static_cast<uint64_t>(
++              scheduler_params.problem_shapes_.groups())) {
++        return WorkTileInfo::invalid_work_tile();
++      }
++      return {
++          static_cast<int32_t>(uniform_tile_idx_),
++          0,
++          static_cast<int32_t>(uniform_group_idx_),
++          1};
++    }
+     if (scheduler_params.pre_processed_problem_shapes && linear_idx >= scheduler_params.blocks_across_problem_) {
+       return WorkTileInfo::invalid_work_tile();
+     }
+@@ -465,7 +540,21 @@ public:
+     uint32_t advance_count = 1,
+     CallbackBeforeCommit callback_before_commit = [] (WorkTileInfo info) { return info;}) {
+ 
+-    current_work_linear_idx_ += total_grid_size_ * uint64_t(advance_count);
++    if (scheduler_params.uniform_groups_) {
++      uint64_t const next_tile =
++          static_cast<uint64_t>(uniform_tile_idx_) + advance_count;
++      uint64_t const groups_advanced =
++          next_tile /
++          scheduler_params.uniform_tiles_per_group_;
++      uniform_tile_idx_ = static_cast<uint32_t>(
++          next_tile %
++          scheduler_params.uniform_tiles_per_group_);
++      uniform_group_idx_ += groups_advanced * total_grid_size_;
++    }
++    else {
++      current_work_linear_idx_ +=
++          total_grid_size_ * uint64_t(advance_count);
++    }
+     auto work_tile = get_current_work_for_linear_idx(current_work_linear_idx_);
+     using WorkTileWithCallbackInfo = decltype(callback_before_commit(work_tile));
+     WorkTileWithCallbackInfo work_tile_with_callback_info = work_tile;
+diff --git a/include/cutlass/gemm/kernel/tile_scheduler_params.h b/include/cutlass/gemm/kernel/tile_scheduler_params.h
+index 09fda77..cc50647 100644
+--- a/include/cutlass/gemm/kernel/tile_scheduler_params.h
++++ b/include/cutlass/gemm/kernel/tile_scheduler_params.h
+@@ -1635,6 +1635,11 @@ struct PersistentTileSchedulerSm90GroupParams {
+ 
+   uint64_t blocks_across_problem_ = 0;
+   bool pre_processed_problem_shapes = true;
++  bool uniform_groups_ = false;
++  uint32_t uniform_tiles_per_group_ = 0;
++  int32_t const* explicit_work_tiles_ = nullptr;
++  int32_t const* explicit_work_tile_count_ = nullptr;
++  uint32_t explicit_max_work_tiles_ = 0;
+   int32_t max_swizzle_size_ = 0;
+   RasterOrder raster_order_ = RasterOrder::AlongN;
+ 

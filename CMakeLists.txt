@@ -89,6 +89,7 @@ endif()
 # torch.ops.load_library(), so no CPython/PYBIND11 module is required.
 add_library(mxfp6_torch SHARED
   csrc/torch_extension.cu
+  csrc/moe.cu
   csrc/packing.cu
   csrc/quantization.cu
 )
