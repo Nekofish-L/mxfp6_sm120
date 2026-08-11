@@ -13,6 +13,10 @@
 initialization against the self-resetting persistent arena.
 `runtime_autotune_v4.json` records the post-change FP16/BF16 retune across the
 50 Qwen3.5-27B TP2 shapes, including the measurement policy and timings.
+`qwen35_moe_tp2.json` records CUDA-Graph whole-layer Qwen3.5 MoE latency,
+numerics, and the measured batch-dependent schedule on two RTX 5090 GPUs.
+`qwen35_moe_b4_vector.json` records the paired scalar/vector B=4 TP2 layer
+comparison with programmatic router-to-W1 dependency ordering.
 
 Humming is not a submodule, dependency or backend of the current project. Its
 checked-in measurements are retained as an external historical reference from

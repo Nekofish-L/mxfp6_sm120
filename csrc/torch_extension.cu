@@ -22,11 +22,11 @@
 #include <c10/cuda/CUDAStream.h>
 #include <torch/library.h>
 
+#include "cutlass/util/packed_stride.hpp"
 #include "mxfp6_gemm/kernel_normal.hpp"
 #include "mxfp6_gemm/kernel_swapped.hpp"
 #include "mxfp6_gemm/packing.hpp"
 #include "mxfp6_gemm/quantization.hpp"
-#include "cutlass/util/packed_stride.hpp"
 
 using namespace cute;
 
@@ -2125,8 +2125,14 @@ TORCH_LIBRARY(mxfp6, m) {
   m.def("_set_workspace_collection(Tensor anchor, bool enabled) -> bool");
   m.def("pack_fp6(Tensor codes) -> Tensor");
   m.def("unpack_fp6(Tensor packed, int rows, int k) -> Tensor");
+  m.def("pad_fp6(Tensor packed) -> Tensor");
   m.def("expand_fp6_to_fp8(Tensor packed, int rows, int k) -> Tensor");
   m.def("quantize_mxfp8(Tensor input) -> (Tensor values, Tensor scales)");
+  m.def("quantize_mxfp8_dual(Tensor input) -> "
+        "(Tensor values, Tensor logical_scales, Tensor packed_scales)");
+  m.def("quantize_mxfp8_dual_out("
+        "Tensor(a!) output, Tensor(b!) logical_scales, "
+        "Tensor(c!) packed_scales, Tensor input) -> ()");
   m.def("quantize_mxfp6(Tensor input) -> (Tensor values, Tensor scales)");
   m.def("pack_scales(Tensor logical, int rows, int k) -> Tensor");
   m.def("unpack_scales(Tensor packed, int rows, int k) -> Tensor");
@@ -2147,9 +2153,14 @@ TORCH_LIBRARY_IMPL(mxfp6, CUDA, m) {
   m.impl("_set_workspace_collection", &set_workspace_collection_cuda);
   m.impl("pack_fp6", &mxfp6_gemm::torch_ext::pack_fp6_cuda);
   m.impl("unpack_fp6", &mxfp6_gemm::torch_ext::unpack_fp6_cuda);
+  m.impl("pad_fp6", &mxfp6_gemm::torch_ext::pad_fp6_cuda);
   m.impl("expand_fp6_to_fp8",
          &mxfp6_gemm::torch_ext::expand_fp6_to_fp8_cuda);
   m.impl("quantize_mxfp8", &mxfp6_gemm::torch_ext::quantize_mxfp8_cuda);
+  m.impl("quantize_mxfp8_dual",
+         &mxfp6_gemm::torch_ext::quantize_mxfp8_dual_cuda);
+  m.impl("quantize_mxfp8_dual_out",
+         &mxfp6_gemm::torch_ext::quantize_mxfp8_dual_out_cuda);
   m.impl("quantize_mxfp6", &mxfp6_gemm::torch_ext::quantize_mxfp6_cuda);
   m.impl("pack_scales", &mxfp6_gemm::torch_ext::pack_scales_cuda);
   m.impl("unpack_scales", &mxfp6_gemm::torch_ext::unpack_scales_cuda);

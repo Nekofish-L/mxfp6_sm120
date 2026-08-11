@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "date_utc": "2026-08-11",
+  "claim_layer": "B4 TP2 separate-shared complete layer",
+  "hardware": {
+    "gpus": 2,
+    "device": "NVIDIA GeForce RTX 5090",
+    "compute_capability": "12.0",
+    "topology": "PIX"
+  },
+  "measurement": {
+    "capture": "CUDA Graph",
+    "warmup_replays": 40,
+    "measured_replays": 1000,
+    "repeats": 9,
+    "statistic": "median of per-repeat rank-max latency",
+    "pair_order": "alternating scalar/vector",
+    "input_seed": 20260815,
+    "all_reduce": "vLLM graph-registered custom all-reduce",
+    "dependency_ordering": "programmatic router-to-W1 dependency; ordinary W1-to-W2 stream ordering"
+  },
+  "reference": "three 32-bit loads per packed 12-byte FP6 segment",
+  "candidate": "aligned packed vector loads with scalar fallback",
+  "correctness": {
+    "exact_output": true
+  },
+  "complete_layer": {
+    "reference_us": 26.61788836121559,
+    "candidate_us": 24.64713715016842,
+    "speedup": 1.0799586255815397,
+    "paired_samples": [
+      {"order": "scalar,vector", "reference_us": 26.624927297234535, "candidate_us": 24.616768583655357, "speedup": 1.0815768611852867},
+      {"order": "vector,scalar", "reference_us": 26.61891095340252, "candidate_us": 24.62140843272209, "speedup": 1.0811286862869196},
+      {"order": "scalar,vector", "reference_us": 26.61660686135292, "candidate_us": 24.66614358127117, "speedup": 1.079074512546125},
+      {"order": "vector,scalar", "reference_us": 26.615871116518974, "candidate_us": 24.691838771104813, "speedup": 1.077921792834065},
+      {"order": "scalar,vector", "reference_us": 26.61788836121559, "candidate_us": 24.78998340666294, "speedup": 1.0737356263845401},
+      {"order": "vector,scalar", "reference_us": 26.618143543601036, "candidate_us": 24.640671908855438, "speedup": 1.0802523422275239},
+      {"order": "scalar,vector", "reference_us": 26.618080213665962, "candidate_us": 24.738814681768417, "speedup": 1.0759642511604444},
+      {"order": "vector,scalar", "reference_us": 26.616064831614494, "candidate_us": 24.616096168756485, "speedup": 1.081246378351269},
+      {"order": "scalar,vector", "reference_us": 26.616191491484642, "candidate_us": 24.64713715016842, "speedup": 1.0798897790570687}
+    ]
+  }
+}
