@@ -1,14 +1,15 @@
 {
   "schema_version": 1,
-  "date_utc": "2026-08-01",
+  "date_utc": "2026-08-11",
   "hardware": {
     "gpus": 2,
     "device": "NVIDIA GeForce RTX 5090",
-    "compute_capability": "12.0"
+    "compute_capability": "12.0",
+    "topology": "PIX"
   },
   "models": {
-    "baseline": "/data/models/Qwen3.5-35B-A3B-FP8",
-    "candidate": "/data/models/Qwen3.5-35B-A3B-MXFP6",
+    "baseline": "Qwen3.5-35B-A3B-FP8",
+    "candidate": "Qwen3.5-35B-A3B-MXFP6",
     "layer": 0,
     "tensor_parallel_size": 2
   },
@@ -16,23 +17,30 @@
     "scope": "whole MoE layer",
     "capture": "CUDA Graph",
     "warmup_replays": 40,
-    "measured_replays": 700,
+    "measured_replays": 1000,
     "repeats": 9,
-    "statistic": "median",
+    "statistic": "median of per-repeat rank-max latency",
+    "pair_order": "alternating FP8/MXFP6",
     "all_reduce": "vLLM graph-registered custom all-reduce",
     "baseline": "vLLM runtime Triton FP8-block experts with auxiliary-stream shared expert"
   },
   "results": [
-    {"batch": 16, "fp8_us": 120.9, "mxfp6_us": 92.2, "speedup": 1.311, "rel_rms": 0.0903, "cosine": 0.9959},
-    {"batch": 24, "fp8_us": 161.8, "mxfp6_us": 126.5, "speedup": 1.279, "rel_rms": 0.0980, "cosine": 0.9952},
-    {"batch": 32, "fp8_us": 188.2, "mxfp6_us": 146.8, "speedup": 1.282, "rel_rms": 0.0949, "cosine": 0.9955},
-    {"batch": 36, "fp8_us": 192.4, "mxfp6_us": 150.7, "speedup": 1.277, "rel_rms": 0.0983, "cosine": 0.9952},
-    {"batch": 40, "fp8_us": 204.2, "mxfp6_us": 161.7, "speedup": 1.263, "rel_rms": 0.0997, "cosine": 0.9950},
-    {"batch": 48, "fp8_us": 226.0, "mxfp6_us": 177.2, "speedup": 1.275, "rel_rms": 0.0971, "cosine": 0.9953},
-    {"batch": 56, "fp8_us": 227.7, "mxfp6_us": 182.4, "speedup": 1.248, "rel_rms": 0.0962, "cosine": 0.9954},
-    {"batch": 64, "fp8_us": 238.6, "mxfp6_us": 188.4, "speedup": 1.267, "rel_rms": 0.0980, "cosine": 0.9952},
-    {"batch": 80, "fp8_us": 255.7, "mxfp6_us": 196.8, "speedup": 1.300, "rel_rms": 0.0975, "cosine": 0.9952},
-    {"batch": 96, "fp8_us": 265.9, "mxfp6_us": 207.6, "speedup": 1.281, "rel_rms": 0.0994, "cosine": 0.9951}
+    {"batch": 1, "fp8_us": 29.216, "mxfp6_us": 16.396, "speedup": 1.7819, "rel_rms": 0.1117, "cosine": 0.9937},
+    {"batch": 2, "fp8_us": 33.845, "mxfp6_us": 20.484, "speedup": 1.6523, "rel_rms": 0.1152, "cosine": 0.9936},
+    {"batch": 4, "fp8_us": 32.768, "mxfp6_us": 26.434, "speedup": 1.2396, "rel_rms": 0.0912, "cosine": 0.9958},
+    {"batch": 8, "fp8_us": 54.465, "mxfp6_us": 38.804, "speedup": 1.4036, "rel_rms": 0.0946, "cosine": 0.9955},
+    {"batch": 10, "fp8_us": 67.669, "mxfp6_us": 40.377, "speedup": 1.6760, "rel_rms": 0.0990, "cosine": 0.9951},
+    {"batch": 12, "fp8_us": 105.106, "mxfp6_us": 59.635, "speedup": 1.7625, "rel_rms": 0.1077, "cosine": 0.9942},
+    {"batch": 14, "fp8_us": 112.438, "mxfp6_us": 73.636, "speedup": 1.5269, "rel_rms": 0.1033, "cosine": 0.9947},
+    {"batch": 16, "fp8_us": 123.714, "mxfp6_us": 91.218, "speedup": 1.3562, "rel_rms": 0.0903, "cosine": 0.9959},
+    {"batch": 24, "fp8_us": 162.374, "mxfp6_us": 128.202, "speedup": 1.2665, "rel_rms": 0.0980, "cosine": 0.9952},
+    {"batch": 32, "fp8_us": 184.374, "mxfp6_us": 144.730, "speedup": 1.2739, "rel_rms": 0.0949, "cosine": 0.9955},
+    {"batch": 40, "fp8_us": 203.167, "mxfp6_us": 159.869, "speedup": 1.2708, "rel_rms": 0.0998, "cosine": 0.9950},
+    {"batch": 48, "fp8_us": 226.371, "mxfp6_us": 177.503, "speedup": 1.2753, "rel_rms": 0.0971, "cosine": 0.9953},
+    {"batch": 56, "fp8_us": 227.710, "mxfp6_us": 182.930, "speedup": 1.2448, "rel_rms": 0.0962, "cosine": 0.9954},
+    {"batch": 64, "fp8_us": 239.002, "mxfp6_us": 188.425, "speedup": 1.2684, "rel_rms": 0.0980, "cosine": 0.9952},
+    {"batch": 80, "fp8_us": 254.874, "mxfp6_us": 198.869, "speedup": 1.2816, "rel_rms": 0.0975, "cosine": 0.9952},
+    {"batch": 96, "fp8_us": 265.530, "mxfp6_us": 209.895, "speedup": 1.2651, "rel_rms": 0.0994, "cosine": 0.9951}
   ],
-  "geometric_mean_speedup": 1.278
+  "geometric_mean_speedup_b16_b96": 1.2778
 }

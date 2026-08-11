@@ -9,17 +9,18 @@ The FP8 baseline intentionally follows vLLM's runtime choices on SM120:
 * SiLU-and-mul and the second shared activation quantization are fused.
 
 The MXFP6 modes cover merged grouped GEMMs, route-array scheduling, and
-auxiliary-stream shared-expert overlap.  The automatic large-batch schedule
-uses route-array experts below batch 32 and expert-sorted grouped GEMMs from
-batch 32 while overlapping the dense shared expert.  Both paths are captured
-as complete CUDA Graphs.  With two torchrun workers, the final TP all-reduce
-is captured too.
+auxiliary-stream shared-expert overlap.  The automatic schedule uses the
+cooperative route-array specialization through batch 4 and expert-sorted
+grouped GEMMs from batch 5 onward.
+Every path is captured as a complete CUDA Graph.  With two torchrun workers,
+the final TP all-reduce is captured too.
 """
 
 from __future__ import annotations
 
 import argparse
 import gc
+import json
 import os
 import statistics
 from contextlib import contextmanager, nullcontext
@@ -561,6 +562,7 @@ class Fp8Layer:
         self.quant_config = quant_config
         self.all_reduce = all_reduce
         self.shared_stream = torch.cuda.Stream()
+        self.topk_ids: torch.Tensor | None = None
 
     def _shared(self, hidden_states: torch.Tensor) -> torch.Tensor:
         from vllm import _custom_ops as ops
@@ -625,6 +627,7 @@ class Fp8Layer:
             TOPK,
             renormalize=False,
         )
+        self.topk_ids = topk_ids
         routed_output = fused_experts(
             hidden_states,
             self.weights.w1,
@@ -691,6 +694,7 @@ class MxLayer:
             TOPK,
             renormalize=False,
         )
+        self.topk_ids = topk_ids
         quantized, logical_scales = mxfp6.quantize_mxfp8_logical(hidden_states)
         (
             packed_scales,
@@ -752,9 +756,16 @@ class MxArrayLayer:
         weights: MxLayerWeights,
         batch_size: int,
         all_reduce: RuntimeAllReduce | None,
+        separate_shared: bool = False,
+        use_packed_vector_loads: bool = False,
     ) -> None:
+        if separate_shared and batch_size not in (1, 2, 4):
+            raise ValueError("separate shared weights require B in {1,2,4}")
         self.weights = weights
+        self.batch_size = batch_size
         self.all_reduce = all_reduce
+        self.separate_shared = separate_shared
+        self.use_packed_vector_loads = use_packed_vector_loads
         self.fused_router = batch_size in (1, 2, 4, 8)
         self.splitk_w1 = batch_size in (1, 2, 4, 8)
         rows = batch_size * (TOPK + 1)
@@ -832,7 +843,7 @@ class MxArrayLayer:
                 w2_partial=self.w2_partial,
                 output=self.output,
             )
-            if batch_size == 1
+            if batch_size == 1 and not separate_shared
             else None
         )
 
@@ -850,6 +861,11 @@ class MxArrayLayer:
             return _maybe_all_reduce(output, self.all_reduce)
 
         if self.fused_router:
+            gate_weight = self.weights.combined_gate
+            shared_gate_weight = None
+            if self.separate_shared:
+                gate_weight = gate_weight[:NUM_EXPERTS]
+                shared_gate_weight = self.weights.combined_gate[NUM_EXPERTS:]
             mxfp6.qwen35_router_quant_out(
                 self.quantized,
                 self.input_scales,
@@ -858,7 +874,8 @@ class MxArrayLayer:
                 self.topk_ids,
                 self.shared_gate,
                 hidden_states,
-                self.weights.combined_gate,
+                gate_weight,
+                shared_gate_weight=shared_gate_weight,
             )
             quantized = self.quantized
             logical_scales = self.input_scales
@@ -880,18 +897,31 @@ class MxArrayLayer:
                 TOPK,
                 renormalize=False,
             )
+            self.topk_weights = topk_weights
+            self.topk_ids = topk_ids
             quantized, logical_scales = mxfp6.quantize_mxfp8_logical(hidden_states)
             shared_gate = gate_logits
         if self.splitk_w1:
+            w1 = self.weights.w1
+            w1_scale = self.weights.w1_scale
+            shared_w1 = None
+            shared_w1_scale = None
+            if self.separate_shared:
+                w1 = w1[:NUM_EXPERTS]
+                w1_scale = w1_scale[:NUM_EXPERTS]
+                shared_w1 = self.weights.w1[NUM_EXPERTS:]
+                shared_w1_scale = self.weights.w1_scale[NUM_EXPERTS:]
             mxfp6.qwen35_w1_splitk_silu_mxfp8_out(
                 self.activated,
                 self.activated_scales,
                 self.w1_partial,
                 quantized,
                 logical_scales,
-                self.weights.w1,
-                self.weights.w1_scale,
+                w1,
+                w1_scale,
                 topk_ids,
+                shared_weight=shared_w1,
+                shared_weight_scales=shared_w1_scale,
             )
         else:
             mxfp6.array_gemm_w6a8_silu_mxfp8_out(
@@ -904,15 +934,42 @@ class MxArrayLayer:
                 topk_ids,
                 include_shared=True,
             )
+        w2 = self.weights.w2
+        w2_scale = self.weights.w2_scale
+        shared_w2 = None
+        shared_w2_scale = None
+        if self.separate_shared:
+            w2 = w2[:NUM_EXPERTS]
+            w2_scale = w2_scale[:NUM_EXPERTS]
+            shared_w2 = self.weights.w2[NUM_EXPERTS:]
+            shared_w2_scale = self.weights.w2_scale[NUM_EXPERTS:]
+        if self.batch_size == 1:
+            mxfp6.qwen35_w2_splitk_reduce_out(
+                self.output,
+                self.w2_partial,
+                self.activated,
+                self.activated_scales,
+                w2,
+                w2_scale,
+                topk_ids,
+                topk_weights,
+                shared_gate,
+                shared_weight=shared_w2,
+                shared_weight_scales=shared_w2_scale,
+            )
+            return _maybe_all_reduce(self.output, self.all_reduce)
         mxfp6.array_gemm_w6a8_reduce_out(
             self.output,
             self.activated,
             self.activated_scales,
-            self.weights.w2,
-            self.weights.w2_scale,
+            w2,
+            w2_scale,
             topk_ids,
             topk_weights,
             shared_gate,
+            shared_weight=shared_w2,
+            shared_weight_scales=shared_w2_scale,
+            use_packed_vector_loads=self.use_packed_vector_loads,
         )
         return _maybe_all_reduce(self.output, self.all_reduce)
 
@@ -1492,30 +1549,70 @@ def _capture(
     return CapturedLayer(graph=graph, output=output)
 
 
-def _bench_graph(
+def _bench_graph_once(
     captured: CapturedLayer,
     iterations: int,
-    repeats: int,
     distributed: bool,
 ) -> float:
-    samples: list[float] = []
-    for _ in range(repeats):
-        if distributed:
-            dist.barrier()
-        start = torch.cuda.Event(enable_timing=True)
-        end = torch.cuda.Event(enable_timing=True)
-        start.record()
-        for _ in range(iterations):
-            captured.graph.replay()
-        end.record()
-        end.synchronize()
-        samples.append(start.elapsed_time(end) / iterations)
-    latency = statistics.median(samples)
+    if distributed:
+        dist.barrier()
+    start = torch.cuda.Event(enable_timing=True)
+    end = torch.cuda.Event(enable_timing=True)
+    start.record()
+    for _ in range(iterations):
+        captured.graph.replay()
+    end.record()
+    end.synchronize()
+    latency = start.elapsed_time(end) / iterations
     if distributed:
         value = torch.tensor(latency, device="cuda")
         dist.all_reduce(value, op=dist.ReduceOp.MAX)
         latency = float(value)
     return latency
+
+
+def _bench_graph_pair(
+    reference: CapturedLayer,
+    candidate: CapturedLayer,
+    iterations: int,
+    repeats: int,
+    distributed: bool,
+) -> tuple[float, float, list[dict[str, float | str]]]:
+    reference_samples: list[float] = []
+    candidate_samples: list[float] = []
+    pairs: list[dict[str, float | str]] = []
+    for repeat in range(repeats):
+        if repeat % 2 == 0:
+            order = "fp8,mxfp6"
+            reference_ms = _bench_graph_once(
+                reference, iterations, distributed
+            )
+            candidate_ms = _bench_graph_once(
+                candidate, iterations, distributed
+            )
+        else:
+            order = "mxfp6,fp8"
+            candidate_ms = _bench_graph_once(
+                candidate, iterations, distributed
+            )
+            reference_ms = _bench_graph_once(
+                reference, iterations, distributed
+            )
+        reference_samples.append(reference_ms)
+        candidate_samples.append(candidate_ms)
+        pairs.append(
+            {
+                "order": order,
+                "fp8_ms": reference_ms,
+                "mxfp6_ms": candidate_ms,
+                "speedup": reference_ms / candidate_ms,
+            }
+        )
+    return (
+        statistics.median(reference_samples),
+        statistics.median(candidate_samples),
+        pairs,
+    )
 
 
 def _error(reference: torch.Tensor, candidate: torch.Tensor) -> tuple[float, float]:
@@ -1534,6 +1631,49 @@ def _error(reference: torch.Tensor, candidate: torch.Tensor) -> tuple[float, flo
         )
     )
     return relative_rms, cosine
+
+
+def _global_error(
+    reference: torch.Tensor,
+    candidate: torch.Tensor,
+    distributed: bool,
+) -> tuple[float, float]:
+    relative_rms, cosine = _error(reference, candidate)
+    if distributed:
+        values = torch.tensor(
+            [relative_rms, -cosine],
+            device=reference.device,
+            dtype=torch.float64,
+        )
+        dist.all_reduce(values, op=dist.ReduceOp.MAX)
+        relative_rms = float(values[0])
+        cosine = -float(values[1])
+    return relative_rms, cosine
+
+
+def _global_route_match(
+    reference_ids: torch.Tensor,
+    candidate_ids: torch.Tensor,
+    distributed: bool,
+) -> bool:
+    return _global_tensor_equal(reference_ids, candidate_ids, distributed)
+
+
+def _global_tensor_equal(
+    reference: torch.Tensor,
+    candidate: torch.Tensor,
+    distributed: bool,
+) -> bool:
+    matches = torch.equal(reference, candidate)
+    if distributed:
+        value = torch.tensor(
+            int(matches),
+            device=reference.device,
+            dtype=torch.int32,
+        )
+        dist.all_reduce(value, op=dist.ReduceOp.MIN)
+        matches = bool(value)
+    return matches
 
 
 def _initialize_distributed() -> tuple[int, int, torch.device]:
@@ -1571,9 +1711,45 @@ def main() -> None:
         nargs="+",
         default=[1, 8, 32, 64, 128],
     )
+    parser.add_argument(
+        "--input-seed",
+        type=int,
+        help="Override the fixed synthetic-hidden seed for every batch.",
+    )
     parser.add_argument("--warmup", type=int, default=5)
     parser.add_argument("--iterations", type=int, default=100)
     parser.add_argument("--repeats", type=int, default=5)
+    parser.add_argument(
+        "--max-rel-rms",
+        type=float,
+        default=0.14,
+        help="Fail before timing when FP8-vs-MXFP6 relative RMS exceeds this.",
+    )
+    parser.add_argument(
+        "--min-cosine",
+        type=float,
+        default=0.99,
+        help="Fail before timing when FP8-vs-MXFP6 cosine is below this.",
+    )
+    parser.add_argument(
+        "--require-route-match",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help=(
+            "Require top-k expert IDs to match across the independent FP8 "
+            "and MXFP6 checkpoints. Disabled by default."
+        ),
+    )
+    parser.add_argument(
+        "--print-samples",
+        action="store_true",
+        help="Print every paired FP8/MXFP6 repeat after rank-max reduction.",
+    )
+    parser.add_argument(
+        "--json-out",
+        type=Path,
+        help="Write rank-0 measurement facts after every batch passes.",
+    )
     parser.add_argument(
         "--tile-n",
         type=int,
@@ -1602,6 +1778,32 @@ def main() -> None:
         help=(
             "Select route-array, grouped, shared-overlap, or the measured "
             "batch-dependent schedule."
+        ),
+    )
+    parser.add_argument(
+        "--small-separate-shared",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Use separate routed/shared weights for B=1/2/4. Disable to "
+            "reproduce the original combined-weight array path."
+        ),
+    )
+    parser.add_argument(
+        "--b4-packed-vector-loads",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help=(
+            "Use aligned packed FP6 loads for the B=4 W2 specialization. "
+            "Disable to measure the scalar-load reference."
+        ),
+    )
+    parser.add_argument(
+        "--compare-b4-packed-vector-loads",
+        action="store_true",
+        help=(
+            "For batch 4, alternate complete scalar/vector CUDA Graphs, "
+            "require exact output parity, and write paired samples."
         ),
     )
     parser.add_argument(
@@ -1659,6 +1861,25 @@ def main() -> None:
         help="Print the routed-expert occupancy used by each measured batch.",
     )
     args = parser.parse_args()
+    if args.warmup < 0 or args.iterations <= 0 or args.repeats <= 0:
+        parser.error("warmup must be non-negative; iterations and repeats positive")
+    if args.max_rel_rms < 0:
+        parser.error("max-rel-rms must be non-negative")
+    if not -1.0 <= args.min_cosine <= 1.0:
+        parser.error("min-cosine must be in [-1, 1]")
+    if args.compare_b4_packed_vector_loads:
+        if args.batch_sizes != [4]:
+            parser.error(
+                "compare-b4-packed-vector-loads requires --batch-sizes 4"
+            )
+        if args.mx_mode not in ("auto", "array"):
+            parser.error(
+                "compare-b4-packed-vector-loads requires mx-mode auto or array"
+            )
+        if not args.small_separate_shared:
+            parser.error(
+                "compare-b4-packed-vector-loads requires separate shared weights"
+            )
 
     rank, world_size, device = _initialize_distributed()
     tp_size = world_size if world_size > 1 else args.emulated_tp_size
@@ -1733,8 +1954,14 @@ def main() -> None:
         if args.w2_tile_n is None
         else args.w2_tile_n
     )
+    measurement_results: list[dict[str, object]] = []
     for batch_size in args.batch_sizes:
-        torch.manual_seed(20260730 + batch_size)
+        input_seed = (
+            20260730 + batch_size
+            if args.input_seed is None
+            else args.input_seed
+        )
+        torch.manual_seed(input_seed)
         grouped_fused_w1 = (
             batch_size <= 96
             if args.grouped_fused_w1 is None
@@ -1748,15 +1975,112 @@ def main() -> None:
         if distributed:
             dist.broadcast(hidden_states, src=0)
 
+        if args.compare_b4_packed_vector_loads:
+            scalar_layer = MxArrayLayer(
+                mx_weights,
+                batch_size,
+                all_reduce,
+                separate_shared=True,
+                use_packed_vector_loads=False,
+            )
+            vector_layer = MxArrayLayer(
+                mx_weights,
+                batch_size,
+                all_reduce,
+                separate_shared=True,
+                use_packed_vector_loads=True,
+            )
+            scalar_graph = _capture(
+                lambda: scalar_layer(hidden_states),
+                args.warmup,
+                distributed,
+                all_reduce,
+            )
+            vector_graph = _capture(
+                lambda: vector_layer(hidden_states),
+                args.warmup,
+                distributed,
+                all_reduce,
+            )
+            scalar_graph.graph.replay()
+            vector_graph.graph.replay()
+            torch.cuda.synchronize()
+            exact_output = _global_tensor_equal(
+                scalar_graph.output,
+                vector_graph.output,
+                distributed,
+            )
+            if not exact_output:
+                raise RuntimeError(
+                    "B4 packed vector output differs from the scalar reference"
+                )
+            scalar_ms, vector_ms, raw_pairs = _bench_graph_pair(
+                scalar_graph,
+                vector_graph,
+                args.iterations,
+                args.repeats,
+                distributed,
+            )
+            paired_samples = [
+                {
+                    "order": str(pair["order"])
+                    .replace("fp8", "scalar")
+                    .replace("mxfp6", "vector"),
+                    "scalar_ms": float(pair["fp8_ms"]),
+                    "vector_ms": float(pair["mxfp6_ms"]),
+                    "speedup": float(pair["speedup"]),
+                }
+                for pair in raw_pairs
+            ]
+            if rank == 0:
+                if args.print_samples:
+                    for repeat, pair in enumerate(paired_samples):
+                        print(
+                            f"sample batch=4 repeat={repeat} "
+                            f"order={pair['order']} "
+                            f"scalar_ms={pair['scalar_ms']:.6f} "
+                            f"vector_ms={pair['vector_ms']:.6f} "
+                            f"speedup={pair['speedup']:.6f}",
+                            flush=True,
+                        )
+                print(
+                    f"B4 scalar={scalar_ms:.6f} ms "
+                    f"vector={vector_ms:.6f} ms "
+                    f"speedup={scalar_ms / vector_ms:.6f}x exact=True",
+                    flush=True,
+                )
+                measurement_results.append(
+                    {
+                        "batch_size": 4,
+                        "input_seed": input_seed,
+                        "comparison": "scalar_vs_packed_vector",
+                        "scalar_median_ms": scalar_ms,
+                        "vector_median_ms": vector_ms,
+                        "speedup_ratio_of_medians": scalar_ms / vector_ms,
+                        "exact_output": True,
+                        "paired_samples": paired_samples,
+                    }
+                )
+
+            del scalar_graph, vector_graph, scalar_layer, vector_layer
+            del hidden_states
+            gc.collect()
+            torch.cuda.empty_cache()
+            if distributed:
+                dist.barrier()
+            continue
+
         fp8_layer = Fp8Layer(fp8_weights, fp8_quant, all_reduce)
         if args.mx_mode == "auto":
-            if batch_size < 20:
-                mx_layer = MxSplitLayer(
+            if batch_size <= 4:
+                mx_layer = MxArrayLayer(
                     mx_weights,
                     batch_size,
                     all_reduce,
-                    split_fused_w2,
-                    split_fused_w1,
+                    separate_shared=args.small_separate_shared,
+                    use_packed_vector_loads=(
+                        args.b4_packed_vector_loads and batch_size == 4
+                    ),
                 )
             else:
                 mx_layer = MxGroupedSplitLayer(
@@ -1776,6 +2100,12 @@ def main() -> None:
                 mx_weights,
                 batch_size,
                 all_reduce,
+                separate_shared=(
+                    args.small_separate_shared and batch_size in (1, 2, 4)
+                ),
+                use_packed_vector_loads=(
+                    args.b4_packed_vector_loads and batch_size == 4
+                ),
             )
         elif args.mx_mode == "split":
             mx_layer = MxSplitLayer(
@@ -1824,42 +2154,114 @@ def main() -> None:
         fp8_graph.graph.replay()
         mx_graph.graph.replay()
         torch.cuda.synchronize()
-        relative_rms, cosine = _error(
+        if (
+            args.require_route_match
+            or args.route_stats
+            or args.json_out is not None
+        ):
+            # Some fused_topk paths return capture-temporary tensors. Refresh
+            # their Python handles outside the measured graphs before using
+            # route IDs as correctness or occupancy evidence.
+            fp8_layer(hidden_states)
+            mx_layer(hidden_states)
+            torch.cuda.synchronize()
+            if distributed:
+                dist.barrier()
+        relative_rms, cosine = _global_error(
             fp8_graph.output,
             mx_graph.output,
+            distributed,
         )
-        if rank == 0 and args.route_stats:
+        assert fp8_layer.topk_ids is not None
+        route_match = _global_route_match(
+            fp8_layer.topk_ids,
+            mx_layer.topk_ids,
+            distributed,
+        )
+        correctness_failures = []
+        if relative_rms > args.max_rel_rms:
+            correctness_failures.append(
+                f"rel_rms {relative_rms:.6f} > {args.max_rel_rms:.6f}"
+            )
+        if cosine < args.min_cosine:
+            correctness_failures.append(
+                f"cosine {cosine:.6f} < {args.min_cosine:.6f}"
+            )
+        if args.require_route_match and not route_match:
+            correctness_failures.append("FP8/MXFP6 top-k expert IDs differ")
+        if correctness_failures:
+            raise RuntimeError(
+                f"batch {batch_size} correctness gate failed: "
+                + "; ".join(correctness_failures)
+            )
+
+        route_statistics = None
+        if rank == 0 and (args.route_stats or args.json_out is not None):
             counts = torch.bincount(
                 mx_layer.topk_ids.flatten().to(torch.int64),
                 minlength=NUM_EXPERTS,
             )
             active = counts[counts != 0]
-            print(
-                "route_stats "
-                f"active={active.numel()} max={active.max().item()} "
-                f"mean={active.float().mean().item():.3f} "
-                f"gt8={(active > 8).sum().item()} "
-                f"gt16={(active > 16).sum().item()}",
-                flush=True,
-            )
-        fp8_ms = _bench_graph(
+            route_statistics = {
+                "source": "synthetic_hidden_fixed_seed",
+                "active": active.numel(),
+                "max": active.max().item(),
+                "mean": active.float().mean().item(),
+                "gt8": (active > 8).sum().item(),
+                "gt16": (active > 16).sum().item(),
+            }
+            if args.route_stats:
+                print(
+                    "route_stats source=synthetic_hidden_fixed_seed "
+                    f"active={route_statistics['active']} "
+                    f"max={route_statistics['max']} "
+                    f"mean={route_statistics['mean']:.3f} "
+                    f"gt8={route_statistics['gt8']} "
+                    f"gt16={route_statistics['gt16']}",
+                    flush=True,
+                )
+        fp8_ms, mx_ms, pairs = _bench_graph_pair(
             fp8_graph,
-            args.iterations,
-            args.repeats,
-            distributed,
-        )
-        mx_ms = _bench_graph(
             mx_graph,
             args.iterations,
             args.repeats,
             distributed,
         )
         if rank == 0:
+            if args.print_samples:
+                for repeat, pair in enumerate(pairs):
+                    print(
+                        f"sample batch={batch_size} repeat={repeat} "
+                        f"order={pair['order']} "
+                        f"fp8_ms={pair['fp8_ms']:.6f} "
+                        f"mxfp6_ms={pair['mxfp6_ms']:.6f} "
+                        f"speedup={pair['speedup']:.6f}",
+                        flush=True,
+                    )
             print(
                 f"{batch_size:5d}  {fp8_ms:12.4f}  {mx_ms:14.4f}  "
                 f"{fp8_ms / mx_ms:7.3f}x  {relative_rms:7.4f}  "
                 f"{cosine:7.4f}",
                 flush=True,
+            )
+            measurement_results.append(
+                {
+                    "batch_size": batch_size,
+                    "mx_path": type(mx_layer).__name__,
+                    "fp8_median_ms": fp8_ms,
+                    "mxfp6_median_ms": mx_ms,
+                    "speedup_ratio_of_medians": fp8_ms / mx_ms,
+                    "paired_speedup_median": statistics.median(
+                        float(pair["speedup"]) for pair in pairs
+                    ),
+                    "correctness": {
+                        "relative_rms": relative_rms,
+                        "cosine": cosine,
+                        "route_ids_match_fp8_checkpoint": route_match,
+                    },
+                    "synthetic_route_stats": route_statistics,
+                    "paired_samples": pairs,
+                }
             )
 
         del fp8_graph, mx_graph, fp8_layer, mx_layer, hidden_states
@@ -1867,6 +2269,44 @@ def main() -> None:
         torch.cuda.empty_cache()
         if distributed:
             dist.barrier()
+
+    if rank == 0 and args.json_out is not None:
+        arguments = {
+            name: str(value) if isinstance(value, Path) else value
+            for name, value in vars(args).items()
+        }
+        payload = {
+            "schema_version": 1,
+            "claim_layer": (
+                "b4_scalar_vs_packed_vector_complete_layer"
+                if args.compare_b4_packed_vector_loads
+                else "whole_moe_layer_cuda_graph"
+            ),
+            "measurement": {
+                "distributed_aggregation": "per_repeat_rank_max_then_median",
+                "pair_order": (
+                    "alternating_scalar_vector_then_vector_scalar"
+                    if args.compare_b4_packed_vector_loads
+                    else "alternating_fp8_mxfp6_then_mxfp6_fp8"
+                ),
+                "world_size": world_size,
+                "tensor_parallel_size": tp_size,
+                "all_reduce": "vllm_custom" if distributed else "excluded",
+            },
+            "environment": {
+                "device": torch.cuda.get_device_name(device),
+                "compute_capability": list(torch.cuda.get_device_capability(device)),
+                "torch": torch.__version__,
+                "cuda": torch.version.cuda,
+            },
+            "arguments": arguments,
+            "results": measurement_results,
+        }
+        args.json_out.parent.mkdir(parents=True, exist_ok=True)
+        args.json_out.write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
 
     if distributed:
         assert all_reduce is not None

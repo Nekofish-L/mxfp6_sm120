@@ -69,7 +69,7 @@ metadata are recorded in
 
 The package also contains SM120 TP2 decode specializations for
 Qwen3.5-35B-A3B-MXFP6. The batch-one path merges the shared expert into the
-routed schedule and uses three programmatically dependent cooperative kernels:
+routed schedule and uses three allocation-free cooperative kernels:
 
 1. router GEMV, exact top-8 selection, shared gate and input MXFP8 quantization;
 2. 128x8x256 W1, BF16 SiLU-and-mul and output MXFP8 quantization, with
@@ -77,23 +77,44 @@ routed schedule and uses three programmatically dependent cooperative kernels:
 3. W2 plus routed/shared weighted reduction, with a two-way split-K B=1
    specialization.
 
+The small-batch chain uses CUDA Programmatic Dependent Launch to schedule the
+next grid early. Each dependent kernel waits before its first global-memory
+access, preserving the producer-consumer dependency while hiding part of the
+launch and scheduling latency.
+
 All intermediate tensors are caller-owned, so the complete layer and vLLM
 custom all-reduce can be captured in one CUDA Graph. On two RTX 5090 GPUs
 with real layer-0 checkpoint weights:
 
 | Batch | vLLM FP8 | Native MXFP6 | Speedup |
 |---:|---:|---:|---:|
-| 1 | 29.5 us | 16.4 us | 1.802x |
-| 2 | 34.8 us | 20.5 us | 1.699x |
-| 4 | 32.8 us | 26.6 us | 1.232x |
-| 8 | 53.3 us | 39.0 us | 1.369x |
+| 1 | 29.2 us | 16.4 us | 1.782x |
+| 2 | 33.8 us | 20.5 us | 1.652x |
+| 4 | 32.8 us | 26.4 us | 1.240x |
+| 8 | 54.5 us | 38.8 us | 1.404x |
 
 The baseline uses vLLM's runtime Triton FP8-block experts, auxiliary-stream
 shared expert and graph-registered custom all-reduce. The MXFP6 result includes
 the same custom all-reduce. Median latency uses 9 repeats of 1000 graph
-replays. At batch one the FP8/MXFP6 outputs had relative RMS error 0.1119
-and cosine similarity 0.9938. The exact measurement metadata is checked in as
+replays. At batch one the FP8/MXFP6 outputs had relative RMS error 0.1117
+and cosine similarity 0.9937. The exact measurement metadata is checked in as
 [`benchmarks/results/qwen35_moe_tp2.json`](benchmarks/results/qwen35_moe_tp2.json).
+
+For the B=4 separate-shared path, aligned packed FP6 loads retain a scalar
+fallback for unaligned tensors. In a same-process paired CUDA-Graph comparison,
+the complete TP2 layer improved from 26.62 us to 24.65 us (1.080x) with exact
+output parity. The paired samples are summarized in
+[`benchmarks/results/qwen35_moe_b4_vector.json`](benchmarks/results/qwen35_moe_b4_vector.json).
+
+Reproduce the paired scalar/vector comparison with:
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1 torchrun --standalone --nproc-per-node=2 \
+  benchmarks/benchmark_qwen35_moe_layer.py \
+  --batch-sizes 4 --mx-mode auto --compare-b4-packed-vector-loads \
+  --input-seed 20260815 --warmup 40 --iterations 1000 --repeats 9 \
+  --json-out b4_packed_vector.json
+```
 
 For batches 16 through 96, the production path keeps the dense shared expert
 on an auxiliary stream and specializes the routed path instead. A fused router
@@ -106,24 +127,21 @@ vLLM's graph-registered custom all-reduce. The complete layer is one CUDA
 Graph, with no per-layer host launch gaps.
 
 The following TP2 results use real layer-0 weights, two RTX 5090 GPUs, 40
-warmups and the median of 9 repeats of 700 CUDA Graph replays:
+warmups and the median of 9 repeats of 1000 CUDA Graph replays:
 
 | Batch | vLLM FP8 | Native MXFP6 | Speedup |
 |---:|---:|---:|---:|
-| 16 | 120.9 us | 92.2 us | 1.311x |
-| 24 | 161.8 us | 126.5 us | 1.279x |
-| 32 | 188.2 us | 146.8 us | 1.282x |
-| 36 | 192.4 us | 150.7 us | 1.277x |
-| 40 | 204.2 us | 161.7 us | 1.263x |
-| 48 | 226.0 us | 177.2 us | 1.275x |
-| 56 | 227.7 us | 182.4 us | 1.248x |
-| 64 | 238.6 us | 188.4 us | 1.267x |
-| 80 | 255.7 us | 196.8 us | 1.300x |
-| 96 | 265.9 us | 207.6 us | 1.281x |
+| 16 | 123.7 us | 91.2 us | 1.356x |
+| 24 | 162.4 us | 128.2 us | 1.267x |
+| 32 | 184.4 us | 144.7 us | 1.274x |
+| 40 | 203.2 us | 159.9 us | 1.271x |
+| 48 | 226.4 us | 177.5 us | 1.275x |
+| 56 | 227.7 us | 182.9 us | 1.245x |
+| 64 | 239.0 us | 188.4 us | 1.268x |
+| 80 | 254.9 us | 198.9 us | 1.282x |
+| 96 | 265.5 us | 209.9 us | 1.265x |
 
-The geometric-mean TP2 speedup over these ten batches is 1.278x. The matching
-single-rank layer measurement is 1.299x; the lower TP2 ratio comes from the
-same 8--11 us custom-all-reduce tail being included in both formats.
+The geometric-mean TP2 speedup over these nine batches is 1.2778x.
 
 ## Supported shapes
 

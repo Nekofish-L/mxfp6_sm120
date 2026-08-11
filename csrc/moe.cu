@@ -68,6 +68,9 @@ bool grouped_w1_wide(int64_t rows) {
   if (value != nullptr) {
     return rows > std::max(0, std::atoi(value));
   }
+  if (rows == 80) {
+    return true;
+  }
   // The 448-row wide launch leaves an expensive partial SM120 wave.
   return rows >= 384 && rows != 448;
 }
@@ -231,11 +234,12 @@ __device__ __forceinline__ void load_bfloat16x8(
   }
 }
 
-template <int Tokens>
+template <int Tokens, bool SeparateShared = false>
 __global__ __launch_bounds__(kThreads, 2)
 void router_quant_kernel(
     __nv_bfloat16 const* hidden,
     __nv_bfloat16 const* gate_weight,
+    __nv_bfloat16 const* shared_gate_weight,
     uint8_t* quantized,
     uint8_t* logical_scales,
     __nv_bfloat16* routed_logits,
@@ -324,7 +328,9 @@ void router_quant_kernel(
 
   float accumulators[Tokens]{};
   __nv_bfloat16 const* expert_weight =
-      gate_weight + static_cast<int64_t>(expert) * kHidden;
+      SeparateShared && expert == kRoutedExperts
+      ? shared_gate_weight
+      : gate_weight + static_cast<int64_t>(expert) * kHidden;
   constexpr int kValuesPerIteration =
       kThreads * kValuesPerThread;
   constexpr int kIterations = kHidden / kValuesPerIteration;
@@ -505,7 +511,7 @@ void router_quant_kernel(
 }
 
 
-template <int Tokens>
+template <int Tokens, bool SeparateShared = false>
 void launch(
     at::Tensor& quantized,
     at::Tensor& logical_scales,
@@ -515,13 +521,14 @@ void launch(
     at::Tensor& shared_gate,
     at::Tensor const& hidden,
     at::Tensor const& gate_weight,
+    at::Tensor const* shared_gate_weight,
     bool renormalize,
     cudaStream_t stream) {
   int active_blocks = 0;
   C10_CUDA_CHECK(
       cudaOccupancyMaxActiveBlocksPerMultiprocessor(
           &active_blocks,
-          router_quant_kernel<Tokens>,
+          router_quant_kernel<Tokens, SeparateShared>,
           kThreads,
           0));
   cudaDeviceProp const& properties =
@@ -540,6 +547,12 @@ void launch(
   auto const* gate_ptr =
       reinterpret_cast<__nv_bfloat16 const*>(
           gate_weight.data_ptr());
+  __nv_bfloat16 const* shared_gate_weight_ptr = nullptr;
+  if constexpr (SeparateShared) {
+    shared_gate_weight_ptr =
+        reinterpret_cast<__nv_bfloat16 const*>(
+            shared_gate_weight->data_ptr());
+  }
   auto* quantized_ptr = quantized.data_ptr<uint8_t>();
   auto* scales_ptr = logical_scales.data_ptr<uint8_t>();
   auto* logits_ptr =
@@ -553,6 +566,7 @@ void launch(
   void* arguments[] = {
       &hidden_ptr,
       &gate_ptr,
+      &shared_gate_weight_ptr,
       &quantized_ptr,
       &scales_ptr,
       &logits_ptr,
@@ -561,7 +575,8 @@ void launch(
       &shared_gate_ptr,
       &renormalize};
   C10_CUDA_CHECK(cudaLaunchCooperativeKernel(
-      reinterpret_cast<void*>(router_quant_kernel<Tokens>),
+      reinterpret_cast<void*>(
+          router_quant_kernel<Tokens, SeparateShared>),
       dim3(kExpertsWithSharedGate),
       dim3(kThreads),
       arguments,
@@ -1864,13 +1879,19 @@ __device__ __forceinline__ uint16_t quantize_e4m3_pair(
       make_float2(first, second), __NV_SATFINITE, __NV_E4M3);
 }
 
-template <int Tokens, int Splits = 4 / Tokens>
+template <
+    int Tokens,
+    int Splits = 4 / Tokens,
+    bool IncludeShared = true,
+    bool SeparateShared = false>
 __global__ __launch_bounds__(kThreads, 1)
 void qwen35_w1_splitk_kernel(
     uint8_t const* activation,
     uint8_t const* logical_scales,
     uint8_t const* weight,
     uint8_t const* weight_scales,
+    uint8_t const* shared_weight,
+    uint8_t const* shared_weight_scales,
     int32_t const* topk_ids,
     float* partial,
     uint8_t* output,
@@ -1880,7 +1901,7 @@ void qwen35_w1_splitk_kernel(
   constexpr int kQwenK = 2048;
   constexpr int kQwenIntermediate = 256;
   constexpr int kQwenGateUp = 2 * kQwenIntermediate;
-  constexpr int kRoutesPerToken = 9;
+  constexpr int kRoutesPerToken = IncludeShared ? 9 : 8;
   constexpr int kQwenRoutes = Tokens * kRoutesPerToken;
   constexpr int kPairsPerBlock = kTileM / 2;
   constexpr int kQwenPairBlocks =
@@ -1892,7 +1913,9 @@ void qwen35_w1_splitk_kernel(
   constexpr int kSplitK = kQwenK / kSplits;
   constexpr int kWorkItems =
       kQwenRoutes * kQwenPairBlocks * kSplits;
-  static_assert(kWorkItems == 144 || kWorkItems == 288);
+  static_assert(
+      kWorkItems == 128 || kWorkItems == 144 ||
+      kWorkItems == 256 || kWorkItems == 288);
 
   int const work = blockIdx.x;
   int const split = work % kSplits;
@@ -1902,10 +1925,13 @@ void qwen35_w1_splitk_kernel(
       work / (kSplits * kQwenPairBlocks);
   int const token = route / kRoutesPerToken;
   int const route_lane = route % kRoutesPerToken;
-  int expert = route_lane == kRoutesPerToken - 1
+  bool const shared_route = IncludeShared && route_lane == 8;
+  int expert = shared_route
       ? 256
       : topk_ids[token * 8 + route_lane];
-  if (expert < 0 || expert >= 257) {
+  constexpr int kNumExperts =
+      IncludeShared && !SeparateShared ? 257 : 256;
+  if (expert < 0 || expert >= kNumExperts) {
     expert = 0;
   }
   int const pair_block =
@@ -1916,13 +1942,17 @@ void qwen35_w1_splitk_kernel(
   constexpr int kBlocks = kQwenK / kMxScaleVectorSize;
 
   uint8_t const* expert_weight =
-      weight +
-      static_cast<int64_t>(expert) *
-          kQwenGateUp * kQwenK * 3 / 4;
+      SeparateShared && shared_route
+      ? shared_weight
+      : weight +
+            static_cast<int64_t>(expert) *
+                kQwenGateUp * kQwenK * 3 / 4;
   uint8_t const* expert_scales =
-      weight_scales +
-      static_cast<int64_t>(expert) *
-          kQwenGateUp * kBlocks;
+      SeparateShared && shared_route
+      ? shared_weight_scales
+      : weight_scales +
+            static_cast<int64_t>(expert) *
+                kQwenGateUp * kBlocks;
   uint8_t const* source_activation =
       activation + token * kQwenK;
   uint8_t const* source_scales =
@@ -2944,12 +2974,15 @@ __device__ __forceinline__ float load_direct_gate(
       static_cast<cutlass::bfloat16_t const*>(gate)[index]);
 }
 
+template <bool SeparateShared = false>
 __global__ __launch_bounds__(kReduceThreads, 1)
 void qwen35_w2_splitk_reduce_kernel(
     uint8_t const* activation,
     uint8_t const* logical_scales,
     uint8_t const* weight,
     uint8_t const* weight_scales,
+    uint8_t const* shared_weight,
+    uint8_t const* shared_weight_scales,
     int32_t const* topk_ids,
     float const* topk_weights,
     cutlass::bfloat16_t const* shared_gate,
@@ -2973,17 +3006,21 @@ void qwen35_w2_splitk_reduce_kernel(
   int const thread = threadIdx.x;
   int const warp = thread / 32;
   int const lane = thread % 32;
-  int expert = warp < kQwenRoutes - 1
+  bool const shared_route = warp == kQwenRoutes - 1;
+  int expert = !shared_route
       ? topk_ids[warp]
       : 256;
-  if (expert < 0 || expert >= 257) {
+  constexpr int kNumExperts = SeparateShared ? 256 : 257;
+  if (expert < 0 || expert >= kNumExperts) {
     expert = 0;
   }
   constexpr int kBlocks = kQwenK / kMxScaleVectorSize;
   uint8_t const* expert_scales =
-      weight_scales +
-      static_cast<int64_t>(expert) *
-          kQwenHidden * kBlocks;
+      SeparateShared && shared_route
+      ? shared_weight_scales
+      : weight_scales +
+            static_cast<int64_t>(expert) *
+                kQwenHidden * kBlocks;
   uint8_t const* source_scales =
       logical_scales + warp * kBlocks;
 
@@ -3047,18 +3084,22 @@ void qwen35_w2_splitk_reduce_kernel(
         local_segment / segments_per_row;
     int const segment_in_row =
         local_segment % segments_per_row;
+    bool const destination_shared =
+        destination_warp == kQwenRoutes - 1;
     int destination_expert =
-        destination_warp < kQwenRoutes - 1
+        !destination_shared
         ? topk_ids[destination_warp]
         : 256;
     if (destination_expert < 0 ||
-        destination_expert >= 257) {
+        destination_expert >= kNumExperts) {
       destination_expert = 0;
     }
     uint8_t const* destination_weight =
-        weight +
-        static_cast<int64_t>(destination_expert) *
-            kQwenHidden * kQwenK * 3 / 4;
+        SeparateShared && destination_shared
+        ? shared_weight
+        : weight +
+              static_cast<int64_t>(destination_expert) *
+                  kQwenHidden * kQwenK * 3 / 4;
     uint8_t const* source =
         destination_weight +
         static_cast<int64_t>(tile_m + row) *
@@ -3232,13 +3273,17 @@ template <
     class Id,
     class ElementD,
     bool UsePdl = false,
-    bool ExternalShared = false>
+    bool ExternalShared = false,
+    bool SeparateShared = false,
+    bool VectorizedPackedLoads = false>
 __global__ __launch_bounds__(kReduceThreads, 1)
 void route_w6a8_reduce_kernel(
     uint8_t const* activation,
     uint8_t const* logical_scales,
     uint8_t const* weight,
     uint8_t const* weight_scales,
+    uint8_t const* shared_weight,
+    uint8_t const* shared_weight_scales,
     Id const* topk_ids,
     float const* topk_weights,
     void const* shared_gate,
@@ -3252,6 +3297,7 @@ void route_w6a8_reduce_kernel(
     int n,
     int k) {
 #if defined(__CUDA_ARCH_FEAT_SM120_ALL)
+  static_assert(!(ExternalShared && SeparateShared));
   if constexpr (UsePdl) {
     cutlass::arch::wait_on_dependent_grids();
   }
@@ -3264,7 +3310,9 @@ void route_w6a8_reduce_kernel(
       ExternalShared ? kReduceMaxRoutes - 1 : kReduceMaxRoutes;
   constexpr int kernel_threads = routes_per_token * 32;
   int const route = token * routes_per_token + warp;
-  int expert = num_experts - 1;
+  bool const shared_route =
+      !ExternalShared && warp == kReduceMaxRoutes - 1;
+  int expert = shared_route && SeparateShared ? 0 : num_experts - 1;
   if constexpr (ExternalShared) {
     expert = static_cast<int>(
         topk_ids[
@@ -3279,7 +3327,8 @@ void route_w6a8_reduce_kernel(
             warp]);
   }
   bool const valid_expert =
-      expert >= 0 && expert < num_experts;
+      (SeparateShared && shared_route) ||
+      (expert >= 0 && expert < num_experts);
   if (!valid_expert) {
     expert = 0;
   }
@@ -3289,8 +3338,10 @@ void route_w6a8_reduce_kernel(
       (k_blocks + kScaleGroupsPerAtom - 1) /
       kScaleGroupsPerAtom * kScaleGroupsPerAtom;
   uint8_t const* expert_scales =
-      weight_scales +
-      static_cast<int64_t>(expert) * n * packed_k_blocks;
+      SeparateShared && shared_route
+      ? shared_weight_scales
+      : weight_scales +
+            static_cast<int64_t>(expert) * n * packed_k_blocks;
   uint8_t const* source_scales =
       logical_scales +
       static_cast<int64_t>(route) * k_blocks;
@@ -3345,69 +3396,111 @@ void route_w6a8_reduce_kernel(
         kTileK / kFp6ValuesPerSegment;
     constexpr int segments_per_warp =
         kReduceTileM * segments_per_row;
-    for (int segment = thread;
-         segment <
-             routes_per_token * segments_per_warp;
-         segment += kernel_threads) {
-      int const destination_warp =
-          segment / segments_per_warp;
-      int const local_segment =
-          segment % segments_per_warp;
-      int const row =
-          local_segment / segments_per_row;
-      int const segment_in_row =
-          local_segment % segments_per_row;
-      int destination_expert = num_experts - 1;
-      if constexpr (ExternalShared) {
-        destination_expert = static_cast<int>(
-            topk_ids[
-                static_cast<int64_t>(token) *
-                    (kReduceMaxRoutes - 1) +
-                destination_warp]);
-      } else if (destination_warp < kReduceMaxRoutes - 1) {
-        destination_expert = static_cast<int>(
-            topk_ids[
-                static_cast<int64_t>(token) *
-                    (kReduceMaxRoutes - 1) +
-                destination_warp]);
-      }
-      bool const destination_valid =
-          destination_expert >= 0 &&
-          destination_expert < num_experts;
-      if (!destination_valid) {
-        destination_expert = 0;
-      }
+    if constexpr (VectorizedPackedLoads) {
+      static_assert(!ExternalShared);
+      constexpr int packed_bytes_per_half_row =
+          kTileK * 3 / 8;
+      static_assert(packed_bytes_per_half_row == 3 * sizeof(uint4));
+      int const row = lane / 2;
+      int const half_row = lane % 2;
       uint8_t const* destination_weight =
-          weight +
-          static_cast<int64_t>(destination_expert) *
-              n * weight_row_bytes;
-      int const source_segment = segment_in_row;
+          SeparateShared && shared_route
+          ? shared_weight
+          : weight +
+                static_cast<int64_t>(expert) * n * weight_row_bytes;
       uint8_t const* source =
           destination_weight +
-          static_cast<int64_t>(tile_m + row) *
-              weight_row_bytes +
-          (weight_row_bytes == k
-               ? k_tile +
-                     source_segment *
-                         kFp6SharedBytesPerSegment
-               : static_cast<int64_t>(k_tile) * 3 / 4 +
-                     source_segment * kFp6BytesPerSegment);
-      uint4 packed;
-      if (weight_row_bytes == k) {
-        packed = *reinterpret_cast<uint4 const*>(source);
-      } else {
-        auto const* source_words =
-            reinterpret_cast<uint32_t const*>(source);
-        packed =
-            uint4{source_words[0], source_words[1], source_words[2], 0};
-      }
+          static_cast<int64_t>(tile_m + row) * weight_row_bytes +
+          static_cast<int64_t>(k_tile) * 3 / 4 +
+          half_row * packed_bytes_per_half_row;
       ReduceSmemLayoutA layout_a;
-      int const destination_offset = layout_a(
-          row,
-          segment_in_row * kFp6SharedBytesPerSegment);
+      int const segment_base = half_row * 4;
+      uint4 const packed0 =
+          *reinterpret_cast<uint4 const*>(source);
       *reinterpret_cast<uint4*>(
-          shared.a[destination_warp] +
-          destination_offset) = packed;
+          shared.a[warp] + layout_a(
+              row, segment_base * kFp6SharedBytesPerSegment)) =
+                  uint4{packed0.x, packed0.y, packed0.z, 0};
+      uint4 const packed1 =
+          *reinterpret_cast<uint4 const*>(source + sizeof(uint4));
+      *reinterpret_cast<uint4*>(
+          shared.a[warp] + layout_a(
+              row, (segment_base + 1) * kFp6SharedBytesPerSegment)) =
+                  uint4{packed0.w, packed1.x, packed1.y, 0};
+      uint4 const packed2 =
+          *reinterpret_cast<uint4 const*>(source + 2 * sizeof(uint4));
+      *reinterpret_cast<uint4*>(
+          shared.a[warp] + layout_a(
+              row, (segment_base + 2) * kFp6SharedBytesPerSegment)) =
+                  uint4{packed1.z, packed1.w, packed2.x, 0};
+      *reinterpret_cast<uint4*>(
+          shared.a[warp] + layout_a(
+              row, (segment_base + 3) * kFp6SharedBytesPerSegment)) =
+                  uint4{packed2.y, packed2.z, packed2.w, 0};
+    } else {
+      for (int segment = thread;
+           segment < routes_per_token * segments_per_warp;
+           segment += kernel_threads) {
+        int const destination_warp = segment / segments_per_warp;
+        int const local_segment = segment % segments_per_warp;
+        int const row = local_segment / segments_per_row;
+        int const segment_in_row = local_segment % segments_per_row;
+        bool const destination_shared =
+            !ExternalShared &&
+            destination_warp == kReduceMaxRoutes - 1;
+        int destination_expert =
+            destination_shared && SeparateShared ? 0 : num_experts - 1;
+        if constexpr (ExternalShared) {
+          destination_expert = static_cast<int>(
+              topk_ids[
+                  static_cast<int64_t>(token) *
+                      (kReduceMaxRoutes - 1) +
+                  destination_warp]);
+        } else if (destination_warp < kReduceMaxRoutes - 1) {
+          destination_expert = static_cast<int>(
+              topk_ids[
+                  static_cast<int64_t>(token) *
+                      (kReduceMaxRoutes - 1) +
+                  destination_warp]);
+        }
+        bool const destination_valid =
+            (SeparateShared && destination_shared) ||
+            (destination_expert >= 0 &&
+             destination_expert < num_experts);
+        if (!destination_valid) {
+          destination_expert = 0;
+        }
+        uint8_t const* destination_weight =
+            SeparateShared && destination_shared
+            ? shared_weight
+            : weight +
+                  static_cast<int64_t>(destination_expert) *
+                      n * weight_row_bytes;
+        uint8_t const* source =
+            destination_weight +
+            static_cast<int64_t>(tile_m + row) * weight_row_bytes +
+            (weight_row_bytes == k
+                 ? k_tile +
+                       segment_in_row * kFp6SharedBytesPerSegment
+                 : static_cast<int64_t>(k_tile) * 3 / 4 +
+                       segment_in_row * kFp6BytesPerSegment);
+        ReduceSmemLayoutA layout_a;
+        int const destination_offset = layout_a(
+            row,
+            segment_in_row * kFp6SharedBytesPerSegment);
+        if (weight_row_bytes == k) {
+          *reinterpret_cast<uint4*>(
+              shared.a[destination_warp] + destination_offset) =
+                  *reinterpret_cast<uint4 const*>(source);
+        } else {
+          auto const* source_words =
+              reinterpret_cast<uint32_t const*>(source);
+          *reinterpret_cast<uint4*>(
+              shared.a[destination_warp] + destination_offset) =
+                  uint4{
+                      source_words[0], source_words[1], source_words[2], 0};
+        }
+      }
     }
 
     constexpr int activation_vectors =
@@ -3892,7 +3985,9 @@ template <
     class Id,
     class ElementD,
     bool UsePdl = false,
-    bool ExternalShared = false>
+    bool ExternalShared = false,
+    bool SeparateShared = false,
+    bool VectorizedPackedLoads = false>
 void launch_reduce(
     at::Tensor& output,
     at::Tensor const& activation,
@@ -3906,8 +4001,11 @@ void launch_reduce(
     int gate_stride,
     int gate_column,
     cudaStream_t stream,
-    at::Tensor const* shared_output = nullptr) {
+    at::Tensor const* shared_output = nullptr,
+    at::Tensor const* shared_weight = nullptr,
+    at::Tensor const* shared_weight_scales = nullptr) {
   static_assert(!(UsePdl && ExternalShared));
+  static_assert(!(ExternalShared && SeparateShared));
   int const tokens = static_cast<int>(topk_ids.size(0));
   int const n = static_cast<int>(weight.size(1));
   int const k = static_cast<int>(activation.size(1));
@@ -3919,6 +4017,13 @@ void launch_reduce(
   auto const* weight_ptr = weight.data_ptr<uint8_t>();
   auto const* weight_scales_ptr =
       weight_scales.data_ptr<uint8_t>();
+  uint8_t const* shared_weight_ptr = nullptr;
+  uint8_t const* shared_weight_scales_ptr = nullptr;
+  if constexpr (SeparateShared) {
+    shared_weight_ptr = shared_weight->data_ptr<uint8_t>();
+    shared_weight_scales_ptr =
+        shared_weight_scales->data_ptr<uint8_t>();
+  }
   auto const* topk_ids_ptr = topk_ids.data_ptr<Id>();
   auto const* topk_weights_ptr =
       topk_weights.data_ptr<float>();
@@ -3947,11 +4052,14 @@ void launch_reduce(
     C10_CUDA_CHECK(cudaLaunchKernelEx(
         &config,
         route_w6a8_reduce_kernel<
-            Id, ElementD, true, ExternalShared>,
+            Id, ElementD, true, ExternalShared, SeparateShared,
+            VectorizedPackedLoads>,
         activation_ptr,
         logical_scales_ptr,
         weight_ptr,
         weight_scales_ptr,
+        shared_weight_ptr,
+        shared_weight_scales_ptr,
         topk_ids_ptr,
         topk_weights_ptr,
         shared_gate_ptr,
@@ -3966,7 +4074,8 @@ void launch_reduce(
         k));
   } else {
     route_w6a8_reduce_kernel<
-        Id, ElementD, false, ExternalShared>
+        Id, ElementD, false, ExternalShared, SeparateShared,
+        VectorizedPackedLoads>
         <<<grid,
            kernel_threads,
            sizeof(ReduceSharedStorage),
@@ -3975,6 +4084,8 @@ void launch_reduce(
             logical_scales_ptr,
             weight_ptr,
             weight_scales_ptr,
+            shared_weight_ptr,
+            shared_weight_scales_ptr,
             topk_ids_ptr,
             topk_weights_ptr,
             shared_gate_ptr,
@@ -6879,7 +6990,10 @@ void array_gemm_w6a8_reduce_out_cuda(
     at::Tensor const& topk_ids,
     at::Tensor const& topk_weights,
     at::Tensor const& shared_gate,
-    std::optional<at::Tensor> shared_output_arg) {
+    std::optional<at::Tensor> shared_output_arg,
+    std::optional<at::Tensor> shared_weight_arg,
+    std::optional<at::Tensor> shared_weight_scales_arg,
+    bool use_packed_vector_loads) {
 #if !defined(CUTLASS_ARCH_MMA_SM120_SUPPORTED)
   TORCH_CHECK(false, "mxfp6_torch must be compiled for sm_120a");
 #else
@@ -6936,9 +7050,17 @@ void array_gemm_w6a8_reduce_out_cuda(
   TORCH_CHECK(
       weight.dim() == 3,
       "weight must have shape [E,N,packed_K]");
+  TORCH_CHECK(
+      shared_weight_arg.has_value() ==
+          shared_weight_scales_arg.has_value(),
+      "shared_weight and shared_weight_scales must be provided together");
 
   int64_t const tokens = topk_ids.size(0);
   bool const external_shared = shared_output_arg.has_value();
+  bool const separate_shared = shared_weight_arg.has_value();
+  TORCH_CHECK(
+      !(external_shared && separate_shared),
+      "separate shared weights cannot be combined with shared_output");
   int64_t const routes =
       tokens * (
           direct_moe::kReduceMaxRoutes -
@@ -6981,6 +7103,38 @@ void array_gemm_w6a8_reduce_out_cuda(
           ((k / 32 + kScaleGroupsPerAtom - 1) /
            kScaleGroupsPerAtom * kScaleGroupsPerAtom),
       "weight_scales is too small");
+  if (separate_shared) {
+    at::Tensor const& shared_weight = *shared_weight_arg;
+    at::Tensor const& shared_weight_scales =
+        *shared_weight_scales_arg;
+    TORCH_CHECK(
+        weight.size(0) == 256,
+        "separate shared W2 requires 256 routed experts");
+    TORCH_CHECK(
+        shared_weight.is_cuda() &&
+            shared_weight.device() == device &&
+            shared_weight.scalar_type() == at::kByte &&
+            shared_weight.is_contiguous() &&
+            shared_weight.dim() == 3 &&
+            shared_weight.size(0) == 1 &&
+            shared_weight.size(1) == n &&
+            shared_weight.size(2) == weight_row_bytes,
+        "shared_weight must be contiguous CUDA uint8 [1,N,packed_K]");
+    TORCH_CHECK(
+        shared_weight_scales.is_cuda() &&
+            shared_weight_scales.device() == device &&
+            shared_weight_scales.scalar_type() == at::kByte &&
+            shared_weight_scales.is_contiguous() &&
+            shared_weight_scales.numel() >=
+                n *
+                ((k / 32 + kScaleGroupsPerAtom - 1) /
+                 kScaleGroupsPerAtom * kScaleGroupsPerAtom),
+        "shared_weight_scales is too small for one shared expert");
+    TORCH_CHECK(
+        output.scalar_type() == at::kBFloat16 &&
+            topk_ids.scalar_type() == at::kInt,
+        "separate shared W2 currently requires bfloat16 output and int32 ids");
+  }
 
   int const gate_type = shared_gate.scalar_type() == at::kFloat
       ? 1
@@ -7001,9 +7155,80 @@ void array_gemm_w6a8_reduce_out_cuda(
   bool const use_qwen_b2_pdl =
       !external_shared &&
       tokens == 2 && n == 2048 && k == 256 &&
-      weight.size(0) == 257 && weight_row_bytes == 192 &&
+      weight.size(0) == (separate_shared ? 256 : 257) &&
+      weight_row_bytes == 192 &&
       output.scalar_type() == at::kBFloat16 &&
       topk_ids.scalar_type() == at::kInt;
+  bool const use_qwen_b4_packed_vector_loads =
+      use_packed_vector_loads && !external_shared &&
+      tokens == 4 && n == 2048 && k == 256 &&
+      weight.size(0) == (separate_shared ? 256 : 257) &&
+      weight_row_bytes == 192 &&
+      output.scalar_type() == at::kBFloat16 &&
+      topk_ids.scalar_type() == at::kInt &&
+      (reinterpret_cast<uintptr_t>(weight.data_ptr()) & 15) == 0 &&
+      (!separate_shared ||
+       (reinterpret_cast<uintptr_t>(
+            shared_weight_arg->data_ptr()) & 15) == 0);
+  if (separate_shared) {
+    if (use_qwen_b4_packed_vector_loads) {
+      direct_moe::launch_reduce<
+          int32_t, cutlass::bfloat16_t, false, false, true, true>(
+              output,
+              activation,
+              logical_scales,
+              weight,
+              weight_scales,
+              topk_ids,
+              topk_weights,
+              shared_gate,
+              gate_type,
+              gate_stride,
+              gate_column,
+              stream.stream(),
+              nullptr,
+              &*shared_weight_arg,
+              &*shared_weight_scales_arg);
+    } else if (use_qwen_b2_pdl) {
+      direct_moe::launch_reduce<
+          int32_t, cutlass::bfloat16_t, true, false, true>(
+              output,
+              activation,
+              logical_scales,
+              weight,
+              weight_scales,
+              topk_ids,
+              topk_weights,
+              shared_gate,
+              gate_type,
+              gate_stride,
+              gate_column,
+              stream.stream(),
+              nullptr,
+              &*shared_weight_arg,
+              &*shared_weight_scales_arg);
+    } else {
+      direct_moe::launch_reduce<
+          int32_t, cutlass::bfloat16_t, false, false, true>(
+              output,
+              activation,
+              logical_scales,
+              weight,
+              weight_scales,
+              topk_ids,
+              topk_weights,
+              shared_gate,
+              gate_type,
+              gate_stride,
+              gate_column,
+              stream.stream(),
+              nullptr,
+              &*shared_weight_arg,
+              &*shared_weight_scales_arg);
+    }
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+    return;
+  }
   if (output.scalar_type() == at::kBFloat16) {
     if (topk_ids.scalar_type() == at::kInt) {
       if (external_shared) {
@@ -7022,6 +7247,22 @@ void array_gemm_w6a8_reduce_out_cuda(
                 gate_column,
                 stream.stream(),
                 &*shared_output_arg);
+      } else if (use_qwen_b4_packed_vector_loads) {
+        direct_moe::launch_reduce<
+            int32_t, cutlass::bfloat16_t,
+            false, false, false, true>(
+                output,
+                activation,
+                logical_scales,
+                weight,
+                weight_scales,
+                topk_ids,
+                topk_weights,
+                shared_gate,
+                gate_type,
+                gate_stride,
+                gate_column,
+                stream.stream());
       } else if (use_qwen_b2_pdl) {
         direct_moe::launch_reduce<
             int32_t, cutlass::bfloat16_t, true>(
@@ -8412,7 +8653,10 @@ void qwen35_w1_splitk_silu_mxfp8_out_cuda(
     at::Tensor const& logical_scales,
     at::Tensor const& weight,
     at::Tensor const& weight_scales,
-    at::Tensor const& topk_ids) {
+    at::Tensor const& topk_ids,
+    bool include_shared,
+    std::optional<at::Tensor> shared_weight_arg,
+    std::optional<at::Tensor> shared_weight_scales_arg) {
   TORCH_CHECK(
       activation.is_cuda() &&
           (activation.scalar_type() == at::kByte ||
@@ -8429,7 +8673,20 @@ void qwen35_w1_splitk_silu_mxfp8_out_cuda(
   c10::cuda::CUDAGuard device_guard(activation.device());
   auto const device = activation.device();
   int const tokens = static_cast<int>(activation.size(0));
-  int const routes = tokens * 9;
+  TORCH_CHECK(
+      shared_weight_arg.has_value() ==
+          shared_weight_scales_arg.has_value(),
+      "shared_weight and shared_weight_scales must be provided together");
+  bool const separate_shared = shared_weight_arg.has_value();
+  TORCH_CHECK(
+      !separate_shared ||
+          (include_shared &&
+           (tokens == 1 || tokens == 2 || tokens == 4)),
+      "separate shared W1 currently requires include_shared=True and "
+      "B in {1,2,4}");
+  int const experts = include_shared && !separate_shared ? 257 : 256;
+  int const routes_per_token = include_shared ? 9 : 8;
+  int const routes = tokens * routes_per_token;
   TORCH_CHECK(
       logical_scales.is_cuda() &&
           logical_scales.device() == device &&
@@ -8444,18 +8701,41 @@ void qwen35_w1_splitk_silu_mxfp8_out_cuda(
           weight.scalar_type() == at::kByte &&
           weight.is_contiguous() &&
           weight.dim() == 3 &&
-          weight.size(0) == 257 &&
+          weight.size(0) == experts &&
           weight.size(1) == 512 &&
           weight.size(2) == 1536,
-      "weight must be canonical packed MXFP6 [257,512,1536]");
+      "weight must be canonical packed MXFP6 [",
+      experts,
+      ",512,1536]");
   TORCH_CHECK(
       weight_scales.is_cuda() &&
           weight_scales.device() == device &&
           weight_scales.scalar_type() == at::kByte &&
           weight_scales.is_contiguous() &&
           weight_scales.numel() >=
-              static_cast<int64_t>(257) * 512 * 64,
-      "weight_scales is too small for [257,512,64]");
+              static_cast<int64_t>(experts) * 512 * 64,
+      "weight_scales is too small for [",
+      experts,
+      ",512,64]");
+  if (separate_shared) {
+    at::Tensor const& shared_weight = *shared_weight_arg;
+    at::Tensor const& shared_weight_scales =
+        *shared_weight_scales_arg;
+    TORCH_CHECK(
+        shared_weight.is_cuda() &&
+            shared_weight.device() == device &&
+            shared_weight.scalar_type() == at::kByte &&
+            shared_weight.is_contiguous() &&
+            shared_weight.sizes() == at::IntArrayRef({1, 512, 1536}),
+        "shared_weight must be canonical packed MXFP6 [1,512,1536]");
+    TORCH_CHECK(
+        shared_weight_scales.is_cuda() &&
+            shared_weight_scales.device() == device &&
+            shared_weight_scales.scalar_type() == at::kByte &&
+            shared_weight_scales.is_contiguous() &&
+            shared_weight_scales.numel() >= 512 * 64,
+        "shared_weight_scales is too small for [1,512,64]");
+  }
   TORCH_CHECK(
       topk_ids.is_cuda() &&
           topk_ids.device() == device &&
@@ -8471,7 +8751,9 @@ void qwen35_w1_splitk_silu_mxfp8_out_cuda(
           output.is_contiguous() &&
           output.sizes() ==
               at::IntArrayRef({routes, 256}),
-      "output must be contiguous CUDA uint8 [B*9,256]");
+      "output must be contiguous CUDA uint8 [B*",
+      routes_per_token,
+      ",256]");
   TORCH_CHECK(
       output_scales.is_cuda() &&
           output_scales.device() == device &&
@@ -8479,16 +8761,22 @@ void qwen35_w1_splitk_silu_mxfp8_out_cuda(
           output_scales.is_contiguous() &&
           output_scales.sizes() ==
               at::IntArrayRef({routes, 8}),
-      "output_scales must be contiguous CUDA uint8 [B*9,8]");
+      "output_scales must be contiguous CUDA uint8 [B*",
+      routes_per_token,
+      ",8]");
   TORCH_CHECK(
       partial.is_cuda() &&
           partial.device() == device &&
           partial.scalar_type() == at::kFloat &&
           partial.is_contiguous() &&
           partial.numel() >=
-              ((tokens == 4 || tokens == 8)
-                   ? 288 * 128
-                   : 144 * 128),
+              (include_shared
+                   ? ((tokens == 4 || tokens == 8)
+                          ? 288 * 128
+                          : 144 * 128)
+                   : ((tokens == 4 || tokens == 8)
+                          ? 256 * 128
+                          : 128 * 128)),
       "partial must be contiguous CUDA float32 with enough split-K storage");
 
   cudaDeviceProp const& properties =
@@ -8500,37 +8788,88 @@ void qwen35_w1_splitk_silu_mxfp8_out_cuda(
           properties.cooperativeLaunch,
       "Qwen3.5 split-K W1 requires cooperative SM120");
   int active_blocks = 0;
-  if (tokens == 1) {
+  if (separate_shared && tokens == 1) {
+    C10_CUDA_CHECK(
+        cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+            &active_blocks,
+            direct_moe::qwen35_w1_splitk_kernel<1, 4, true, true>,
+            direct_moe::kThreads,
+            sizeof(direct_moe::SplitKSharedStorage)));
+  } else if (separate_shared && tokens == 2) {
+    C10_CUDA_CHECK(
+        cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+            &active_blocks,
+            direct_moe::qwen35_w1_splitk_kernel<2, 2, true, true>,
+            direct_moe::kThreads,
+            sizeof(direct_moe::SplitKSharedStorage)));
+  } else if (separate_shared) {
+    C10_CUDA_CHECK(
+        cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+            &active_blocks,
+            direct_moe::qwen35_w1_splitk_kernel<4, 2, true, true>,
+            direct_moe::kThreads,
+            sizeof(direct_moe::SplitKSharedStorage)));
+  } else if (include_shared && tokens == 1) {
     C10_CUDA_CHECK(
         cudaOccupancyMaxActiveBlocksPerMultiprocessor(
             &active_blocks,
             direct_moe::qwen35_w1_splitk_kernel<1>,
             direct_moe::kThreads,
             sizeof(direct_moe::SplitKSharedStorage)));
-  } else if (tokens == 2) {
+  } else if (include_shared && tokens == 2) {
     C10_CUDA_CHECK(
         cudaOccupancyMaxActiveBlocksPerMultiprocessor(
             &active_blocks,
             direct_moe::qwen35_w1_splitk_kernel<2>,
             direct_moe::kThreads,
             sizeof(direct_moe::SplitKSharedStorage)));
-  } else if (tokens == 4) {
+  } else if (include_shared && tokens == 4) {
     C10_CUDA_CHECK(
         cudaOccupancyMaxActiveBlocksPerMultiprocessor(
             &active_blocks,
             direct_moe::qwen35_w1_splitk_kernel<4, 2>,
             direct_moe::kThreads,
             sizeof(direct_moe::SplitKSharedStorage)));
-  } else {
+  } else if (include_shared) {
     C10_CUDA_CHECK(
         cudaOccupancyMaxActiveBlocksPerMultiprocessor(
             &active_blocks,
             direct_moe::qwen35_w1_splitk_kernel<8, 1>,
             direct_moe::kThreads,
             sizeof(direct_moe::SplitKSharedStorage)));
+  } else if (tokens == 1) {
+    C10_CUDA_CHECK(
+        cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+            &active_blocks,
+            direct_moe::qwen35_w1_splitk_kernel<1, 4, false>,
+            direct_moe::kThreads,
+            sizeof(direct_moe::SplitKSharedStorage)));
+  } else if (tokens == 2) {
+    C10_CUDA_CHECK(
+        cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+            &active_blocks,
+            direct_moe::qwen35_w1_splitk_kernel<2, 2, false>,
+            direct_moe::kThreads,
+            sizeof(direct_moe::SplitKSharedStorage)));
+  } else if (tokens == 4) {
+    C10_CUDA_CHECK(
+        cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+            &active_blocks,
+            direct_moe::qwen35_w1_splitk_kernel<4, 2, false>,
+            direct_moe::kThreads,
+            sizeof(direct_moe::SplitKSharedStorage)));
+  } else {
+    C10_CUDA_CHECK(
+        cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+            &active_blocks,
+            direct_moe::qwen35_w1_splitk_kernel<8, 1, false>,
+            direct_moe::kThreads,
+            sizeof(direct_moe::SplitKSharedStorage)));
   }
   int const grid_blocks =
-      tokens == 4 || tokens == 8 ? 288 : 144;
+      include_shared
+      ? (tokens == 4 || tokens == 8 ? 288 : 144)
+      : (tokens == 4 || tokens == 8 ? 256 : 128);
   TORCH_CHECK(
       active_blocks * properties.multiProcessorCount >= grid_blocks,
       "Qwen3.5 split-K W1 needs ",
@@ -8546,6 +8885,12 @@ void qwen35_w1_splitk_silu_mxfp8_out_cuda(
       weight.data_ptr<uint8_t>();
   auto const* weight_scales_ptr =
       weight_scales.data_ptr<uint8_t>();
+  uint8_t const* shared_weight_ptr = separate_shared
+      ? shared_weight_arg->data_ptr<uint8_t>()
+      : nullptr;
+  uint8_t const* shared_weight_scales_ptr = separate_shared
+      ? shared_weight_scales_arg->data_ptr<uint8_t>()
+      : nullptr;
   auto const* ids_ptr = topk_ids.data_ptr<int32_t>();
   auto* partial_ptr = partial.data_ptr<float>();
   auto* output_ptr = output.data_ptr<uint8_t>();
@@ -8569,7 +8914,49 @@ void qwen35_w1_splitk_silu_mxfp8_out_cuda(
       .programmaticStreamSerializationAllowed = 1;
   config.attrs = attributes;
   config.numAttrs = 2;
-  if (tokens == 1) {
+  if (separate_shared && tokens == 1) {
+    C10_CUDA_CHECK(cudaLaunchKernelEx(
+        &config,
+        direct_moe::qwen35_w1_splitk_kernel<1, 4, true, true>,
+        activation_ptr,
+        scales_ptr,
+        weight_ptr,
+        weight_scales_ptr,
+        shared_weight_ptr,
+        shared_weight_scales_ptr,
+        ids_ptr,
+        partial_ptr,
+        output_ptr,
+        output_scales_ptr));
+  } else if (separate_shared && tokens == 2) {
+    C10_CUDA_CHECK(cudaLaunchKernelEx(
+        &config,
+        direct_moe::qwen35_w1_splitk_kernel<2, 2, true, true>,
+        activation_ptr,
+        scales_ptr,
+        weight_ptr,
+        weight_scales_ptr,
+        shared_weight_ptr,
+        shared_weight_scales_ptr,
+        ids_ptr,
+        partial_ptr,
+        output_ptr,
+        output_scales_ptr));
+  } else if (separate_shared) {
+    C10_CUDA_CHECK(cudaLaunchKernelEx(
+        &config,
+        direct_moe::qwen35_w1_splitk_kernel<4, 2, true, true>,
+        activation_ptr,
+        scales_ptr,
+        weight_ptr,
+        weight_scales_ptr,
+        shared_weight_ptr,
+        shared_weight_scales_ptr,
+        ids_ptr,
+        partial_ptr,
+        output_ptr,
+        output_scales_ptr));
+  } else if (include_shared && tokens == 1) {
     C10_CUDA_CHECK(cudaLaunchKernelEx(
         &config,
         direct_moe::qwen35_w1_splitk_kernel<1>,
@@ -8577,11 +8964,13 @@ void qwen35_w1_splitk_silu_mxfp8_out_cuda(
         scales_ptr,
         weight_ptr,
         weight_scales_ptr,
+        nullptr,
+        nullptr,
         ids_ptr,
         partial_ptr,
         output_ptr,
         output_scales_ptr));
-  } else if (tokens == 2) {
+  } else if (include_shared && tokens == 2) {
     C10_CUDA_CHECK(cudaLaunchKernelEx(
         &config,
         direct_moe::qwen35_w1_splitk_kernel<2>,
@@ -8589,11 +8978,13 @@ void qwen35_w1_splitk_silu_mxfp8_out_cuda(
         scales_ptr,
         weight_ptr,
         weight_scales_ptr,
+        nullptr,
+        nullptr,
         ids_ptr,
         partial_ptr,
         output_ptr,
         output_scales_ptr));
-  } else if (tokens == 4) {
+  } else if (include_shared && tokens == 4) {
     C10_CUDA_CHECK(cudaLaunchKernelEx(
         &config,
         direct_moe::qwen35_w1_splitk_kernel<4, 2>,
@@ -8601,11 +8992,13 @@ void qwen35_w1_splitk_silu_mxfp8_out_cuda(
         scales_ptr,
         weight_ptr,
         weight_scales_ptr,
+        nullptr,
+        nullptr,
         ids_ptr,
         partial_ptr,
         output_ptr,
         output_scales_ptr));
-  } else {
+  } else if (include_shared) {
     C10_CUDA_CHECK(cudaLaunchKernelEx(
         &config,
         direct_moe::qwen35_w1_splitk_kernel<8, 1>,
@@ -8613,6 +9006,64 @@ void qwen35_w1_splitk_silu_mxfp8_out_cuda(
         scales_ptr,
         weight_ptr,
         weight_scales_ptr,
+        nullptr,
+        nullptr,
+        ids_ptr,
+        partial_ptr,
+        output_ptr,
+        output_scales_ptr));
+  } else if (tokens == 1) {
+    C10_CUDA_CHECK(cudaLaunchKernelEx(
+        &config,
+        direct_moe::qwen35_w1_splitk_kernel<1, 4, false>,
+        activation_ptr,
+        scales_ptr,
+        weight_ptr,
+        weight_scales_ptr,
+        nullptr,
+        nullptr,
+        ids_ptr,
+        partial_ptr,
+        output_ptr,
+        output_scales_ptr));
+  } else if (tokens == 2) {
+    C10_CUDA_CHECK(cudaLaunchKernelEx(
+        &config,
+        direct_moe::qwen35_w1_splitk_kernel<2, 2, false>,
+        activation_ptr,
+        scales_ptr,
+        weight_ptr,
+        weight_scales_ptr,
+        nullptr,
+        nullptr,
+        ids_ptr,
+        partial_ptr,
+        output_ptr,
+        output_scales_ptr));
+  } else if (tokens == 4) {
+    C10_CUDA_CHECK(cudaLaunchKernelEx(
+        &config,
+        direct_moe::qwen35_w1_splitk_kernel<4, 2, false>,
+        activation_ptr,
+        scales_ptr,
+        weight_ptr,
+        weight_scales_ptr,
+        nullptr,
+        nullptr,
+        ids_ptr,
+        partial_ptr,
+        output_ptr,
+        output_scales_ptr));
+  } else {
+    C10_CUDA_CHECK(cudaLaunchKernelEx(
+        &config,
+        direct_moe::qwen35_w1_splitk_kernel<8, 1, false>,
+        activation_ptr,
+        scales_ptr,
+        weight_ptr,
+        weight_scales_ptr,
+        nullptr,
+        nullptr,
         ids_ptr,
         partial_ptr,
         output_ptr,
@@ -8630,7 +9081,9 @@ void qwen35_w2_splitk_reduce_out_cuda(
     at::Tensor const& weight_scales,
     at::Tensor const& topk_ids,
     at::Tensor const& topk_weights,
-    at::Tensor const& shared_gate) {
+    at::Tensor const& shared_gate,
+    std::optional<at::Tensor> shared_weight_arg,
+    std::optional<at::Tensor> shared_weight_scales_arg) {
   TORCH_CHECK(
       activation.is_cuda() &&
           (activation.scalar_type() == at::kByte ||
@@ -8650,23 +9103,52 @@ void qwen35_w2_splitk_reduce_out_cuda(
               at::IntArrayRef({9, 8}),
       "logical_scales must be contiguous CUDA uint8 [9,8]");
   TORCH_CHECK(
+      shared_weight_arg.has_value() ==
+          shared_weight_scales_arg.has_value(),
+      "shared_weight and shared_weight_scales must be provided together");
+  bool const separate_shared = shared_weight_arg.has_value();
+  int const experts = separate_shared ? 256 : 257;
+  TORCH_CHECK(
       weight.is_cuda() &&
           weight.device() == device &&
           weight.scalar_type() == at::kByte &&
           weight.is_contiguous() &&
           weight.dim() == 3 &&
-          weight.size(0) == 257 &&
+          weight.size(0) == experts &&
           weight.size(1) == 2048 &&
           weight.size(2) == 192,
-      "weight must be canonical packed MXFP6 [257,2048,192]");
+      "weight must be canonical packed MXFP6 [",
+      experts,
+      ",2048,192]");
   TORCH_CHECK(
       weight_scales.is_cuda() &&
           weight_scales.device() == device &&
           weight_scales.scalar_type() == at::kByte &&
           weight_scales.is_contiguous() &&
           weight_scales.numel() >=
-              static_cast<int64_t>(257) * 2048 * 8,
-      "weight_scales is too small for [257,2048,8]");
+              static_cast<int64_t>(experts) * 2048 * 8,
+      "weight_scales is too small for [",
+      experts,
+      ",2048,8]");
+  if (separate_shared) {
+    at::Tensor const& shared_weight = *shared_weight_arg;
+    at::Tensor const& shared_weight_scales =
+        *shared_weight_scales_arg;
+    TORCH_CHECK(
+        shared_weight.is_cuda() &&
+            shared_weight.device() == device &&
+            shared_weight.scalar_type() == at::kByte &&
+            shared_weight.is_contiguous() &&
+            shared_weight.sizes() == at::IntArrayRef({1, 2048, 192}),
+        "shared_weight must be canonical packed MXFP6 [1,2048,192]");
+    TORCH_CHECK(
+        shared_weight_scales.is_cuda() &&
+            shared_weight_scales.device() == device &&
+            shared_weight_scales.scalar_type() == at::kByte &&
+            shared_weight_scales.is_contiguous() &&
+            shared_weight_scales.numel() >= 2048 * 8,
+        "shared_weight_scales is too small for [1,2048,8]");
+  }
   TORCH_CHECK(
       topk_ids.is_cuda() &&
           topk_ids.device() == device &&
@@ -8719,7 +9201,9 @@ void qwen35_w2_splitk_reduce_out_cuda(
   C10_CUDA_CHECK(
       cudaOccupancyMaxActiveBlocksPerMultiprocessor(
           &active_blocks,
-          direct_moe::qwen35_w2_splitk_reduce_kernel,
+          separate_shared
+              ? direct_moe::qwen35_w2_splitk_reduce_kernel<true>
+              : direct_moe::qwen35_w2_splitk_reduce_kernel<false>,
           direct_moe::kReduceThreads,
           sizeof(direct_moe::ReduceSharedStorage)));
   TORCH_CHECK(
@@ -8735,6 +9219,12 @@ void qwen35_w2_splitk_reduce_out_cuda(
       weight.data_ptr<uint8_t>();
   auto const* weight_scales_ptr =
       weight_scales.data_ptr<uint8_t>();
+  uint8_t const* shared_weight_ptr = separate_shared
+      ? shared_weight_arg->data_ptr<uint8_t>()
+      : nullptr;
+  uint8_t const* shared_weight_scales_ptr = separate_shared
+      ? shared_weight_scales_arg->data_ptr<uint8_t>()
+      : nullptr;
   auto const* ids_ptr = topk_ids.data_ptr<int32_t>();
   auto const* topk_weights_ptr =
       topk_weights.data_ptr<float>();
@@ -8763,18 +9253,37 @@ void qwen35_w2_splitk_reduce_out_cuda(
       .programmaticStreamSerializationAllowed = 1;
   config.attrs = attributes;
   config.numAttrs = 2;
-  C10_CUDA_CHECK(cudaLaunchKernelEx(
-      &config,
-      direct_moe::qwen35_w2_splitk_reduce_kernel,
-      activation_ptr,
-      scales_ptr,
-      weight_ptr,
-      weight_scales_ptr,
-      ids_ptr,
-      topk_weights_ptr,
-      shared_gate_ptr,
-      partial_ptr,
-      output_ptr));
+  if (separate_shared) {
+    C10_CUDA_CHECK(cudaLaunchKernelEx(
+        &config,
+        direct_moe::qwen35_w2_splitk_reduce_kernel<true>,
+        activation_ptr,
+        scales_ptr,
+        weight_ptr,
+        weight_scales_ptr,
+        shared_weight_ptr,
+        shared_weight_scales_ptr,
+        ids_ptr,
+        topk_weights_ptr,
+        shared_gate_ptr,
+        partial_ptr,
+        output_ptr));
+  } else {
+    C10_CUDA_CHECK(cudaLaunchKernelEx(
+        &config,
+        direct_moe::qwen35_w2_splitk_reduce_kernel<false>,
+        activation_ptr,
+        scales_ptr,
+        weight_ptr,
+        weight_scales_ptr,
+        nullptr,
+        nullptr,
+        ids_ptr,
+        topk_weights_ptr,
+        shared_gate_ptr,
+        partial_ptr,
+        output_ptr));
+  }
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
@@ -8787,7 +9296,8 @@ void qwen35_router_quant_out_cuda(
     at::Tensor& shared_gate,
     at::Tensor const& hidden,
     at::Tensor const& gate_weight,
-    bool renormalize) {
+    bool renormalize,
+    std::optional<at::Tensor> shared_gate_weight_arg) {
   TORCH_CHECK(
       hidden.is_cuda() &&
           hidden.scalar_type() == at::kBFloat16 &&
@@ -8805,16 +9315,32 @@ void qwen35_router_quant_out_cuda(
   TORCH_CHECK(
       hidden.size(1) == qwen35_router::kHidden,
       "Qwen3.5 fused router requires hidden size 2048");
+  bool const separate_shared = shared_gate_weight_arg.has_value();
+  int const gate_rows = separate_shared
+      ? qwen35_router::kRoutedExperts
+      : qwen35_router::kExpertsWithSharedGate;
   TORCH_CHECK(
       gate_weight.is_cuda() &&
           gate_weight.device() == device &&
           gate_weight.scalar_type() == at::kBFloat16 &&
           gate_weight.is_contiguous() &&
           gate_weight.dim() == 2 &&
-          gate_weight.size(0) ==
-              qwen35_router::kExpertsWithSharedGate &&
+          gate_weight.size(0) == gate_rows &&
           gate_weight.size(1) == qwen35_router::kHidden,
-      "gate_weight must be contiguous CUDA bfloat16 [257,2048]");
+      "gate_weight must be contiguous CUDA bfloat16 [",
+      gate_rows,
+      ",2048]");
+  if (separate_shared) {
+    at::Tensor const& shared_gate_weight = *shared_gate_weight_arg;
+    TORCH_CHECK(
+        shared_gate_weight.is_cuda() &&
+            shared_gate_weight.device() == device &&
+            shared_gate_weight.scalar_type() == at::kBFloat16 &&
+            shared_gate_weight.is_contiguous() &&
+            shared_gate_weight.sizes() ==
+                at::IntArrayRef({1, qwen35_router::kHidden}),
+        "shared_gate_weight must be contiguous CUDA bfloat16 [1,2048]");
+  }
   TORCH_CHECK(
       quantized.is_cuda() &&
           quantized.device() == device &&
@@ -8875,31 +9401,64 @@ void qwen35_router_quant_out_cuda(
       "Qwen3.5 fused router requires cooperative kernel launch");
   auto stream =
       c10::cuda::getCurrentCUDAStream(hidden.get_device());
-  if (tokens == 1) {
+  at::Tensor const* shared_gate_weight = separate_shared
+      ? &*shared_gate_weight_arg
+      : nullptr;
+  if (separate_shared && tokens == 1) {
+    qwen35_router::launch<1, true>(
+        quantized, logical_scales, routed_logits,
+        topk_weights, topk_ids, shared_gate,
+        hidden, gate_weight, shared_gate_weight,
+        renormalize, stream.stream());
+  } else if (separate_shared && tokens == 2) {
+    qwen35_router::launch<2, true>(
+        quantized, logical_scales, routed_logits,
+        topk_weights, topk_ids, shared_gate,
+        hidden, gate_weight, shared_gate_weight,
+        renormalize, stream.stream());
+  } else if (separate_shared && tokens == 4) {
+    qwen35_router::launch<4, true>(
+        quantized, logical_scales, routed_logits,
+        topk_weights, topk_ids, shared_gate,
+        hidden, gate_weight, shared_gate_weight,
+        renormalize, stream.stream());
+  } else if (separate_shared && tokens == 8) {
+    qwen35_router::launch<8, true>(
+        quantized, logical_scales, routed_logits,
+        topk_weights, topk_ids, shared_gate,
+        hidden, gate_weight, shared_gate_weight,
+        renormalize, stream.stream());
+  } else if (separate_shared) {
+    qwen35_router::launch<16, true>(
+        quantized, logical_scales, routed_logits,
+        topk_weights, topk_ids, shared_gate,
+        hidden, gate_weight, shared_gate_weight,
+        renormalize, stream.stream());
+  } else if (tokens == 1) {
     qwen35_router::launch<1>(
         quantized, logical_scales, routed_logits,
         topk_weights, topk_ids, shared_gate,
-        hidden, gate_weight, renormalize, stream.stream());
+        hidden, gate_weight, nullptr, renormalize, stream.stream());
   } else if (tokens == 2) {
     qwen35_router::launch<2>(
         quantized, logical_scales, routed_logits,
         topk_weights, topk_ids, shared_gate,
-        hidden, gate_weight, renormalize, stream.stream());
+        hidden, gate_weight, nullptr, renormalize, stream.stream());
   } else if (tokens == 4) {
     qwen35_router::launch<4>(
         quantized, logical_scales, routed_logits,
         topk_weights, topk_ids, shared_gate,
-        hidden, gate_weight, renormalize, stream.stream());
+        hidden, gate_weight, nullptr, renormalize, stream.stream());
   } else if (tokens == 8) {
     qwen35_router::launch<8>(
         quantized, logical_scales, routed_logits,
         topk_weights, topk_ids, shared_gate,
-        hidden, gate_weight, renormalize, stream.stream());
+        hidden, gate_weight, nullptr, renormalize, stream.stream());
   } else {
     qwen35_router::launch<16>(
         quantized, logical_scales, routed_logits,
         topk_weights, topk_ids, shared_gate,
-        hidden, gate_weight, renormalize, stream.stream());
+        hidden, gate_weight, nullptr, renormalize, stream.stream());
   }
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
@@ -9362,14 +9921,17 @@ TORCH_LIBRARY_FRAGMENT(mxfp6, m) {
       "Tensor(a!) output, Tensor activation, Tensor logical_scales, "
       "Tensor weight, Tensor weight_scales, Tensor topk_ids, "
       "Tensor topk_weights, Tensor shared_gate, "
-      "Tensor? shared_output=None) -> ()");
+      "Tensor? shared_output=None, Tensor? shared_weight=None, "
+      "Tensor? shared_weight_scales=None, "
+      "bool use_packed_vector_loads=False) -> ()");
   m.def(
       "qwen35_router_quant_out("
       "Tensor(a!) quantized, Tensor(b!) logical_scales, "
       "Tensor(c!) routed_logits, Tensor(d!) topk_weights, "
       "Tensor(e!) topk_ids, Tensor(f!) shared_gate, "
       "Tensor hidden, Tensor gate_weight, "
-      "bool renormalize=False) -> ()");
+      "bool renormalize=False, "
+      "Tensor? shared_gate_weight=None) -> ()");
   m.def(
       "qwen35_topk_quant_out("
       "Tensor(a!) quantized, Tensor(b!) logical_scales, "
@@ -9392,14 +9954,17 @@ TORCH_LIBRARY_FRAGMENT(mxfp6, m) {
       "Tensor(a!) output, Tensor(b!) output_scales, "
       "Tensor(c!) partial, Tensor activation, "
       "Tensor logical_scales, Tensor weight, "
-      "Tensor weight_scales, Tensor topk_ids) -> ()");
+      "Tensor weight_scales, Tensor topk_ids, "
+      "bool include_shared=True, Tensor? shared_weight=None, "
+      "Tensor? shared_weight_scales=None) -> ()");
   m.def(
       "qwen35_w2_splitk_reduce_out("
       "Tensor(a!) output, Tensor(b!) partial, "
       "Tensor activation, Tensor logical_scales, "
       "Tensor weight, Tensor weight_scales, "
       "Tensor topk_ids, Tensor topk_weights, "
-      "Tensor shared_gate) -> ()");
+      "Tensor shared_gate, Tensor? shared_weight=None, "
+      "Tensor? shared_weight_scales=None) -> ()");
   m.def(
       "grouped_gemm_w6a8_out(Tensor(a!) output, Tensor activation, "
       "Tensor activation_scales, Tensor weight, Tensor weight_scales, "

@@ -38,6 +38,7 @@ wheelhouse/
 !/benchmarks/results/persistent_workspace.json
 !/benchmarks/results/runtime_autotune_v4.json
 !/benchmarks/results/qwen35_moe_tp2.json
+!/benchmarks/results/qwen35_moe_b4_vector.json
 /autotune_results/
 /autotune_*.csv
 /profiler_*.csv
