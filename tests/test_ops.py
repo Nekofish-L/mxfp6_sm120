@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 import torch
+import torch.nn.functional as F
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -63,6 +64,7 @@ def test_fp6_to_fp8(mxfp6) -> None:
 
 def test_scale_tools(mxfp6) -> None:
     for rows, k in (
+        (1, 64),
         (1, 128),
         (16, 128),
         (32, 256),
@@ -74,10 +76,932 @@ def test_scale_tools(mxfp6) -> None:
             120, 135, (rows, k // 32), device="cuda", dtype=torch.uint8
         )
         packed = mxfp6.pack_scales(logical)
-        assert packed.numel() == ((rows + 127) // 128) * 128 * k // 32
+        packed_k_blocks = (k // 32 + 3) // 4 * 4
+        assert packed.numel() == ((rows + 127) // 128 * 128 * packed_k_blocks)
         restored = mxfp6.unpack_scales(packed, rows, k)
         torch.testing.assert_close(restored, logical)
     print("PASS UE8M0 CUDA layout pack/unpack with padded rows")
+
+
+def test_grouped_w6a8(mxfp6) -> None:
+    """Verify routed scale packing and native grouped W6A8."""
+    counts = (1, 0, 3, 129, 2)
+    num_experts = len(counts)
+    m, n, k = sum(counts), 128, 128
+    expert_offsets = torch.tensor(
+        (0, *torch.tensor(counts).cumsum(0).tolist()),
+        device="cuda",
+        dtype=torch.int64,
+    )
+    generator = torch.Generator(device="cuda").manual_seed(12035)
+    activation_source = torch.randn(
+        (m, k),
+        generator=generator,
+        device="cuda",
+        dtype=torch.bfloat16,
+    )
+    weight_source = torch.randn(
+        (num_experts * n, k),
+        generator=generator,
+        device="cuda",
+        dtype=torch.bfloat16,
+    )
+
+    activation = mxfp6.quantize_mxfp8(activation_source)
+    activation_logical_scales = mxfp6.unpack_scales(activation.scales, m, k)
+    activation_scales, scale_offsets = mxfp6.pack_grouped_scales(
+        activation_logical_scales, expert_offsets
+    )
+    assert scale_offsets.cpu().tolist() == [0, 128, 128, 256, 512, 640]
+    for expert, rows in enumerate(counts):
+        if rows == 0:
+            continue
+        first = int(scale_offsets[expert].item())
+        packed_rows = (rows + 127) // 128 * 128
+        restored = mxfp6.unpack_scales(
+            activation_scales[first * (k // 32) : (first + packed_rows) * (k // 32)],
+            rows,
+            k,
+        )
+        row_start = int(expert_offsets[expert].item())
+        torch.testing.assert_close(
+            restored,
+            activation_logical_scales[row_start : row_start + rows],
+        )
+
+    weight = mxfp6.quantize_mxfp6(weight_source)
+    weight_values = weight.values.view(num_experts, n, k * 3 // 4)
+    for out_dtype in (torch.float16, torch.bfloat16):
+        actual = mxfp6.grouped_gemm_w6a8(
+            activation.values.view(torch.float8_e4m3fn),
+            activation_scales,
+            weight_values,
+            weight.scales,
+            expert_offsets,
+            scale_offsets,
+            out_dtype=out_dtype,
+        )
+        activation_values = (
+            activation.values.view(m, k).view(torch.float8_e4m3fn).float()
+        )
+        activation_dequant = activation_values * decode_ue8m0(
+            activation_logical_scales
+        ).repeat_interleave(32, dim=1)
+        weight_codes = mxfp6.unpack_fp6(weight.values, num_experts * n, k)
+        weight_logical_scales = mxfp6.unpack_scales(weight.scales, num_experts * n, k)
+        weight_dequant = decode_e3m2(weight_codes) * decode_ue8m0(
+            weight_logical_scales
+        ).repeat_interleave(32, dim=1)
+        reference = torch.empty_like(actual)
+        for expert, rows in enumerate(counts):
+            row_start = int(expert_offsets[expert].item())
+            row_end = row_start + rows
+            reference[row_start:row_end] = (
+                activation_dequant[row_start:row_end]
+                @ weight_dequant[expert * n : (expert + 1) * n].t()
+            ).to(out_dtype)
+        torch.testing.assert_close(actual, reference, rtol=2e-3, atol=0.5)
+    print("PASS grouped scale packing and native SM120 W6A8 MoE GEMM")
+
+
+def test_grouped_w6a8_k64_transposed(mxfp6) -> None:
+    """Verify compact K64 weights in the transposed FP6 TMA layout."""
+    counts = (1, 3, 129)
+    num_experts = len(counts)
+    m, n, k = sum(counts), 128, 64
+    expert_offsets = torch.tensor(
+        (0, *torch.tensor(counts).cumsum(0).tolist()),
+        device="cuda",
+        dtype=torch.int64,
+    )
+    generator = torch.Generator(device="cuda").manual_seed(12064)
+    activation_source = torch.randn(
+        (m, k),
+        generator=generator,
+        device="cuda",
+        dtype=torch.bfloat16,
+    )
+    weight_source = torch.randn(
+        (num_experts * n, k),
+        generator=generator,
+        device="cuda",
+        dtype=torch.bfloat16,
+    )
+
+    activation = mxfp6.quantize_mxfp8(activation_source)
+    activation_logical_scales = mxfp6.unpack_scales(activation.scales, m, k)
+    activation_scales, scale_offsets = mxfp6.pack_grouped_scales(
+        activation_logical_scales, expert_offsets
+    )
+    weight = mxfp6.quantize_mxfp6(weight_source)
+    weight_codes = mxfp6.unpack_fp6(weight.values, num_experts * n, k).view(
+        num_experts, n, k
+    )
+    weight_values = mxfp6.to_mma_k64_weight(
+        weight.values.view(num_experts, n, k * 3 // 4)
+    )
+
+    actual = mxfp6.grouped_gemm_w6a8(
+        activation.values.view(torch.float8_e4m3fn),
+        activation_scales,
+        weight_values,
+        weight.scales,
+        expert_offsets,
+        scale_offsets,
+        out_dtype=torch.bfloat16,
+    )
+    activation_dequant = activation.values.view(m, k).view(
+        torch.float8_e4m3fn
+    ).float() * decode_ue8m0(activation_logical_scales).repeat_interleave(32, dim=1)
+    weight_logical_scales = mxfp6.unpack_scales(weight.scales, num_experts * n, k)
+    weight_dequant = decode_e3m2(weight_codes.view(-1, k))
+    weight_dequant *= decode_ue8m0(weight_logical_scales).repeat_interleave(32, dim=1)
+    reference = torch.empty_like(actual)
+    for expert, rows in enumerate(counts):
+        row_start = int(expert_offsets[expert].item())
+        row_end = row_start + rows
+        reference[row_start:row_end] = (
+            activation_dequant[row_start:row_end]
+            @ weight_dequant[expert * n : (expert + 1) * n].t()
+        ).to(torch.bfloat16)
+    torch.testing.assert_close(actual, reference, rtol=2e-3, atol=0.5)
+    print("PASS compact transposed K64 grouped W6A8")
+
+
+def test_array_w6a8(mxfp6) -> None:
+    """Verify equal-shape pointer-array W6A8 in unsorted route order."""
+    tokens, topk, num_experts, n, k = 4, 2, 5, 128, 128
+    generator = torch.Generator(device="cuda").manual_seed(12036)
+    source = torch.randn(
+        (tokens, k),
+        generator=generator,
+        device="cuda",
+        dtype=torch.bfloat16,
+    )
+    weight_source = torch.randn(
+        (num_experts * n, k),
+        generator=generator,
+        device="cuda",
+        dtype=torch.bfloat16,
+    )
+    topk_ids = torch.tensor(
+        [[4, 0], [2, 3], [1, 4], [0, 2]],
+        device="cuda",
+        dtype=torch.int32,
+    )
+    activation, logical_scales = mxfp6.quantize_mxfp8_logical(source)
+    weight = mxfp6.quantize_mxfp6(weight_source)
+    weight_values = weight.values.view(num_experts, n, k * 3 // 4)
+
+    activation_dequant = activation.float() * decode_ue8m0(
+        logical_scales
+    ).repeat_interleave(32, dim=1)
+    weight_codes = mxfp6.unpack_fp6(weight.values, num_experts * n, k)
+    weight_logical_scales = mxfp6.unpack_scales(weight.scales, num_experts * n, k)
+    weight_dequant = decode_e3m2(weight_codes) * decode_ue8m0(
+        weight_logical_scales
+    ).repeat_interleave(32, dim=1)
+
+    routes = tokens * topk
+    for out_dtype in (torch.float16, torch.bfloat16):
+        actual = torch.empty((routes, n), device="cuda", dtype=out_dtype)
+        mxfp6.array_gemm_w6a8_out(
+            actual,
+            activation,
+            logical_scales,
+            weight_values,
+            weight.scales,
+            topk_ids,
+        )
+        reference = torch.stack(
+            [
+                activation_dequant[route // topk]
+                @ weight_dequant[
+                    int(topk_ids.flatten()[route]) * n : (
+                        int(topk_ids.flatten()[route]) + 1
+                    )
+                    * n
+                ].t()
+                for route in range(routes)
+            ]
+        ).to(out_dtype)
+        torch.testing.assert_close(actual, reference, rtol=2e-3, atol=0.5)
+
+    combined_routes = tokens * (topk + 1)
+    combined = torch.empty(
+        (combined_routes, n),
+        device="cuda",
+        dtype=torch.bfloat16,
+    )
+    mxfp6.array_gemm_w6a8_out(
+        combined,
+        activation,
+        logical_scales,
+        weight_values,
+        weight.scales,
+        topk_ids,
+        include_shared=True,
+    )
+    combined_reference = torch.stack(
+        [
+            activation_dequant[route // (topk + 1)]
+            @ weight_dequant[
+                (
+                    num_experts - 1
+                    if route % (topk + 1) == topk
+                    else int(
+                        topk_ids[
+                            route // (topk + 1),
+                            route % (topk + 1),
+                        ]
+                    )
+                )
+                * n : (
+                    num_experts
+                    if route % (topk + 1) == topk
+                    else int(
+                        topk_ids[
+                            route // (topk + 1),
+                            route % (topk + 1),
+                        ]
+                    )
+                    + 1
+                )
+                * n
+            ].t()
+            for route in range(combined_routes)
+        ]
+    ).to(torch.bfloat16)
+    torch.testing.assert_close(
+        combined,
+        combined_reference,
+        rtol=2e-3,
+        atol=0.5,
+    )
+
+    topk_weights = torch.rand(
+        (tokens, topk),
+        generator=generator,
+        device="cuda",
+        dtype=torch.float32,
+    )
+    shared_gate = torch.randn(
+        tokens,
+        generator=generator,
+        device="cuda",
+        dtype=torch.bfloat16,
+    )
+    reduced = torch.empty(
+        (tokens, n),
+        device="cuda",
+        dtype=torch.bfloat16,
+    )
+
+    def reduce_array() -> None:
+        mxfp6.moe_reduce_array_out(
+            reduced,
+            combined,
+            topk_weights,
+            shared_gate,
+        )
+
+    reduce_array()
+    combined_view = combined.view(tokens, topk + 1, n).float()
+    reduce_reference = (
+        (combined_view[:, :topk] * topk_weights[:, :, None]).sum(dim=1)
+        + torch.sigmoid(shared_gate.float())[:, None] * combined_view[:, topk]
+    ).to(torch.bfloat16)
+    torch.testing.assert_close(
+        reduced,
+        reduce_reference,
+        rtol=0,
+        atol=0,
+    )
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        reduce_array()
+    graph.replay()
+    torch.cuda.synchronize()
+    torch.testing.assert_close(
+        reduced,
+        reduce_reference,
+        rtol=0,
+        atol=0,
+    )
+    print("PASS SM120 pointer-array routed/shared W6A8 and fused reduce")
+
+
+def test_fused_array_silu_mxfp8(mxfp6, k: int = 2048) -> None:
+    """Verify fused W1 against the unfused BF16 gate/up path."""
+    tokens, topk, num_experts, intermediate = 1, 2, 5, 256
+    gate_up = intermediate * 2
+    routes = tokens * (topk + 1)
+    generator = torch.Generator(device="cuda").manual_seed(12037)
+    source = torch.randn(
+        (tokens, k),
+        generator=generator,
+        device="cuda",
+        dtype=torch.bfloat16,
+    )
+    weight_source = torch.randn(
+        (num_experts * gate_up, k),
+        generator=generator,
+        device="cuda",
+        dtype=torch.bfloat16,
+    )
+    topk_ids = torch.tensor(
+        [[3, 1]],
+        device="cuda",
+        dtype=torch.int32,
+    )
+    activation, logical_scales = mxfp6.quantize_mxfp8_logical(source)
+    weight = mxfp6.quantize_mxfp6(weight_source)
+    weight_values = weight.values.view(num_experts, gate_up, k * 3 // 4)
+
+    gate_up_output = torch.empty(
+        (routes, gate_up),
+        device="cuda",
+        dtype=torch.bfloat16,
+    )
+    mxfp6.array_gemm_w6a8_out(
+        gate_up_output,
+        activation,
+        logical_scales,
+        weight_values,
+        weight.scales,
+        topk_ids,
+        include_shared=True,
+    )
+    reference, reference_scales = mxfp6.silu_and_mul_mxfp8_logical(gate_up_output)
+    actual = torch.empty(
+        reference.shape,
+        device="cuda",
+        dtype=torch.uint8,
+    )
+    actual_scales = torch.empty_like(reference_scales)
+    mxfp6.array_gemm_w6a8_silu_mxfp8_out(
+        actual,
+        actual_scales,
+        activation,
+        logical_scales,
+        weight_values,
+        weight.scales,
+        topk_ids,
+        include_shared=True,
+    )
+    torch.testing.assert_close(actual_scales, reference_scales, rtol=0, atol=0)
+    torch.testing.assert_close(
+        actual,
+        reference.view(torch.uint8),
+        rtol=0,
+        atol=0,
+    )
+    padded_weight = mxfp6.pad_fp6(weight_values)
+    padded_actual = torch.empty_like(actual)
+    padded_scales = torch.empty_like(actual_scales)
+    mxfp6.array_gemm_w6a8_silu_mxfp8_out(
+        padded_actual,
+        padded_scales,
+        activation,
+        logical_scales,
+        padded_weight,
+        weight.scales,
+        topk_ids,
+        include_shared=True,
+    )
+    torch.testing.assert_close(padded_scales, reference_scales, rtol=0, atol=0)
+    torch.testing.assert_close(
+        padded_actual,
+        reference.view(torch.uint8),
+        rtol=0,
+        atol=0,
+    )
+    print("PASS fused swapAB W1 SiLU/mul MXFP8")
+
+
+def test_fused_array_w2_reduce(mxfp6) -> None:
+    """Verify top-8 routed/shared W2 and reduction fusion."""
+    tokens, topk, num_experts, n, k = 1, 8, 10, 128, 256
+    routes = tokens * (topk + 1)
+    generator = torch.Generator(device="cuda").manual_seed(12038)
+    source = torch.randn(
+        (routes, k),
+        generator=generator,
+        device="cuda",
+        dtype=torch.bfloat16,
+    )
+    weight_source = torch.randn(
+        (num_experts * n, k),
+        generator=generator,
+        device="cuda",
+        dtype=torch.bfloat16,
+    )
+    topk_ids = torch.tensor(
+        [[7, 2, 0, 5, 3, 8, 1, 6]],
+        device="cuda",
+        dtype=torch.int32,
+    )
+    topk_weights = torch.rand(
+        (tokens, topk),
+        generator=generator,
+        device="cuda",
+        dtype=torch.float32,
+    )
+    shared_gate = torch.randn(
+        (tokens, num_experts),
+        generator=generator,
+        device="cuda",
+        dtype=torch.bfloat16,
+    )
+    activation, logical_scales = mxfp6.quantize_mxfp8_logical(source)
+    weight = mxfp6.quantize_mxfp6(weight_source)
+    weight_values = weight.values.view(num_experts, n, k * 3 // 4)
+
+    combined = torch.empty(
+        (routes, n),
+        device="cuda",
+        dtype=torch.bfloat16,
+    )
+    mxfp6.array_gemm_w6a8_out(
+        combined,
+        activation,
+        logical_scales,
+        weight_values,
+        weight.scales,
+        topk_ids,
+        include_shared=True,
+    )
+    reference = torch.empty(
+        (tokens, n),
+        device="cuda",
+        dtype=torch.bfloat16,
+    )
+    mxfp6.moe_reduce_array_out(
+        reference,
+        combined,
+        topk_weights,
+        shared_gate,
+    )
+    actual = torch.empty_like(reference)
+    mxfp6.array_gemm_w6a8_reduce_out(
+        actual,
+        activation,
+        logical_scales,
+        weight_values,
+        weight.scales,
+        topk_ids,
+        topk_weights,
+        shared_gate,
+    )
+    torch.testing.assert_close(actual, reference, rtol=0, atol=0)
+    padded_weight = mxfp6.pad_fp6(weight_values)
+    padded_actual = torch.empty_like(actual)
+    mxfp6.array_gemm_w6a8_reduce_out(
+        padded_actual,
+        activation,
+        logical_scales,
+        padded_weight,
+        weight.scales,
+        topk_ids,
+        topk_weights,
+        shared_gate,
+    )
+    torch.testing.assert_close(padded_actual, reference, rtol=0, atol=0)
+
+    external_actual = torch.empty_like(actual)
+    mxfp6.array_gemm_w6a8_reduce_out(
+        external_actual,
+        activation[:topk].contiguous(),
+        logical_scales[:topk].contiguous(),
+        weight_values[: num_experts - 1].contiguous(),
+        weight.scales,
+        topk_ids,
+        topk_weights,
+        shared_gate,
+        combined[topk:].contiguous(),
+    )
+    torch.testing.assert_close(external_actual, reference, rtol=0, atol=0)
+    print("PASS fused top-8 W2 reduce with internal/external shared expert")
+
+
+def test_qwen35_b1_specialization(mxfp6) -> None:
+    """Verify Qwen3.5 TP2 B=1..8 W1 and the graph-captured B=1 layer."""
+    generator = torch.Generator(device="cuda").manual_seed(12039)
+    hidden = torch.randn(
+        (1, 2048),
+        generator=generator,
+        device="cuda",
+        dtype=torch.bfloat16,
+    )
+    gate_weight = (
+        torch.randn(
+            (257, 2048),
+            generator=generator,
+            device="cuda",
+            dtype=torch.float32,
+        )
+        * 0.1
+    ).to(torch.bfloat16)
+    quantized = torch.empty_like(hidden, dtype=torch.uint8)
+    input_scales = torch.empty((1, 64), device="cuda", dtype=torch.uint8)
+    routed_logits = torch.empty((1, 256), device="cuda", dtype=torch.bfloat16)
+    topk_weights = torch.empty((1, 8), device="cuda", dtype=torch.float32)
+    topk_ids = torch.empty((1, 8), device="cuda", dtype=torch.int32)
+    shared_gate = torch.empty((1,), device="cuda", dtype=torch.bfloat16)
+    w1_partial = torch.empty((576, 64), device="cuda", dtype=torch.float32)
+    mxfp6.qwen35_router_quant_out(
+        quantized,
+        input_scales,
+        routed_logits,
+        topk_weights,
+        topk_ids,
+        shared_gate,
+        hidden,
+        gate_weight,
+    )
+
+    expected_quantized, expected_scales = mxfp6.quantize_mxfp8_logical(hidden)
+    expected_logits = F.linear(hidden, gate_weight[:256])
+    expected_shared_gate = F.linear(hidden, gate_weight[256:]).flatten()
+    expected_weights, expected_ids = torch.sort(
+        torch.softmax(expected_logits.float(), dim=-1),
+        dim=-1,
+        descending=True,
+        stable=True,
+    )
+    expected_weights = expected_weights[:, :8]
+    expected_ids = expected_ids[:, :8]
+    torch.testing.assert_close(quantized, expected_quantized.view(torch.uint8))
+    torch.testing.assert_close(input_scales, expected_scales)
+    torch.testing.assert_close(routed_logits, expected_logits)
+    torch.testing.assert_close(shared_gate, expected_shared_gate)
+    torch.testing.assert_close(topk_ids, expected_ids.to(torch.int32))
+    torch.testing.assert_close(
+        topk_weights,
+        expected_weights,
+        rtol=1e-6,
+        atol=1e-8,
+    )
+    mxfp6.qwen35_router_quant_out(
+        quantized,
+        input_scales,
+        routed_logits,
+        topk_weights,
+        topk_ids,
+        shared_gate,
+        hidden,
+        gate_weight,
+        renormalize=True,
+    )
+    expected_renormalized = expected_weights / expected_weights.sum(
+        dim=-1,
+        keepdim=True,
+    )
+    torch.testing.assert_close(
+        topk_weights,
+        expected_renormalized,
+        rtol=1e-6,
+        atol=1e-8,
+    )
+    mxfp6.qwen35_router_quant_out(
+        quantized,
+        input_scales,
+        routed_logits,
+        topk_weights,
+        topk_ids,
+        shared_gate,
+        hidden,
+        gate_weight,
+    )
+
+    w1 = torch.randint(
+        0,
+        256,
+        (257, 512, 1536),
+        generator=generator,
+        device="cuda",
+        dtype=torch.uint8,
+    )
+    w1_scales = torch.full(
+        (257 * 512 * 64,),
+        127,
+        device="cuda",
+        dtype=torch.uint8,
+    )
+    reference_activation = torch.empty((9, 256), device="cuda", dtype=torch.uint8)
+    reference_activation_scales = torch.empty((9, 8), device="cuda", dtype=torch.uint8)
+    mxfp6.array_gemm_w6a8_silu_mxfp8_out(
+        reference_activation,
+        reference_activation_scales,
+        quantized,
+        input_scales,
+        w1,
+        w1_scales,
+        topk_ids,
+        include_shared=True,
+    )
+    activation = torch.empty_like(reference_activation)
+    activation_scales = torch.empty_like(reference_activation_scales)
+    mxfp6.qwen35_w1_splitk_silu_mxfp8_out(
+        activation,
+        activation_scales,
+        w1_partial,
+        quantized,
+        input_scales,
+        w1,
+        w1_scales,
+        topk_ids,
+    )
+    torch.testing.assert_close(activation, reference_activation)
+    torch.testing.assert_close(activation_scales, reference_activation_scales)
+
+    base_ids = torch.tensor(
+        [0, 7, 15, 31, 63, 95, 127, 255],
+        device="cuda",
+        dtype=torch.int32,
+    )
+    for batch in (2, 4, 8):
+        hidden_small = torch.randn(
+            (batch, 2048),
+            generator=generator,
+            device="cuda",
+            dtype=torch.bfloat16,
+        )
+        quantized_small, input_scales_small = mxfp6.quantize_mxfp8_logical(hidden_small)
+        topk_ids_small = (
+            base_ids[None, :]
+            + torch.arange(batch, device="cuda", dtype=torch.int32)[:, None]
+        ) % 256
+        reference_activation_small = torch.empty(
+            (batch * 9, 256),
+            device="cuda",
+            dtype=torch.uint8,
+        )
+        reference_scales_small = torch.empty(
+            (batch * 9, 8),
+            device="cuda",
+            dtype=torch.uint8,
+        )
+        mxfp6.array_gemm_w6a8_silu_mxfp8_out(
+            reference_activation_small,
+            reference_scales_small,
+            quantized_small,
+            input_scales_small,
+            w1,
+            w1_scales,
+            topk_ids_small,
+            include_shared=True,
+        )
+        activation_small = torch.empty_like(reference_activation_small)
+        activation_scales_small = torch.empty_like(reference_scales_small)
+        mxfp6.qwen35_w1_splitk_silu_mxfp8_out(
+            activation_small,
+            activation_scales_small,
+            w1_partial,
+            quantized_small,
+            input_scales_small,
+            w1,
+            w1_scales,
+            topk_ids_small,
+        )
+        torch.testing.assert_close(
+            activation_small,
+            reference_activation_small,
+        )
+        torch.testing.assert_close(
+            activation_scales_small,
+            reference_scales_small,
+        )
+
+    w2 = torch.randint(
+        0,
+        256,
+        (257, 2048, 192),
+        generator=generator,
+        device="cuda",
+        dtype=torch.uint8,
+    )
+    w2_scales = torch.full(
+        (257 * 2048 * 8,),
+        127,
+        device="cuda",
+        dtype=torch.uint8,
+    )
+    reference = torch.empty((1, 2048), device="cuda", dtype=torch.bfloat16)
+    mxfp6.array_gemm_w6a8_reduce_out(
+        reference,
+        activation,
+        activation_scales,
+        w2,
+        w2_scales,
+        topk_ids,
+        topk_weights,
+        shared_gate,
+    )
+    output = torch.empty_like(reference)
+    w2_partial = torch.empty((256, 9, 16), device="cuda", dtype=torch.float32)
+    workspace = mxfp6.Qwen35MoeB1Workspace(
+        quantized=quantized,
+        input_scales=input_scales,
+        routed_logits=routed_logits,
+        topk_weights=topk_weights,
+        topk_ids=topk_ids,
+        shared_gate=shared_gate,
+        w1_partial=w1_partial,
+        activation=activation,
+        activation_scales=activation_scales,
+        w2_partial=w2_partial,
+        output=output,
+    )
+
+    def run_specialized() -> None:
+        mxfp6.qwen35_moe_b1_out(
+            workspace,
+            hidden,
+            gate_weight,
+            w1,
+            w1_scales,
+            w2,
+            w2_scales,
+        )
+
+    run_specialized()
+    torch.testing.assert_close(output, reference)
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        run_specialized()
+    graph.replay()
+    torch.cuda.synchronize()
+    torch.testing.assert_close(output, reference)
+    print("PASS Qwen3.5 TP2 B=1 fused router/W1/W2 CUDA Graph")
+
+
+def test_route_mxfp8(mxfp6) -> None:
+    """Verify fused routing, inverse indices, and grouped scale packing."""
+    tokens, topk, k = 5, 3, 128
+    source = torch.randn((tokens, k), device="cuda", dtype=torch.bfloat16)
+    values, logical_scales = mxfp6.quantize_mxfp8_logical(source)
+    cases = (
+        (
+            torch.tensor(
+                [[0, 1, 3], [2, 0, 1], [3, 3, 0], [1, 2, 3], [2, 1, 0]],
+                device="cuda",
+                dtype=torch.int64,
+            ),
+            None,
+            4,
+        ),
+        (
+            torch.tensor(
+                [[0, 1, 5], [2, 4, 1], [5, 3, 0], [1, 2, 5], [4, 3, 0]],
+                device="cuda",
+                dtype=torch.int32,
+            ),
+            torch.tensor(
+                [0, -1, 1, 2, -1, 3],
+                device="cuda",
+                dtype=torch.int32,
+            ),
+            4,
+        ),
+    )
+    for topk_ids, expert_map, local_experts in cases:
+        routes = tokens * topk
+        permuted = torch.empty((routes, k), device="cuda", dtype=torch.float8_e4m3fn)
+        packed, offsets, scale_offsets, inverse = mxfp6.route_mxfp8_out(
+            values,
+            logical_scales,
+            topk_ids,
+            expert_map,
+            local_experts,
+            permuted,
+        )
+        mapped = topk_ids.to(torch.int64)
+        if expert_map is not None:
+            mapped = expert_map[mapped].to(torch.int64)
+        valid = (mapped >= 0) & (mapped < local_experts)
+        counts = torch.stack(
+            [(mapped[valid] == expert).sum() for expert in range(local_experts)]
+        )
+        expected_offsets = torch.cat(
+            (
+                torch.zeros(1, device="cuda", dtype=torch.int64),
+                counts.cumsum(0),
+            )
+        )
+        torch.testing.assert_close(offsets, expected_offsets)
+        valid_rows = int(offsets[-1].item())
+
+        flat_mapped = mapped.flatten()
+        flat_inverse = inverse.to(torch.int64)
+        for route in range(routes):
+            expert = int(flat_mapped[route].item())
+            destination = int(flat_inverse[route].item())
+            if expert < 0 or expert >= local_experts:
+                assert destination >= valid_rows
+                continue
+            assert int(offsets[expert].item()) <= destination
+            assert destination < int(offsets[expert + 1].item())
+            torch.testing.assert_close(permuted[destination], values[route // topk])
+
+        for expert in range(local_experts):
+            rows = int(counts[expert].item())
+            if rows == 0:
+                continue
+            first = int(scale_offsets[expert].item())
+            padded_rows = (rows + 127) // 128 * 128
+            restored = mxfp6.unpack_scales(
+                packed[first * (k // 32) : (first + padded_rows) * (k // 32)],
+                rows,
+                k,
+            )
+            for route in range(routes):
+                if int(flat_mapped[route].item()) != expert:
+                    continue
+                destination = int(flat_inverse[route].item())
+                local_row = destination - int(offsets[expert].item())
+                torch.testing.assert_close(
+                    restored[local_row], logical_scales[route // topk]
+                )
+    print("PASS fused MXFP8 routing, inverse map, and packed scales")
+
+
+def test_shared_group_and_reduce(mxfp6) -> None:
+    """Verify the always-hit shared group and package-owned final reduce."""
+    tokens, topk, hidden_size = 5, 3, 128
+    routed_experts = 4
+    source = torch.randn((tokens, hidden_size), device="cuda", dtype=torch.bfloat16)
+    values, logical_scales = mxfp6.quantize_mxfp8_logical(source)
+    topk_ids = torch.tensor(
+        [[3, 1, 0], [2, 3, 1], [1, 0, 2], [3, 2, 0], [0, 1, 3]],
+        device="cuda",
+        dtype=torch.int32,
+    )
+    routes = tokens * topk
+    permuted = torch.empty(
+        (routes + tokens, hidden_size),
+        device="cuda",
+        dtype=torch.float8_e4m3fn,
+    )
+    (
+        packed_scales,
+        expert_offsets,
+        scale_offsets,
+        inverse,
+    ) = mxfp6.route_mxfp8_out(
+        values,
+        logical_scales,
+        topk_ids,
+        None,
+        routed_experts + 1,
+        permuted,
+        include_shared=True,
+    )
+    del packed_scales, scale_offsets
+    shared_start = int(expert_offsets[routed_experts].item())
+    assert shared_start == routes
+    assert int(expert_offsets[-1].item()) == routes + tokens
+    torch.testing.assert_close(
+        permuted[shared_start : shared_start + tokens],
+        values,
+    )
+
+    routed_output = torch.randn(
+        (routes + tokens, hidden_size),
+        device="cuda",
+        dtype=torch.bfloat16,
+    )
+    topk_weights = torch.rand((tokens, topk), device="cuda", dtype=torch.float32)
+    topk_weights /= topk_weights.sum(dim=1, keepdim=True)
+    shared_gate = torch.randn((tokens, 1), device="cuda", dtype=torch.bfloat16)
+    output = torch.empty_like(source)
+
+    def run_reduce() -> None:
+        mxfp6.moe_reduce_out(
+            output,
+            routed_output,
+            topk_weights,
+            inverse,
+            routed_output[shared_start : shared_start + tokens],
+            shared_gate,
+        )
+
+    run_reduce()
+    selected = routed_output[inverse.view(tokens, topk).long()].float()
+    expected = (
+        (selected * topk_weights[..., None]).sum(dim=1)
+        + torch.sigmoid(shared_gate.float())
+        * routed_output[shared_start : shared_start + tokens].float()
+    ).to(source.dtype)
+    torch.testing.assert_close(output, expected, rtol=0, atol=0)
+
+    graph = torch.cuda.CUDAGraph()
+    with torch.cuda.graph(graph):
+        run_reduce()
+    graph.replay()
+    torch.cuda.synchronize()
+    torch.testing.assert_close(output, expected, rtol=0, atol=0)
+    print("PASS shared grouped routing and independent fused MoE reduce")
 
 
 def make_problem(m: int, n: int, k: int, seed: int):
@@ -88,19 +1012,33 @@ def make_problem(m: int, n: int, k: int, seed: int):
     b_codes = torch.randint(
         0, 12, (n, k), generator=generator, device="cuda", dtype=torch.uint8
     )
-    a_codes |= torch.randint(
-        0, 2, (m, k), generator=generator, device="cuda", dtype=torch.uint8
-    ) << 5
-    b_codes |= torch.randint(
-        0, 2, (n, k), generator=generator, device="cuda", dtype=torch.uint8
-    ) << 5
+    a_codes |= (
+        torch.randint(
+            0, 2, (m, k), generator=generator, device="cuda", dtype=torch.uint8
+        )
+        << 5
+    )
+    b_codes |= (
+        torch.randint(
+            0, 2, (n, k), generator=generator, device="cuda", dtype=torch.uint8
+        )
+        << 5
+    )
     sfa = torch.randint(
-        125, 129, (m, k // 32), generator=generator,
-        device="cuda", dtype=torch.uint8,
+        125,
+        129,
+        (m, k // 32),
+        generator=generator,
+        device="cuda",
+        dtype=torch.uint8,
     )
     sfb = torch.randint(
-        125, 129, (n, k // 32), generator=generator,
-        device="cuda", dtype=torch.uint8,
+        125,
+        129,
+        (n, k // 32),
+        generator=generator,
+        device="cuda",
+        dtype=torch.uint8,
     )
     return a_codes, b_codes, sfa, sfb
 
@@ -118,12 +1056,10 @@ def reference_gemm(
 
 
 def decode_mxfp8(operand, mxfp6) -> torch.Tensor:
-    values = operand.values.view(operand.rows, operand.k).view(
-        torch.float8_e4m3fn
-    ).float()
-    scales = mxfp6.unpack_scales(
-        operand.scales, operand.rows, operand.k
+    values = (
+        operand.values.view(operand.rows, operand.k).view(torch.float8_e4m3fn).float()
     )
+    scales = mxfp6.unpack_scales(operand.scales, operand.rows, operand.k)
     return values * decode_ue8m0(scales).repeat_interleave(32, dim=1)
 
 
@@ -134,28 +1070,101 @@ def test_dynamic_quantization(mxfp6) -> None:
             generator = torch.Generator(device="cuda").manual_seed(rows + k)
             source = (
                 torch.randn(
-                    (rows, k), generator=generator, device="cuda",
+                    (rows, k),
+                    generator=generator,
+                    device="cuda",
                     dtype=torch.float32,
                 )
                 * 6.0
             ).to(dtype)
             quantized = mxfp6.quantize_mxfp8(source)
-            logical_scales = mxfp6.unpack_scales(
-                quantized.scales, rows, k
-            )
+            logical_scales = mxfp6.unpack_scales(quantized.scales, rows, k)
             scales = decode_ue8m0(logical_scales).repeat_interleave(32, dim=1)
-            expected = (source.float() / scales).to(
-                torch.float8_e4m3fn
-            ).view(torch.uint8)
+            expected = (
+                (source.float() / scales).to(torch.float8_e4m3fn).view(torch.uint8)
+            )
             actual = quantized.values.view(rows, k)
             torch.testing.assert_close(actual, expected)
+            dual_values, dual_logical, dual_packed = (
+                mxfp6.quantize_mxfp8_dual(source)
+            )
+            torch.testing.assert_close(
+                dual_values.view(torch.uint8),
+                quantized.values.view(rows, k),
+            )
+            torch.testing.assert_close(dual_logical, logical_scales)
+            torch.testing.assert_close(dual_packed, quantized.scales)
+            dual_out = torch.empty_like(actual)
+            logical_out = torch.empty_like(logical_scales)
+            packed_out = torch.full_like(quantized.scales, 0x7F)
+            mxfp6.quantize_mxfp8_dual_out(
+                dual_out,
+                logical_out,
+                packed_out,
+                source,
+            )
+            torch.testing.assert_close(dual_out, actual)
+            torch.testing.assert_close(logical_out, logical_scales)
+            torch.testing.assert_close(packed_out, quantized.scales)
+
+            silu_values, silu_logical = (
+                mxfp6.silu_and_mul_mxfp8_logical(source)
+            )
+            silu_packed = mxfp6.pack_scales(silu_logical)
+            silu_out = torch.empty_like(silu_values, dtype=torch.uint8)
+            silu_packed_out = torch.full_like(silu_packed, 0x7F)
+            mxfp6.silu_and_mul_mxfp8_packed_out(
+                silu_out,
+                silu_packed_out,
+                source,
+            )
+            torch.testing.assert_close(
+                silu_out,
+                silu_values.view(torch.uint8),
+            )
+            torch.testing.assert_close(silu_packed_out, silu_packed)
+
+            expert_offsets = torch.tensor(
+                [0, rows // 2, rows],
+                device="cuda",
+                dtype=torch.int64,
+            )
+            (
+                grouped_values,
+                grouped_scales,
+                grouped_scale_offsets,
+            ) = mxfp6.silu_and_mul_mxfp8_grouped(
+                source,
+                expert_offsets,
+            )
+            grouped_out = torch.empty_like(
+                grouped_values,
+                dtype=torch.uint8,
+            )
+            grouped_scales_out = torch.full_like(
+                grouped_scales,
+                0x7F,
+            )
+            mxfp6.silu_and_mul_mxfp8_grouped_out(
+                grouped_out,
+                grouped_scales_out,
+                source,
+                expert_offsets,
+                grouped_scale_offsets,
+            )
+            torch.testing.assert_close(
+                grouped_out,
+                grouped_values.view(torch.uint8),
+            )
+            torch.testing.assert_close(
+                grouped_scales_out,
+                grouped_scales,
+            )
 
         # Every group contains +28, so its exact UE8M0 scale is one. All E3M2
         # values then round-trip through the native 16->6 conversion.
         rows, k = 17, 256
-        codes = torch.arange(32, dtype=torch.uint8, device="cuda").repeat(
-            rows, k // 32
-        )
+        codes = torch.arange(32, dtype=torch.uint8, device="cuda").repeat(rows, k // 32)
         source = decode_e3m2(codes).to(dtype)
         quantized6 = mxfp6.quantize_mxfp6(source)
         restored_codes, restored_scales = mxfp6.unpack_operand(quantized6)
@@ -176,9 +1185,7 @@ def test_w6a8_candidate_registry(mxfp6) -> None:
     a8 = torch.ops.mxfp6.expand_fp6_to_fp8(a6.values, m, k)
     assert torch.ops.mxfp6.w6a8_config_abi(a8) == "native-w6a8-30-v5"
     for out_dtype in (torch.float16, torch.bfloat16):
-        torch.ops.mxfp6.set_w6a8_config(
-            a8, m, n, k, -1, 1, 0, out_dtype
-        )
+        torch.ops.mxfp6.set_w6a8_config(a8, m, n, k, -1, 1, 0, out_dtype)
         reference = torch.ops.mxfp6.gemm_w6a8(
             a8, b.values, a6.scales, b.scales, m, n, k, 1.0, out_dtype
         )
@@ -198,27 +1205,19 @@ def test_w6a8_candidate_registry(mxfp6) -> None:
                 0,
                 out_dtype,
             )
-            torch.testing.assert_close(
-                actual, reference, rtol=2e-3, atol=0.5
-            )
+            torch.testing.assert_close(actual, reference, rtol=2e-3, atol=0.5)
 
     try:
-        assert torch.ops.mxfp6.set_w6a8_config(
-            a8, m, n, k, 5, 2, 1, torch.bfloat16
-        )
+        assert torch.ops.mxfp6.set_w6a8_config(a8, m, n, k, 5, 2, 1, torch.bfloat16)
         overridden = torch.ops.mxfp6.gemm_w6a8(
-            a8, b.values, a6.scales, b.scales, m, n, k,
-            1.0, torch.bfloat16
+            a8, b.values, a6.scales, b.scales, m, n, k, 1.0, torch.bfloat16
         )
         expected = torch.ops.mxfp6.gemm_w6a8_config(
-            a8, b.values, a6.scales, b.scales, m, n, k,
-            1.0, 5, 2, 1, torch.bfloat16
+            a8, b.values, a6.scales, b.scales, m, n, k, 1.0, 5, 2, 1, torch.bfloat16
         )
         torch.testing.assert_close(overridden, expected, rtol=0, atol=0)
     finally:
-        torch.ops.mxfp6.set_w6a8_config(
-            a8, m, n, k, -1, 1, 0, torch.bfloat16
-        )
+        torch.ops.mxfp6.set_w6a8_config(a8, m, n, k, -1, 1, 0, torch.bfloat16)
     print("PASS FP16/BF16 W6A8 candidate ABI and C++ override registry")
 
 
@@ -369,26 +1368,18 @@ def test_float_w6a8_gemm(mxfp6) -> None:
         )
     ):
         generator = torch.Generator(device="cuda").manual_seed(6800 + index)
-        source = torch.randn(
-            (m, k), generator=generator, device="cuda", dtype=dtype
-        )
+        source = torch.randn((m, k), generator=generator, device="cuda", dtype=dtype)
         _, b_codes, _, sfb = make_problem(m, n, k, 6900 + index)
         b = mxfp6.pack_operand(b_codes, sfb)
         quantized = mxfp6.quantize_activation(source)
-        b_values = decode_e3m2(b_codes) * decode_ue8m0(sfb).repeat_interleave(
-            32, dim=1
-        )
+        b_values = decode_e3m2(b_codes) * decode_ue8m0(sfb).repeat_interleave(32, dim=1)
         reference_fp32 = decode_mxfp8(quantized, mxfp6) @ b_values.t()
         for out_dtype in (torch.float16, torch.bfloat16):
-            direct = mxfp6.gemm_w6a8(
-                quantized, b, out_dtype=out_dtype
-            )
+            direct = mxfp6.gemm_w6a8(quantized, b, out_dtype=out_dtype)
             fused = mxfp6.gemm(source, b, out_dtype=out_dtype)
             reference = reference_fp32.to(out_dtype)
             assert direct.dtype == out_dtype
-            torch.testing.assert_close(
-                direct, reference, rtol=2e-3, atol=0.5
-            )
+            torch.testing.assert_close(direct, reference, rtol=2e-3, atol=0.5)
             torch.testing.assert_close(fused, direct, rtol=0, atol=0)
         print(
             "PASS native FP16/BF16 output for "
@@ -460,13 +1451,9 @@ def test_random_scale_gemm(mxfp6) -> None:
         reference = reference_gemm(a_codes, b_codes, sfa, sfb)
         torch.testing.assert_close(actual, reference, rtol=2e-3, atol=0.25)
         actual_bf16 = mxfp6.gemm(a, b, out_dtype=torch.bfloat16)
-        reference_bf16 = reference_gemm(
-            a_codes, b_codes, sfa, sfb, torch.bfloat16
-        )
+        reference_bf16 = reference_gemm(a_codes, b_codes, sfa, sfb, torch.bfloat16)
         assert actual_bf16.dtype == torch.bfloat16
-        torch.testing.assert_close(
-            actual_bf16, reference_bf16, rtol=2e-3, atol=0.5
-        )
+        torch.testing.assert_close(actual_bf16, reference_bf16, rtol=2e-3, atol=0.5)
         max_abs = (actual - reference).abs().max().item()
         print(f"PASS random-scale GEMM {m}x{n}x{k}: max_abs={max_abs:g}")
 
@@ -483,10 +1470,7 @@ def test_large_m_mixed_gemm(mxfp6) -> None:
     reference = reference_gemm(a_codes, b_codes, sfa, sfb)
     torch.testing.assert_close(actual, reference, rtol=2e-3, atol=0.25)
     max_abs = (actual - reference).abs().max().item()
-    print(
-        "PASS packed-W6 large-M mixed GEMM "
-        f"{m}x{n}x{k}: max_abs={max_abs:g}"
-    )
+    print(f"PASS packed-W6 large-M mixed GEMM {m}x{n}x{k}: max_abs={max_abs:g}")
 
 
 def test_eager_prefill_static_heuristics(mxfp6) -> None:
@@ -604,9 +1588,7 @@ def test_persistent_workspace(mxfp6) -> None:
     a6 = mxfp6.pack_operand(a_codes, sfa)
     b = mxfp6.pack_operand(b_codes, sfb)
     a8 = torch.ops.mxfp6.expand_fp6_to_fp8(a6.values, m, k)
-    torch.ops.mxfp6.set_w6a8_config(
-        a8, m, n, k, 3, 1, 0, torch.bfloat16
-    )
+    torch.ops.mxfp6.set_w6a8_config(a8, m, n, k, 3, 1, 0, torch.bfloat16)
     arguments = (
         a8,
         b.values,
@@ -641,9 +1623,7 @@ def test_persistent_workspace(mxfp6) -> None:
         finalized_stats = mxfp6.finalize_workspace_planning()
         assert finalized_stats["frozen"] == 1
         assert finalized_stats["lanes"] == 0
-        expected = reference_gemm(
-            a_codes, b_codes, sfa, sfb, torch.bfloat16
-        )
+        expected = reference_gemm(a_codes, b_codes, sfa, sfb, torch.bfloat16)
         torch.testing.assert_close(actual, expected, rtol=2e-3, atol=0.5)
         torch.testing.assert_close(
             split_k_actual,
@@ -655,9 +1635,7 @@ def test_persistent_workspace(mxfp6) -> None:
         return
 
     mxfp6.begin_workspace_planning()
-    previous_collection = torch.ops.mxfp6._set_workspace_collection(
-        a8, False
-    )
+    previous_collection = torch.ops.mxfp6._set_workspace_collection(a8, False)
     assert previous_collection
     torch.ops.mxfp6.gemm_w6a8(*arguments)
     torch.ops.mxfp6._set_workspace_collection(a8, previous_collection)
@@ -681,17 +1659,13 @@ def test_persistent_workspace(mxfp6) -> None:
         split_k_eager = torch.ops.mxfp6.gemm(*split_k_arguments)
     capture_stream.synchronize()
     torch.testing.assert_close(eager, reference, rtol=0, atol=0)
-    torch.testing.assert_close(
-        split_k_eager, split_k_reference, rtol=0, atol=0
-    )
+    torch.testing.assert_close(split_k_eager, split_k_reference, rtol=0, atol=0)
     assert mxfp6.workspace_stats()["lanes"] == 2
 
     graph = torch.cuda.CUDAGraph()
     with torch.cuda.graph(graph, stream=capture_stream):
         captured = torch.ops.mxfp6.gemm_w6a8(*arguments)
-    stress_iterations = int(
-        os.environ.get("MXFP6_PERSISTENT_STRESS_ITERATIONS", "100")
-    )
+    stress_iterations = int(os.environ.get("MXFP6_PERSISTENT_STRESS_ITERATIONS", "100"))
     if stress_iterations <= 0:
         raise ValueError("MXFP6_PERSISTENT_STRESS_ITERATIONS must be positive")
     for _ in range(stress_iterations):
@@ -723,6 +1697,14 @@ def main() -> None:
     test_fp6_tools(mxfp6)
     test_fp6_to_fp8(mxfp6)
     test_scale_tools(mxfp6)
+    test_grouped_w6a8(mxfp6)
+    test_grouped_w6a8_k64_transposed(mxfp6)
+    test_array_w6a8(mxfp6)
+    test_fused_array_silu_mxfp8(mxfp6)
+    test_fused_array_w2_reduce(mxfp6)
+    test_qwen35_b1_specialization(mxfp6)
+    test_route_mxfp8(mxfp6)
+    test_shared_group_and_reduce(mxfp6)
     test_dynamic_quantization(mxfp6)
     test_w6a8_candidate_registry(mxfp6)
     test_stream_k_autotune_filter(mxfp6)

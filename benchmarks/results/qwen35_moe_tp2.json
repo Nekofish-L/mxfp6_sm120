@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "date_utc": "2026-08-01",
+  "hardware": {
+    "gpus": 2,
+    "device": "NVIDIA GeForce RTX 5090",
+    "compute_capability": "12.0"
+  },
+  "models": {
+    "baseline": "/data/models/Qwen3.5-35B-A3B-FP8",
+    "candidate": "/data/models/Qwen3.5-35B-A3B-MXFP6",
+    "layer": 0,
+    "tensor_parallel_size": 2
+  },
+  "measurement": {
+    "scope": "whole MoE layer",
+    "capture": "CUDA Graph",
+    "warmup_replays": 40,
+    "measured_replays": 700,
+    "repeats": 9,
+    "statistic": "median",
+    "all_reduce": "vLLM graph-registered custom all-reduce",
+    "baseline": "vLLM runtime Triton FP8-block experts with auxiliary-stream shared expert"
+  },
+  "results": [
+    {"batch": 16, "fp8_us": 120.9, "mxfp6_us": 92.2, "speedup": 1.311, "rel_rms": 0.0903, "cosine": 0.9959},
+    {"batch": 24, "fp8_us": 161.8, "mxfp6_us": 126.5, "speedup": 1.279, "rel_rms": 0.0980, "cosine": 0.9952},
+    {"batch": 32, "fp8_us": 188.2, "mxfp6_us": 146.8, "speedup": 1.282, "rel_rms": 0.0949, "cosine": 0.9955},
+    {"batch": 36, "fp8_us": 192.4, "mxfp6_us": 150.7, "speedup": 1.277, "rel_rms": 0.0983, "cosine": 0.9952},
+    {"batch": 40, "fp8_us": 204.2, "mxfp6_us": 161.7, "speedup": 1.263, "rel_rms": 0.0997, "cosine": 0.9950},
+    {"batch": 48, "fp8_us": 226.0, "mxfp6_us": 177.2, "speedup": 1.275, "rel_rms": 0.0971, "cosine": 0.9953},
+    {"batch": 56, "fp8_us": 227.7, "mxfp6_us": 182.4, "speedup": 1.248, "rel_rms": 0.0962, "cosine": 0.9954},
+    {"batch": 64, "fp8_us": 238.6, "mxfp6_us": 188.4, "speedup": 1.267, "rel_rms": 0.0980, "cosine": 0.9952},
+    {"batch": 80, "fp8_us": 255.7, "mxfp6_us": 196.8, "speedup": 1.300, "rel_rms": 0.0975, "cosine": 0.9952},
+    {"batch": 96, "fp8_us": 265.9, "mxfp6_us": 207.6, "speedup": 1.281, "rel_rms": 0.0994, "cosine": 0.9951}
+  ],
+  "geometric_mean_speedup": 1.278
+}

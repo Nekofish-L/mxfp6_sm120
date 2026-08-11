@@ -11,6 +11,11 @@ at::Tensor pack_fp6_cuda(at::Tensor const& codes);
 // Inverse of pack_fp6_cuda. The returned tensor has shape [rows, k].
 at::Tensor unpack_fp6_cuda(at::Tensor const& packed, int64_t rows, int64_t k);
 
+// Pad each packed 16-value/12-byte FP6 segment to an aligned 16-byte segment.
+// The returned tensor preserves all leading dimensions and replaces the last
+// dimension with the logical K.
+at::Tensor pad_fp6_cuda(at::Tensor const& packed);
+
 // Expand packed E3M2 values directly to byte-compatible E4M3 values. Every
 // E3M2 number is exactly representable in E4M3, so this is a lossless format
 // conversion for the W6A8 SM120 path.
