@@ -1251,6 +1251,7 @@ def qwen35_router_quant_out(
     hidden: torch.Tensor,
     gate_weight: torch.Tensor,
     renormalize: bool = False,
+    shared_gate_weight: torch.Tensor | None = None,
 ) -> None:
     """Fuse the specialized Qwen3.5 router, top-k, and MXFP8 quantization."""
     if (
@@ -1266,13 +1267,25 @@ def qwen35_router_quant_out(
             "with B in {1,2,4,8,16}"
         )
     _require_sm120(hidden.device)
+    gate_rows = 256 if shared_gate_weight is not None else 257
     if (
         gate_weight.device != hidden.device
         or gate_weight.dtype != torch.bfloat16
-        or gate_weight.shape != (257, 2048)
+        or gate_weight.shape != (gate_rows, 2048)
         or not gate_weight.is_contiguous()
     ):
-        raise ValueError("gate_weight must be contiguous CUDA bfloat16 [257,2048]")
+        raise ValueError(
+            f"gate_weight must be contiguous CUDA bfloat16 [{gate_rows},2048]"
+        )
+    if shared_gate_weight is not None and (
+        shared_gate_weight.device != hidden.device
+        or shared_gate_weight.dtype != torch.bfloat16
+        or shared_gate_weight.shape != (1, 2048)
+        or not shared_gate_weight.is_contiguous()
+    ):
+        raise ValueError(
+            "shared_gate_weight must be contiguous CUDA bfloat16 [1,2048]"
+        )
     batch = hidden.shape[0]
     for tensor, name, shape in (
         (quantized, "quantized", hidden.shape),
@@ -1326,6 +1339,7 @@ def qwen35_router_quant_out(
         hidden,
         gate_weight,
         renormalize,
+        shared_gate_weight,
     )
 
 
@@ -1545,6 +1559,9 @@ def qwen35_w1_splitk_silu_mxfp8_out(
     weight: torch.Tensor,
     weight_scales: torch.Tensor,
     topk_ids: torch.Tensor,
+    include_shared: bool = True,
+    shared_weight: torch.Tensor | None = None,
+    shared_weight_scales: torch.Tensor | None = None,
 ) -> None:
     """Run the cooperative Qwen3.5 small-batch split-K W1 specialization."""
     if (
@@ -1560,12 +1577,26 @@ def qwen35_w1_splitk_silu_mxfp8_out(
         )
     _require_sm120(activation.device)
     batch = activation.shape[0]
-    routes = batch * 9
+    if not isinstance(include_shared, bool):
+        raise TypeError("include_shared must be a bool")
+    if (shared_weight is None) != (shared_weight_scales is None):
+        raise ValueError(
+            "shared_weight and shared_weight_scales must be provided together"
+        )
+    separate_shared = shared_weight is not None
+    if separate_shared and (not include_shared or batch not in (1, 2, 4)):
+        raise ValueError(
+            "separate shared W1 currently requires include_shared=True and "
+            "B in {1,2,4}"
+        )
+    experts = 257 if include_shared and not separate_shared else 256
+    routes_per_token = 9 if include_shared else 8
+    routes = batch * routes_per_token
     expected = (
         (output, torch.uint8, (routes, 256), "output"),
         (output_scales, torch.uint8, (routes, 8), "output_scales"),
         (logical_scales, torch.uint8, (batch, 64), "logical_scales"),
-        (weight, torch.uint8, (257, 512, 1536), "weight"),
+        (weight, torch.uint8, (experts, 512, 1536), "weight"),
         (topk_ids, torch.int32, (batch, 8), "topk_ids"),
     )
     for tensor, dtype, shape, name in expected:
@@ -1576,7 +1607,11 @@ def qwen35_w1_splitk_silu_mxfp8_out(
             or not tensor.is_contiguous()
         ):
             raise ValueError(f"{name} must be contiguous CUDA {dtype} {shape}")
-    required_partial = (288 if batch in (4, 8) else 144) * 128
+    required_partial = (
+        (288 if batch in (4, 8) else 144)
+        if include_shared
+        else (256 if batch in (4, 8) else 128)
+    ) * 128
     if (
         partial.device != activation.device
         or partial.dtype != torch.float32
@@ -1586,15 +1621,37 @@ def qwen35_w1_splitk_silu_mxfp8_out(
         raise ValueError(
             "partial must be contiguous CUDA float32 with enough split-K storage"
         )
+    if separate_shared:
+        assert shared_weight is not None
+        assert shared_weight_scales is not None
+        if (
+            shared_weight.device != activation.device
+            or shared_weight.dtype != torch.uint8
+            or shared_weight.shape != (1, 512, 1536)
+            or not shared_weight.is_contiguous()
+        ):
+            raise ValueError(
+                "shared_weight must be contiguous CUDA uint8 [1,512,1536]"
+            )
+        if (
+            shared_weight_scales.device != activation.device
+            or shared_weight_scales.dtype != torch.uint8
+            or shared_weight_scales.numel() < 512 * 64
+            or not shared_weight_scales.is_contiguous()
+        ):
+            raise ValueError(
+                "shared_weight_scales must be contiguous CUDA uint8 with "
+                "at least 512*64 values"
+            )
     if (
         weight_scales.device != activation.device
         or weight_scales.dtype != torch.uint8
-        or weight_scales.numel() < 257 * 512 * 64
+        or weight_scales.numel() < experts * 512 * 64
         or not weight_scales.is_contiguous()
     ):
         raise ValueError(
             "weight_scales must be contiguous CUDA uint8 with "
-            "at least 257*512*64 values"
+            f"at least {experts}*512*64 values"
         )
     load_library()
     torch.ops.mxfp6.qwen35_w1_splitk_silu_mxfp8_out(
@@ -1606,6 +1663,9 @@ def qwen35_w1_splitk_silu_mxfp8_out(
         weight,
         weight_scales,
         topk_ids,
+        include_shared,
+        shared_weight,
+        shared_weight_scales,
     )
 
 
@@ -1619,6 +1679,8 @@ def qwen35_w2_splitk_reduce_out(
     topk_ids: torch.Tensor,
     topk_weights: torch.Tensor,
     shared_gate: torch.Tensor,
+    shared_weight: torch.Tensor | None = None,
+    shared_weight_scales: torch.Tensor | None = None,
 ) -> None:
     """Run the cooperative Qwen3.5 B=1 split-K W2/reduce specialization."""
     if (
@@ -1629,11 +1691,17 @@ def qwen35_w2_splitk_reduce_out(
     ):
         raise ValueError("activation must be contiguous CUDA MXFP8 [9,256]")
     _require_sm120(activation.device)
+    if (shared_weight is None) != (shared_weight_scales is None):
+        raise ValueError(
+            "shared_weight and shared_weight_scales must be provided together"
+        )
+    separate_shared = shared_weight is not None
+    experts = 256 if separate_shared else 257
     expected = (
         (output, torch.bfloat16, (1, 2048), "output"),
         (partial, torch.float32, (256, 9, 16), "partial"),
         (logical_scales, torch.uint8, (9, 8), "logical_scales"),
-        (weight, torch.uint8, (257, 2048, 192), "weight"),
+        (weight, torch.uint8, (experts, 2048, 192), "weight"),
         (topk_ids, torch.int32, (1, 8), "topk_ids"),
         (topk_weights, torch.float32, (1, 8), "topk_weights"),
     )
@@ -1648,13 +1716,35 @@ def qwen35_w2_splitk_reduce_out(
     if (
         weight_scales.device != activation.device
         or weight_scales.dtype != torch.uint8
-        or weight_scales.numel() < 257 * 2048 * 8
+        or weight_scales.numel() < experts * 2048 * 8
         or not weight_scales.is_contiguous()
     ):
         raise ValueError(
             "weight_scales must be contiguous CUDA uint8 with "
-            "at least 257*2048*8 values"
+            f"at least {experts}*2048*8 values"
         )
+    if separate_shared:
+        assert shared_weight is not None
+        assert shared_weight_scales is not None
+        if (
+            shared_weight.device != activation.device
+            or shared_weight.dtype != torch.uint8
+            or shared_weight.shape != (1, 2048, 192)
+            or not shared_weight.is_contiguous()
+        ):
+            raise ValueError(
+                "shared_weight must be contiguous CUDA uint8 [1,2048,192]"
+            )
+        if (
+            shared_weight_scales.device != activation.device
+            or shared_weight_scales.dtype != torch.uint8
+            or shared_weight_scales.numel() < 2048 * 8
+            or not shared_weight_scales.is_contiguous()
+        ):
+            raise ValueError(
+                "shared_weight_scales must be contiguous CUDA uint8 with "
+                "at least 2048*8 values"
+            )
     if (
         shared_gate.device != activation.device
         or shared_gate.dtype != torch.bfloat16
@@ -1673,6 +1763,8 @@ def qwen35_w2_splitk_reduce_out(
         topk_ids,
         topk_weights,
         shared_gate,
+        shared_weight,
+        shared_weight_scales,
     )
 
 
@@ -1686,6 +1778,9 @@ def array_gemm_w6a8_reduce_out(
     topk_weights: torch.Tensor,
     shared_gate: torch.Tensor,
     shared_output: torch.Tensor | None = None,
+    shared_weight: torch.Tensor | None = None,
+    shared_weight_scales: torch.Tensor | None = None,
+    use_packed_vector_loads: bool = False,
 ) -> None:
     """Fuse Qwen top-8 W2 GEMMs with routed/shared weighted reduction."""
     if (
@@ -1745,6 +1840,45 @@ def array_gemm_w6a8_reduce_out(
             "shared_output must be contiguous and match output's shape, "
             "dtype, and CUDA device"
         )
+    if (shared_weight is None) != (shared_weight_scales is None):
+        raise ValueError(
+            "shared_weight and shared_weight_scales must be provided together"
+        )
+    if shared_output is not None and shared_weight is not None:
+        raise ValueError(
+            "separate shared weights cannot be combined with shared_output"
+        )
+    if shared_weight is not None:
+        assert shared_weight_scales is not None
+        if (
+            weight.ndim != 3
+            or weight.shape[0] != 256
+            or shared_weight.device != activation.device
+            or shared_weight.dtype != torch.uint8
+            or shared_weight.shape != (1, weight.shape[1], weight.shape[2])
+            or not shared_weight.is_contiguous()
+        ):
+            raise ValueError(
+                "separate shared W2 requires 256 routed experts and contiguous "
+                "CUDA uint8 shared_weight [1,N,packed_K]"
+            )
+        packed_k_blocks = ((activation.shape[1] // 32 + 3) // 4) * 4
+        if (
+            shared_weight_scales.device != activation.device
+            or shared_weight_scales.dtype != torch.uint8
+            or shared_weight_scales.numel()
+            < weight.shape[1] * packed_k_blocks
+            or not shared_weight_scales.is_contiguous()
+        ):
+            raise ValueError(
+                "shared_weight_scales must be contiguous CUDA uint8 with "
+                "enough values for one shared expert"
+            )
+        if output.dtype != torch.bfloat16 or topk_ids.dtype != torch.int32:
+            raise ValueError(
+                "separate shared W2 currently requires bfloat16 output and "
+                "int32 ids"
+            )
     load_library()
     torch.ops.mxfp6.array_gemm_w6a8_reduce_out(
         output,
@@ -1756,6 +1890,9 @@ def array_gemm_w6a8_reduce_out(
         topk_weights,
         shared_gate,
         shared_output,
+        shared_weight,
+        shared_weight_scales,
+        use_packed_vector_loads,
     )
 
 
