@@ -214,7 +214,7 @@ Each code uses its low six bits. UE8M0 byte `0x7f` represents scale 1.0.
 ## Runtime autotuning
 
 Unknown W6A8 shapes use first-use selection from precompiled native CUTLASS
-families. The default searches all 29 families through `M=512`, where that
+families. The default searches all 30 families through `M=512`, where that
 recovers the small/medium-prefill swapped-tile winners. Above `M=512`, it uses
 the stable normal-family shortlist: measured family gaps are small there, and
 ranking a much larger set from finite samples can select a lucky-but-slower

@@ -232,6 +232,13 @@ using KernelW6A8_64x16x256StaticPingpong = KernelConfig<
     cutlass::epilogue::collective::EpilogueTileAuto,
     cutlass::gemm::StaticPersistentScheduler, void,
     mxfp6_gemm::ElementPairB, ElementPairB8>;
+using KernelW6A8_64x16x128Stage3StaticPingpong = KernelConfig<
+    cute::_64, cute::_16, cute::_128,
+    cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120,
+    cutlass::epilogue::collective::EpilogueTileAuto,
+    cutlass::gemm::StaticPersistentScheduler,
+    cutlass::gemm::collective::StageCount<3>,
+    mxfp6_gemm::ElementPairB, ElementPairB8>;
 
 // M=32 portfolio. In the swapped orientation the logical activation batch is
 // the tile N dimension, so these kernels cover all 32 rows without either the
