@@ -7,6 +7,11 @@ benchmark reference. It is not yet a drop-in serving backend for vLLM or
 SGLang. The missing work is at the checkpoint, loader, model and runtime
 boundaries rather than in installation prose.
 
+The repository also publishes pinned Qwen3.5-27B and Qwen3.5-35B-A3B serving
+comparisons from one internally maintained vLLM environment. Those experiments
+demonstrate end-to-end potential and preserve their measurement contracts; they
+do not turn the private research adapter into a supported public integration.
+
 ## vLLM
 
 Current vLLM main provides an `MxFp6LinearKernel` backend interface and an

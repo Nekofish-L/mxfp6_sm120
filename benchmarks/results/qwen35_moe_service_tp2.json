@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "date_utc": "2026-08-11",
+  "claim_layer": "full-model serving and reference-output fidelity",
+  "hardware": {
+    "gpus": 2,
+    "device": "NVIDIA GeForce RTX 5090",
+    "compute_capability": "12.0",
+    "visible_devices": [6, 7],
+    "topology": "PIX",
+    "tensor_parallel_size": 2
+  },
+  "runtime": {
+    "vllm": "0.25.1-internally-patched",
+    "torch": "2.11.0+cu130",
+    "cuda": "13.0",
+    "attention_backend": "FLASHINFER",
+    "cuda_graph_capture_sizes": [1, 2, 4],
+    "max_model_len": 16384,
+    "max_num_seqs": 64,
+    "speculative_decoding": false
+  },
+  "models": {
+    "baseline": {
+      "id": "Qwen/Qwen3.5-35B-A3B-FP8",
+      "revision": "9d1823d2dee688a6b25e77009dc727688c44936e",
+      "weight_shards": 14,
+      "all_local_weight_shards_match_hugging_face_lfs_sha256": true,
+      "quantization": "dynamic-activation block FP8",
+      "checkpoint_bytes": 37494850011
+    },
+    "candidate": {
+      "architecture": "Qwen3.5-35B-A3B",
+      "export": "Quark MXFP6",
+      "weight_format": "E3M2 with UE8M0 group-32 scales",
+      "activation_format": "dynamic E4M3 with UE8M0 group-32 scales",
+      "checkpoint_bytes": 29943355265,
+      "checkpoint_size_reduction_percent": 20.140084,
+      "wheel_sha256": "09573914047614736c9adc55683a03dceeac3bf1bcfbefc2147450366b81bf6c",
+      "vllm_adapter_sha256_prefix": "804367b",
+      "vllm_qwen_patch_sha256_prefix": "5c125a9"
+    }
+  },
+  "measurement": {
+    "dataset": "first 64 records from a frozen real multimodal conversation set",
+    "dataset_sha256": "c40a5bc2b175196e05fe7067279bd206112b5f0423c3796f2ba76088cabb474c",
+    "contract_sha256": "c4b8e1a29ff581c6f29b04e0e715474012011c7982bc605dc9a88faa589db7d6",
+    "requests": 64,
+    "max_concurrency": 4,
+    "request_rate": "infinite",
+    "fresh_service_lifecycle_per_block": true,
+    "warmup_requests_per_block": 4,
+    "warmup_max_output_tokens": 32,
+    "temperature": 1.0,
+    "top_k": 20,
+    "top_p": 0.95,
+    "presence_penalty": 1.5,
+    "repetition_penalty": 1.0,
+    "ignore_eos": true,
+    "fixed_request_seeds": true,
+    "output_lengths_frozen_from_reference": true,
+    "prompt_tokens_per_block": 203631,
+    "completion_tokens_per_block": 59193,
+    "primary_metric": "sum of final SSE server usage completion_tokens divided by benchmark wall time",
+    "order": ["FP8-A1", "MXFP6-B1", "MXFP6-B2", "FP8-A2"],
+    "task_accuracy_in_scope": false,
+    "reference_fidelity_in_scope": true
+  },
+  "blocks": [
+    {
+      "name": "FP8-A1",
+      "format": "FP8",
+      "successful_requests": 64,
+      "duration_s": 101.19389017671347,
+      "output_tokens_per_s": 584.9463825991085,
+      "mean_tpot_ms": 6.200456342430808,
+      "p99_tpot_ms": 8.424585864376134,
+      "mean_ttft_ms": 401.2187054468086,
+      "p99_ttft_ms": 1613.631964121013
+    },
+    {
+      "name": "MXFP6-B1",
+      "format": "MXFP6",
+      "successful_requests": 64,
+      "duration_s": 88.55987406522036,
+      "output_tokens_per_s": 668.3952594197121,
+      "mean_tpot_ms": 5.554022642750077,
+      "p99_tpot_ms": 7.650516811283559,
+      "mean_ttft_ms": 391.4834362658439,
+      "p99_ttft_ms": 956.7438249103719
+    },
+    {
+      "name": "MXFP6-B2",
+      "format": "MXFP6",
+      "successful_requests": 64,
+      "duration_s": 88.28128673881292,
+      "output_tokens_per_s": 670.5044997262796,
+      "mean_tpot_ms": 5.517727416685818,
+      "p99_tpot_ms": 7.642827037009031,
+      "mean_ttft_ms": 379.84114489518106,
+      "p99_ttft_ms": 1030.3356043621895
+    },
+    {
+      "name": "FP8-A2",
+      "format": "FP8",
+      "successful_requests": 64,
+      "duration_s": 99.6742741977796,
+      "output_tokens_per_s": 593.8643694815951,
+      "mean_tpot_ms": 6.113073435927667,
+      "p99_tpot_ms": 8.191328193653659,
+      "mean_ttft_ms": 385.1723523403052,
+      "p99_ttft_ms": 1470.0145557150233
+    }
+  ],
+  "aggregate": {
+    "fp8": {
+      "output_tokens_per_s": 589.4053760403517,
+      "mean_tpot_ms": 6.156764889179238,
+      "p99_tpot_ms": 8.307957029014897,
+      "p99_ttft_ms": 1541.8232599180182
+    },
+    "mxfp6": {
+      "output_tokens_per_s": 669.4498795729959,
+      "mean_tpot_ms": 5.535875029717948,
+      "p99_tpot_ms": 7.646671924146295,
+      "p99_ttft_ms": 993.5397146362807
+    },
+    "mxfp6_output_throughput_delta_percent": 13.5805519912944,
+    "mxfp6_mean_tpot_change_percent": -10.084677109443119,
+    "mxfp6_p99_tpot_change_percent": -7.95965966794382,
+    "mxfp6_p99_ttft_change_percent": -35.56072602711227
+  },
+  "reference_fidelity": {
+    "scope": "reference-output fidelity, not audited business-task accuracy",
+    "cases": 742,
+    "decoding": "greedy, temperature 0, top-k 1, maximum 2048 tokens, thinking disabled",
+    "full_character_similarity": {
+      "fp8": 0.35619289052531516,
+      "mxfp6": 0.35046584035971184,
+      "absolute_delta": -0.005727050165603297,
+      "delta_percentage_points": -0.5727050165603297,
+      "paired_95_percent_ci_percentage_points": [-1.2876064151860048, 0.1477183223517986]
+    },
+    "answer_section_similarity": {
+      "fp8": 0.4487740922082832,
+      "mxfp6": 0.4455275954303335,
+      "absolute_delta": -0.0032464967779497413,
+      "delta_percentage_points": -0.32464967779497413,
+      "paired_95_percent_ci_percentage_points": [-1.6154812320280286, 0.948091201133145]
+    },
+    "interpretation": "No statistically significant fidelity loss was detected; the intervals do not establish a strict one-percentage-point non-inferiority bound."
+  },
+  "publication_scope": {
+    "artifact_type": "environment-bound integration snapshot",
+    "community_fp8_baseline": true,
+    "unmodified_vllm_claim": false,
+    "public_mxfp6_checkpoint_recipe_in_repository": false,
+    "task_accuracy_claim": false,
+    "general_workload_performance_claim": false
+  }
+}

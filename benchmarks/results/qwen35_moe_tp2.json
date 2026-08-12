@@ -13,6 +13,14 @@
     "layer": 0,
     "tensor_parallel_size": 2
   },
+  "provenance": {
+    "baseline_source": "Qwen/Qwen3.5-35B-A3B-FP8",
+    "baseline_revision": "9d1823d2dee688a6b25e77009dc727688c44936e",
+    "baseline_weight_shards": 14,
+    "all_local_baseline_weight_shards_match_hugging_face_lfs_sha256": true,
+    "candidate_export": "Quark E3M2/UE8M0 group-32 weights with dynamic E4M3/UE8M0 group-32 activations",
+    "runtime": "internally maintained vLLM 0.25.1, PyTorch 2.11.0+cu130, CUDA 13.0"
+  },
   "measurement": {
     "scope": "whole MoE layer",
     "capture": "CUDA Graph",

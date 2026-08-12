@@ -35,6 +35,11 @@ Hugging Face checkpoint ABI. This release does not define:
 The Qwen3.5 benchmark contains a model-specific reader for local research
 checkpoints. It is benchmark code, not a supported loader.
 
+The checked-in full-serving manifests were produced with pinned research
+exports and an external runtime adapter. Publishing those measurements does not
+promote that physical checkpoint layout to a stable or supported serialized
+ABI.
+
 ## Acceptance bar for checkpoint format v1
 
 A future persistent format must include all of the following before a vLLM or

@@ -1,6 +1,18 @@
 # Reviewed benchmark results
 
-`native_w6a8_dispatch.json` is the reviewed production manifest. It records:
+The checked-in results intentionally separate isolated implementation evidence
+from full-serving evidence:
+
+| Model | Evidence level | Artifact |
+|---|---|---|
+| Qwen3.5-27B | five real linear-layer GEMM shapes | `native_w6a8_dispatch.json` |
+| Qwen3.5-27B | full TP2 serving | `qwen35_27b_service_tp2.json` |
+| Qwen3.5-35B-A3B | complete TP2 MoE layer | `qwen35_moe_tp2.json` |
+| Qwen3.5-35B-A3B | full TP2 serving and reference fidelity | `qwen35_moe_service_tp2.json` |
+| Qwen3.5-35B-A3B | B4 MXFP6 implementation refinement | `qwen35_moe_b4_vector.json` |
+
+`native_w6a8_dispatch.json` is the reviewed dense production manifest. It
+records:
 
 - the FP16/BF16 16-to-8 activation and packed-W6 weight formats;
 - native FP16 and BF16 GEMM epilogues;
@@ -13,10 +25,25 @@
 initialization against the self-resetting persistent arena.
 `runtime_autotune_v4.json` records the post-change FP16/BF16 retune across the
 50 Qwen3.5-27B TP2 shapes, including the measurement policy and timings.
+`qwen35_27b_service_tp2.json` records the full-model Qwen3.5-27B TP2 serving
+comparison against the official community FP8 checkpoint, including the
+fixed-token workload, server-usage metric contract and four fresh service
+lifecycle samples.
 `qwen35_moe_tp2.json` records CUDA-Graph whole-layer Qwen3.5 MoE latency,
 numerics, and the measured batch-dependent schedule on two RTX 5090 GPUs.
+`qwen35_moe_service_tp2.json` records the full-model Qwen3.5-35B-A3B TP2
+comparison against the official community FP8 checkpoint, plus the separately
+measured 742-case reference-output fidelity summary.
 `qwen35_moe_b4_vector.json` records the paired scalar/vector B=4 TP2 layer
 comparison with programmatic router-to-W1 dependency ordering.
+
+The serving manifests are environment-bound integration snapshots from a
+pinned internally maintained vLLM integration. They are not publicly
+reproducible MXFP6 checkpoint recipes or general workload claims, and they do
+not promise that the wheel alone can load the checkpoint in an unmodified vLLM
+or SGLang release. The 27B workload did not score task quality; the 35B quality
+section measures reference-output fidelity rather than audited business-task
+accuracy.
 
 Humming is not a submodule, dependency or backend of the current project. Its
 checked-in measurements are retained as an external historical reference from

@@ -1,0 +1,192 @@
+{
+  "schema_version": 1,
+  "date_utc": "2026-08-12",
+  "claim_layer": "full-model serving",
+  "hardware": {
+    "gpus": 2,
+    "device": "NVIDIA GeForce RTX 5090",
+    "compute_capability": "12.0",
+    "topology": "PIX",
+    "tensor_parallel_size": 2
+  },
+  "runtime": {
+    "vllm": "0.25.1-internally-patched",
+    "torch": "2.11.0+cu130",
+    "cuda": "13.0",
+    "attention_backend": "FLASHINFER",
+    "speculative_decoding": false,
+    "max_model_len": 16384,
+    "max_num_batched_tokens": 4096,
+    "max_num_seqs": 64
+  },
+  "models": {
+    "baseline": {
+      "id": "Qwen/Qwen3.5-27B-FP8",
+      "revision": "97f5941bf617e31c5e237364a8602ce3f03a551a",
+      "weight_shards": 11,
+      "all_weight_shards_match_huggingface_lfs_sha256": true,
+      "config_sha256": "53f7e06eebbfe64e70eb0b0979f3da31de9aff6870594e9cf731ba3961501adc",
+      "weight_index_sha256": "1f48d8a182a2b5dad8e7e3ab4aa661bb5ab4cfc5f54b2c7fdc02d5e00eec9171"
+    },
+    "candidate": {
+      "id": "Qwen3.5-27B-MXFP6",
+      "exporter": "Quark",
+      "weight_format": "E3M2/UE8M0 group-32",
+      "activation_format": "dynamic E4M3/UE8M0 group-32",
+      "config_sha256": "0dc2f2caf8efc4cb4de5ef68dcc8b1622691144a8ad5459cc1b48f026055780c",
+      "weight_index_sha256": "0005c8abb2e157bec3c4eceeeb70a911d8b7e213368fbde24c368569aab1b07e"
+    },
+    "same_architecture_and_execution_dimensions": true
+  },
+  "measurement": {
+    "order": [
+      "official_fp8",
+      "mxfp6",
+      "mxfp6",
+      "official_fp8"
+    ],
+    "fresh_service_lifecycle_per_block": true,
+    "requests": 320,
+    "input_tokens_per_request": 3000,
+    "output_tokens_per_request": 1000,
+    "request_rate_per_s": 20,
+    "max_concurrency": 32,
+    "warmup_requests": 8,
+    "warmup_output_tokens": 32,
+    "prompt_generator": {
+      "algorithm": "Python random.Random randrange",
+      "contract_seed": 20260812,
+      "token_id_low_inclusive": 1000,
+      "token_id_high_exclusive": 240000
+    },
+    "arrival_generator": {
+      "algorithm": "Python random.Random expovariate",
+      "seed": "contract_seed xor 0x5A17",
+      "rate_per_s": 20
+    },
+    "sampling": {
+      "temperature": 1.0,
+      "top_k": 20,
+      "top_p": 0.95,
+      "presence_penalty": 1.5,
+      "ignore_eos": true,
+      "per_request_seed_base": 2026081200
+    },
+    "primary_metric": {
+      "name": "output_throughput_tokens_per_s",
+      "numerator": "sum of completion_tokens from final SSE server usage for successful requests",
+      "denominator": "wall time from formal request scheduling start until all formal requests complete"
+    },
+    "latency_metrics": {
+      "ttft": "request start to first non-empty streamed text event",
+      "tpot": "request end minus first text event, divided by server completion_tokens minus one",
+      "itl": "time between consecutive non-empty streamed text events"
+    },
+    "success_gate": "HTTP 200, final usage present, prompt_tokens=3000, completion_tokens=1000, and at least one text event",
+    "contract_sha256": "06a10d3358c2a6bc83d15b46c4ce39df86449f9cd83863f78ccd367e13ea3af4",
+    "benchmark_harness_sha256": "ccbbf445566a69a4e3fe02b0497a5758a6da751fdebb60b71f1fbdbf83d097e7",
+    "task_accuracy_in_scope": false
+  },
+  "blocks": [
+    {
+      "name": "A1",
+      "variant": "official_fp8",
+      "completed": 320,
+      "requested": 320,
+      "duration_s": 276.7211408130006,
+      "prompt_tokens": 960000,
+      "completion_tokens": 320000,
+      "output_tokens_per_s": 1156.3988174515582,
+      "total_tokens_per_s": 4625.595269806233,
+      "mean_ttft_ms": 1644.696917118796,
+      "p99_ttft_ms": 7350.201777440561,
+      "mean_tpot_ms": 25.9662019424487,
+      "p99_tpot_ms": 27.46730282144159,
+      "mean_itl_ms": 26.124959629566344,
+      "p99_itl_ms": 410.1342271206522
+    },
+    {
+      "name": "B1",
+      "variant": "mxfp6",
+      "completed": 320,
+      "requested": 320,
+      "duration_s": 225.4422678459996,
+      "prompt_tokens": 960000,
+      "completion_tokens": 320000,
+      "output_tokens_per_s": 1419.4321369167255,
+      "total_tokens_per_s": 5677.728547666902,
+      "mean_ttft_ms": 1202.3446162249684,
+      "p99_ttft_ms": 5434.337356859269,
+      "mean_tpot_ms": 21.278445980336564,
+      "p99_tpot_ms": 22.292206569098116,
+      "mean_itl_ms": 21.35788423740075,
+      "p99_itl_ms": 310.47297428121954
+    },
+    {
+      "name": "B2",
+      "variant": "mxfp6",
+      "completed": 320,
+      "requested": 320,
+      "duration_s": 226.0175421519998,
+      "prompt_tokens": 960000,
+      "completion_tokens": 320000,
+      "output_tokens_per_s": 1415.8193074447104,
+      "total_tokens_per_s": 5663.2772297788415,
+      "mean_ttft_ms": 1201.9248056187337,
+      "p99_ttft_ms": 5436.20734714108,
+      "mean_tpot_ms": 21.33648092568193,
+      "p99_tpot_ms": 22.341849122172015,
+      "mean_itl_ms": 21.430994542107385,
+      "p99_itl_ms": 310.81677444022716
+    },
+    {
+      "name": "A2",
+      "variant": "official_fp8",
+      "completed": 320,
+      "requested": 320,
+      "duration_s": 276.05822654499934,
+      "prompt_tokens": 960000,
+      "completion_tokens": 320000,
+      "output_tokens_per_s": 1159.1757434833692,
+      "total_tokens_per_s": 4636.702973933477,
+      "mean_ttft_ms": 1635.7022258499796,
+      "p99_ttft_ms": 7305.3688220897675,
+      "mean_tpot_ms": 25.908890995126413,
+      "p99_tpot_ms": 27.40604052907911,
+      "mean_itl_ms": 26.12115036812775,
+      "p99_itl_ms": 408.23139643031027
+    }
+  ],
+  "aggregate": {
+    "official_fp8": {
+      "output_tokens_per_s": 1157.7872804674637,
+      "total_tokens_per_s": 4631.149121869855,
+      "mean_ttft_ms": 1640.199571484388,
+      "p99_ttft_ms": 7327.785299765164,
+      "mean_tpot_ms": 25.937546468787556,
+      "p99_tpot_ms": 27.43667167526035,
+      "mean_itl_ms": 26.123054998847046,
+      "p99_itl_ms": 409.18281177548124
+    },
+    "mxfp6": {
+      "output_tokens_per_s": 1417.625722180718,
+      "total_tokens_per_s": 5670.502888722872,
+      "mean_ttft_ms": 1202.134710921851,
+      "p99_ttft_ms": 5435.272352000175,
+      "mean_tpot_ms": 21.307463453009248,
+      "p99_tpot_ms": 22.317027845635067,
+      "mean_itl_ms": 21.39443938975407,
+      "p99_itl_ms": 310.64487436072335
+    },
+    "mxfp6_output_throughput_delta_percent": 22.44267544624803,
+    "fp8_block_spread_percent_of_mean": 0.23984426328009745,
+    "mxfp6_block_spread_percent_of_mean": 0.2548536286220348
+  },
+  "publication_scope": {
+    "artifact_type": "environment-bound integration snapshot",
+    "community_fp8_baseline": true,
+    "publicly_reproducible_mxfp6_checkpoint": false,
+    "unmodified_vllm_claim": false,
+    "general_workload_performance_claim": false
+  }
+}

@@ -8,8 +8,9 @@ D[M, N] = A[M, K] @ B[N, K].T
 
 > [!IMPORTANT]
 > This project is an experimental, SM120-only PyTorch kernel package. It
-> provides dense and Qwen3.5 MoE layer APIs and reproducible kernel/layer
-> benchmarks. It does **not** yet provide a versioned Hugging Face checkpoint
+> provides dense and Qwen3.5 MoE layer APIs, reproducible layer benchmarks and
+> environment-bound full-serving evidence. It does **not** yet provide a
+> versioned Hugging Face checkpoint
 > format or converter, a vLLM model loader, or an SGLang quantization backend.
 > Installing the wheel alone does not make `vllm serve` or SGLang load an
 > MXFP6 checkpoint.
@@ -39,25 +40,36 @@ also keeps a packed-MXFP6 activation compatibility API for existing callers.
 
 ## Performance
 
-The following results were measured on one NVIDIA GeForce RTX 5090 using:
+Results are reported at two separate evidence levels. Layer results isolate the
+GPU implementation; serving results measure the complete request path. A layer
+speedup is never used as a substitute for an end-to-end result.
 
-- PyTorch `2.11.0+cu130`, CUDA 13.0;
-- vLLM `0.20.3.dev4+ge38d84f55.d20260715` from a locally patched development
-  environment (not an upstream compatibility claim);
-- external Humming reference revision `694298e9`;
-- Qwen3.5-27B TP2 linear shapes, five `(N,K)` pairs per batch;
-- BF16 activation input, FP16 output, warm cache, 20 warmups and 100 measured
-  iterations;
-- checked-in static dispatch with runtime autotuning disabled.
+| Model | Evidence level | FP8 baseline | Headline MXFP6 result | Artifact |
+|---|---|---|---:|---|
+| Qwen3.5-27B | five real linear-layer shapes | vLLM block FP8 | 1.633x geometric mean | [`native_w6a8_dispatch.json`](benchmarks/results/native_w6a8_dispatch.json) |
+| Qwen3.5-27B | full TP2 serving | official Qwen FP8 checkpoint | +22.44% output tok/s | [`qwen35_27b_service_tp2.json`](benchmarks/results/qwen35_27b_service_tp2.json) |
+| Qwen3.5-35B-A3B | complete TP2 MoE layer | vLLM FP8 MoE path | 1.278x geometric mean, B16-B96 | [`qwen35_moe_tp2.json`](benchmarks/results/qwen35_moe_tp2.json) |
+| Qwen3.5-35B-A3B | full TP2 serving | official Qwen FP8 checkpoint | +13.58% output tok/s | [`qwen35_moe_service_tp2.json`](benchmarks/results/qwen35_moe_service_tp2.json) |
 
-All ratios use standalone GEMM kernel time only:
+The FP8 baselines are community checkpoints or runtime kernels as named below.
+The serving measurements use the same internally maintained vLLM 0.25.1
+environment for both formats; they do not claim drop-in support in an
+unmodified vLLM or SGLang release. They are environment-bound integration
+snapshots rather than publicly reproducible MXFP6 checkpoint recipes or general
+workload claims.
 
-```text
-speedup = reference GEMM latency / native MXFP6 GEMM latency
-```
+### Qwen3.5-27B
 
-Activation quantization, weight preparation, Humming JIT compilation and host
-gaps are excluded from every ratio.
+#### Linear-layer kernel evidence
+
+This benchmark covers the model's five TP2 linear `(N,K)` shapes at each batch
+size. It used one RTX 5090, PyTorch `2.11.0+cu130`, CUDA 13.0, BF16 input, FP16
+output, warm cache, 20 warmups and 100 measured iterations. Runtime autotuning
+was disabled. The vLLM block-FP8 baseline came from the pinned locally patched
+development runtime; the Humming reference used revision `694298e9`.
+
+All ratios are standalone GEMM latency ratios. Activation quantization, weight
+preparation, Humming JIT compilation and host gaps are excluded.
 
 | M | vs Humming W6A8 | vs vLLM block-FP8 W8A8 |
 |---:|---:|---:|
@@ -74,41 +86,60 @@ gaps are excluded from every ratio.
 | Overall | 1.212x‡ | 1.633x |
 
 † The pinned Humming configuration enters a correct but pathological slow path
-at M=64 and M=96. Repeated `--check-all` runs reproduce 10.8x and 21.1x batch
-geometric means. These two batches are shown but excluded from the comparable
-Humming overall value. Including them gives a raw 50-shape overall of 2.005x.
+at M=64 and M=96. These rows are shown but excluded from the comparable Humming
+overall value. Including them gives a raw 50-shape overall of 2.005x.
 
 ‡ Geometric mean over the remaining 40 Humming comparisons. A dedicated BS32
 static-dispatch rerun measured 1.278x with BF16 input and 1.277x with FP16.
 
-The vLLM baseline is block-scaled W8A8, while this project keeps weights at six
-bits. It is a kernel-performance comparison, not a claim that the numerical
-formats or weight footprints are identical. Full dispatch and measurement
-metadata are recorded in
-[`benchmarks/results/native_w6a8_dispatch.json`](benchmarks/results/native_w6a8_dispatch.json).
-These measurements do not establish compatibility with an unmodified release
-of vLLM or SGLang.
+The vLLM baseline is W8A8 while MXFP6 stores six-bit weights, so this is a
+performance comparison rather than a claim that the formats or footprints are
+identical. Full dispatch, correctness and timing metadata are in
+[`native_w6a8_dispatch.json`](benchmarks/results/native_w6a8_dispatch.json).
 
-### Qwen3.5-35B-A3B MoE
+#### End-to-end serving evidence
 
-The package also contains SM120 TP2 decode specializations for
-Qwen3.5-35B-A3B-MXFP6. The batch-one path merges the shared expert into the
-routed schedule and uses three allocation-free cooperative kernels:
+The baseline is the official
+[`Qwen/Qwen3.5-27B-FP8`](https://huggingface.co/Qwen/Qwen3.5-27B-FP8)
+revision `97f5941bf617e31c5e237364a8602ce3f03a551a`; all 11 local weight shards
+matched its Hugging Face LFS SHA-256 values. The candidate is an MXFP6 Quark
+export of the same architecture and execution dimensions.
 
-1. router GEMV, exact top-8 selection, shared gate and input MXFP8 quantization;
-2. 128x8x256 W1, BF16 SiLU-and-mul and output MXFP8 quantization, with
-   batch-specialized split-K;
-3. W2 plus routed/shared weighted reduction, with a two-way split-K B=1
-   specialization.
+Two fresh service lifecycles per format were run in FP8/MXFP6/MXFP6/FP8 order
+on two PIX-connected RTX 5090 GPUs. The fixed-token workload contained 320
+requests of 3000 input and 1000 output tokens at 20 requests/s and concurrency
+32. Every block completed all requests with exactly 960,000 prompt and 320,000
+completion tokens; the primary numerator came from final server-reported usage.
 
-The small-batch chain uses CUDA Programmatic Dependent Launch to schedule the
-next grid early. Each dependent kernel waits before its first global-memory
-access, preserving the producer-consumer dependency while hiding part of the
-launch and scheduling latency.
+| Format | Output tok/s | Mean TPOT | P99 TPOT | P99 TTFT |
+|---|---:|---:|---:|---:|
+| Qwen FP8 | 1157.79 | 25.94 ms | 27.44 ms | 7327.79 ms |
+| Native MXFP6 | 1417.63 | 21.31 ms | 22.32 ms | 5435.27 ms |
 
-All intermediate tensors are caller-owned, so the complete layer and vLLM
-custom all-reduce can be captured in one CUDA Graph. On two RTX 5090 GPUs
-with real layer-0 checkpoint weights:
+MXFP6 improved output-token throughput by **22.44%**. The two FP8 throughput
+blocks differed by 0.24%, and the two MXFP6 blocks by 0.25%. Both formats used
+PyTorch 2.11.0+cu130, CUDA 13.0, FlashInfer, a 4096-token scheduler budget, 64
+maximum sequences and no speculative decoding. This experiment did not score
+task accuracy. The complete ABBA samples and contract are in
+[`qwen35_27b_service_tp2.json`](benchmarks/results/qwen35_27b_service_tp2.json).
+
+### Qwen3.5-35B-A3B
+
+#### Whole MoE-layer evidence
+
+The TP2 benchmark captures the complete MoE layer and vLLM custom all-reduce
+in one CUDA Graph using real layer-0 checkpoint weights. Its FP8 baseline is
+vLLM's runtime Triton block-FP8 expert path, auxiliary-stream shared expert and
+graph-registered custom all-reduce. The MXFP6 path includes the same collective.
+
+Small batches use an allocation-free router, split-K W1 with fused SiLU-and-mul
+and MXFP8 quantization, and fused W2 routed/shared reduction. Larger batches use
+indirect routing, a TMA W1 path over the checkpoint's interleaved gate/up
+projection and a sparse grouped W2 path. Dependent small-batch grids synchronize
+before their first producer-dependent global-memory access.
+
+The table reports the median of 9 repeats after 40 warmups and 1000 CUDA Graph
+replays per repeat.
 
 | Batch | vLLM FP8 | Native MXFP6 | Speedup |
 |---:|---:|---:|---:|
@@ -116,45 +147,9 @@ with real layer-0 checkpoint weights:
 | 2 | 33.8 us | 20.5 us | 1.652x |
 | 4 | 32.8 us | 26.4 us | 1.240x |
 | 8 | 54.5 us | 38.8 us | 1.404x |
-
-The baseline uses vLLM's runtime Triton FP8-block experts, auxiliary-stream
-shared expert and graph-registered custom all-reduce. The MXFP6 result includes
-the same custom all-reduce. Median latency uses 9 repeats of 1000 graph
-replays. At batch one the FP8/MXFP6 outputs had relative RMS error 0.1117
-and cosine similarity 0.9937. The exact measurement metadata is checked in as
-[`benchmarks/results/qwen35_moe_tp2.json`](benchmarks/results/qwen35_moe_tp2.json).
-
-For the B=4 separate-shared path, aligned packed FP6 loads retain a scalar
-fallback for unaligned tensors. In a same-process paired CUDA-Graph comparison,
-the complete TP2 layer improved from 26.62 us to 24.65 us (1.080x) with exact
-output parity. The paired samples are summarized in
-[`benchmarks/results/qwen35_moe_b4_vector.json`](benchmarks/results/qwen35_moe_b4_vector.json).
-
-Reproduce the paired scalar/vector comparison with:
-
-```bash
-CUDA_VISIBLE_DEVICES=0,1 torchrun --standalone --nproc-per-node=2 \
-  benchmarks/benchmark_qwen35_moe_layer.py \
-  --batch-sizes 4 --mx-mode auto --compare-b4-packed-vector-loads \
-  --input-seed 20260815 --warmup 40 --iterations 1000 --repeats 9 \
-  --json-out b4_packed_vector.json
-```
-
-For batches 16 through 96, the production path keeps the dense shared expert
-on an auxiliary stream and specializes the routed path instead. A fused router
-performs exact top-8 selection, activation quantization and indirect routing.
-W1 uses a multidimensional TMA descriptor to interleave the checkpoint's gate
-and up projections without a weight reorder, then fuses SiLU-and-mul with the
-next MXFP8 quantization. W2 uses a sparse grouped kernel with batch-dependent
-CTA wave sizing. The shared and routed outputs join before local reduction and
-vLLM's graph-registered custom all-reduce. The complete layer is one CUDA
-Graph, with no per-layer host launch gaps.
-
-The following TP2 results use real layer-0 weights, two RTX 5090 GPUs, 40
-warmups and the median of 9 repeats of 1000 CUDA Graph replays:
-
-| Batch | vLLM FP8 | Native MXFP6 | Speedup |
-|---:|---:|---:|---:|
+| 10 | 67.7 us | 40.4 us | 1.676x |
+| 12 | 105.1 us | 59.6 us | 1.763x |
+| 14 | 112.4 us | 73.6 us | 1.527x |
 | 16 | 123.7 us | 91.2 us | 1.356x |
 | 24 | 162.4 us | 128.2 us | 1.267x |
 | 32 | 184.4 us | 144.7 us | 1.274x |
@@ -165,7 +160,56 @@ warmups and the median of 9 repeats of 1000 CUDA Graph replays:
 | 80 | 254.9 us | 198.9 us | 1.282x |
 | 96 | 265.5 us | 209.9 us | 1.265x |
 
-The geometric-mean TP2 speedup over these nine batches is 1.2778x.
+The geometric-mean speedup over B16-B96 is **1.2778x**. At B1 the FP8/MXFP6
+outputs had relative RMS error 0.1117 and cosine similarity 0.9937. Per-batch
+numerical and timing results are in
+[`qwen35_moe_tp2.json`](benchmarks/results/qwen35_moe_tp2.json).
+
+As a separate implementation refinement, aligned packed FP6 loads on the B4
+separate-shared path improved the same-process complete-layer result from 26.62
+us to 24.65 us (1.080x) with exact output parity. This compares two MXFP6
+implementations, not MXFP6 against FP8. Samples are in
+[`qwen35_moe_b4_vector.json`](benchmarks/results/qwen35_moe_b4_vector.json).
+
+Reproduce that paired refinement with:
+
+```bash
+CUDA_VISIBLE_DEVICES=0,1 torchrun --standalone --nproc-per-node=2 \
+  benchmarks/benchmark_qwen35_moe_layer.py \
+  --batch-sizes 4 --mx-mode auto --compare-b4-packed-vector-loads \
+  --input-seed 20260815 --warmup 40 --iterations 1000 --repeats 9 \
+  --json-out b4_packed_vector.json
+```
+
+#### End-to-end serving evidence
+
+The baseline is the official
+[`Qwen/Qwen3.5-35B-A3B-FP8`](https://huggingface.co/Qwen/Qwen3.5-35B-A3B-FP8)
+revision `9d1823d2dee688a6b25e77009dc727688c44936e`; all 14 local weight shards
+matched its Hugging Face LFS SHA-256 values. The MXFP6 Quark export used the
+same architecture and tokenizer assets and was 20.14% smaller on disk.
+
+The FP8/MXFP6/MXFP6/FP8 experiment used two PIX-connected RTX 5090 GPUs, TP2,
+the same runtime and 64 frozen real multimodal requests at concurrency 4. Every
+block completed 64/64 requests and reported 203,631 prompt plus 59,193
+completion tokens. Output lengths, sampling parameters and per-request seeds
+were frozen; final server usage supplied the throughput numerator.
+
+| Format | Output tok/s | Mean TPOT | P99 TPOT | P99 TTFT |
+|---|---:|---:|---:|---:|
+| Qwen FP8 | 589.41 | 6.16 ms | 8.31 ms | 1541.82 ms |
+| Native MXFP6 | 669.45 | 5.54 ms | 7.65 ms | 993.54 ms |
+
+MXFP6 improved output-token throughput by **13.58%**, reduced mean TPOT by
+10.08% and reduced P99 TPOT by 7.96%.
+
+A separate 742-case greedy comparison measured reference-output fidelity. Full
+character similarity changed by -0.57 percentage points and answer-section
+similarity by -0.32 points. Neither paired 95% interval detected a significant
+loss, although the intervals do not prove a strict one-percentage-point
+non-inferiority bound. This is reference fidelity, not audited business-task
+accuracy. The serving contract, ABBA samples and fidelity intervals are in
+[`qwen35_moe_service_tp2.json`](benchmarks/results/qwen35_moe_service_tp2.json).
 
 ## Supported shapes
 

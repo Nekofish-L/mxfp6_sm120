@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Documentation
+
+- organized Qwen3.5-27B and Qwen3.5-35B-A3B performance evidence into matching
+  layer-level and end-to-end serving sections;
+- added reviewed TP2 serving manifests for both models and clarified the
+  boundary between measured internal integration and supported public runtime
+  integration;
+- documented the publication rules for environment-bound integration snapshots.
+
 ## 0.1.1 - 2026-08-12
 
 First GitHub release, covering both dense and Qwen3.5 MoE execution on SM120.
