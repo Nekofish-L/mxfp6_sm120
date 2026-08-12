@@ -17,6 +17,11 @@ classifiers = [
   "Operating System :: POSIX :: Linux",
 ]
 
+[project.urls]
+Homepage = "https://github.com/Nekofish-L/mxfp6_sm120"
+Repository = "https://github.com/Nekofish-L/mxfp6_sm120"
+Issues = "https://github.com/Nekofish-L/mxfp6_sm120/issues"
+
 [tool.setuptools]
 package-dir = {"" = "python"}
 
