@@ -1,0 +1,74 @@
+name: Source checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  metadata:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Compile Python sources
+        run: python -m compileall -q python benchmarks tests tools
+      - name: Validate release metadata and JSON artifacts
+        run: |
+          python - <<'PY'
+          import ast
+          import json
+          import pathlib
+          import re
+
+          root = pathlib.Path(".")
+          project_version = re.search(
+              r'^version = "([^"]+)"$',
+              (root / "pyproject.toml").read_text(),
+              re.MULTILINE,
+          ).group(1)
+          metadata = json.loads(
+              (root / "python/mxfp6/metadata.json").read_text()
+          )
+          module = ast.parse((root / "python/mxfp6/__init__.py").read_text())
+          module_version = next(
+              ast.literal_eval(node.value)
+              for node in module.body
+              if isinstance(node, ast.Assign)
+              and any(
+                  isinstance(target, ast.Name) and target.id == "__version__"
+                  for target in node.targets
+              )
+          )
+          assert project_version == metadata["version"] == module_version
+
+          for artifact in (root / "benchmarks/results").glob("*.json"):
+              json.loads(artifact.read_text())
+
+          for required in (
+              "CHANGELOG.md",
+              "CONTRIBUTING.md",
+              "THIRD_PARTY_NOTICES.md",
+              "docs/compatibility.md",
+              "docs/checkpoint-format.md",
+              "docs/runtime-integration.md",
+          ):
+              assert (root / required).is_file(), required
+          PY
+      - name: Check whitespace
+        run: git diff --check HEAD^ HEAD
+      - name: Build source distribution through PEP 517
+        if: matrix.python-version == '3.12'
+        run: |
+          python -m pip install --disable-pip-version-check build
+          python -m build --sdist
