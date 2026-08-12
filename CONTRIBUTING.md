@@ -47,8 +47,18 @@ inside an aggregate.
 ## Public artifacts
 
 Do not commit private checkpoints, datasets, hostnames, credentials or internal
-runtime patches. Public benchmark results must identify a reproducible model or
-conversion recipe and include only redistributable metadata.
+runtime patches. Public artifacts may contain either:
+
+- reproducible benchmark results, which must identify a public model and a
+  public conversion recipe or checkpoint; or
+- environment-bound integration snapshots, which must say that they are not
+  publicly reproducible and may contain only aggregate results, contract and
+  content hashes, versioned environment identity and other redistributable
+  metadata.
+
+An integration snapshot must not imply public checkpoint availability, runtime
+support or general workload performance. It must still identify the public
+baseline, measurement scope and any quality evidence that was or was not run.
 
 Changes to operator schemas, packed layouts or checkpoint plans must update the
 relevant document under `docs/` and the changelog.

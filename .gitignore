@@ -37,8 +37,10 @@ wheelhouse/
 !/benchmarks/results/native_w6a8_dispatch.json
 !/benchmarks/results/persistent_workspace.json
 !/benchmarks/results/runtime_autotune_v4.json
+!/benchmarks/results/qwen35_27b_service_tp2.json
 !/benchmarks/results/qwen35_moe_tp2.json
 !/benchmarks/results/qwen35_moe_b4_vector.json
+!/benchmarks/results/qwen35_moe_service_tp2.json
 /autotune_results/
 /autotune_*.csv
 /profiler_*.csv

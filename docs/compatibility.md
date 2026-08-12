@@ -26,15 +26,18 @@ SM120 capability before dispatch.
 ## Measured environment
 
 The reviewed dense benchmark manifest was produced on an RTX 5090 with
-PyTorch `2.11.0+cu130` and CUDA 13.0. The checked-in Qwen3.5 results are
-kernel/layer measurements on RTX 5090 GPUs. They are evidence for the declared
-operators and shapes, not a compatibility promise for arbitrary framework or
-model revisions.
+PyTorch `2.11.0+cu130` and CUDA 13.0. The checked-in Qwen3.5 evidence includes
+linear-layer kernels, complete MoE layers and pinned full-service comparisons
+on RTX 5090 GPUs. Each manifest states its own model, runtime and measurement
+boundary. None is a compatibility promise for arbitrary framework or model
+revisions.
 
-Some development measurements used a locally patched vLLM environment. Do not
-interpret them as results from an unmodified community vLLM release. A runtime
-integration must record its exact vLLM or SGLang commit, extension wheel hash,
-checkpoint revision and launch command.
+The serving measurements used the same internally maintained vLLM 0.25.1
+environment for FP8 and MXFP6. They are valid comparisons inside that frozen
+environment, but not results from an unmodified community vLLM release. The
+adapter and checkpoint loader used there are not shipped as package APIs. A
+supported runtime integration must additionally record its exact vLLM or
+SGLang commit, extension wheel hash, checkpoint revision and launch command.
 
 ## Runtime status
 
