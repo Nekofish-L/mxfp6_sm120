@@ -6,6 +6,27 @@ Native mixed-precision GEMM for NVIDIA Blackwell GeForce SM120:
 D[M, N] = A[M, K] @ B[N, K].T
 ```
 
+> [!IMPORTANT]
+> This project is an experimental, SM120-only PyTorch kernel package. It
+> provides dense and Qwen3.5 MoE layer APIs and reproducible kernel/layer
+> benchmarks. It does **not** yet provide a versioned Hugging Face checkpoint
+> format or converter, a vLLM model loader, or an SGLang quantization backend.
+> Installing the wheel alone does not make `vllm serve` or SGLang load an
+> MXFP6 checkpoint.
+
+Community integration status and the exact remaining contracts are documented
+in:
+
+- [`docs/compatibility.md`](docs/compatibility.md) — supported and measured
+  environments;
+- [`docs/checkpoint-format.md`](docs/checkpoint-format.md) — current in-memory
+  layout versus the missing persistent checkpoint contract;
+- [`docs/runtime-integration.md`](docs/runtime-integration.md) — vLLM and
+  SGLang delivery plan and acceptance bar.
+
+Contributions should follow [`CONTRIBUTING.md`](CONTRIBUTING.md), especially
+the correctness and provenance requirements for performance changes.
+
 Persistent weights are bit-packed E3M2 with one UE8M0 scale per 32 values.
 FP16 or BF16 activations are dynamically mapped 16-to-8 into E4M3/UE8M0 and
 consumed by a native CUTLASS W6A8 kernel. Accumulation is FP32 and output is
@@ -21,7 +42,8 @@ also keeps a packed-MXFP6 activation compatibility API for existing callers.
 The following results were measured on one NVIDIA GeForce RTX 5090 using:
 
 - PyTorch `2.11.0+cu130`, CUDA 13.0;
-- vLLM `0.20.3.dev4+ge38d84f55.d20260715`;
+- vLLM `0.20.3.dev4+ge38d84f55.d20260715` from a locally patched development
+  environment (not an upstream compatibility claim);
 - external Humming reference revision `694298e9`;
 - Qwen3.5-27B TP2 linear shapes, five `(N,K)` pairs per batch;
 - BF16 activation input, FP16 output, warm cache, 20 warmups and 100 measured
@@ -64,6 +86,8 @@ bits. It is a kernel-performance comparison, not a claim that the numerical
 formats or weight footprints are identical. Full dispatch and measurement
 metadata are recorded in
 [`benchmarks/results/native_w6a8_dispatch.json`](benchmarks/results/native_w6a8_dispatch.json).
+These measurements do not establish compatibility with an unmodified release
+of vLLM or SGLang.
 
 ### Qwen3.5-35B-A3B MoE
 
@@ -166,6 +190,10 @@ cooperative, static-persistent and selective Stream-K scheduling.
 - Ninja is recommended.
 
 CUTLASS is pinned at `e6233cbac5d7c7a865c19c91cd684ceece19513c`.
+The extension is built from source against the active PyTorch ABI; the project
+does not currently publish portable CUDA binary wheels. See the
+[compatibility policy](docs/compatibility.md) before integrating it into a
+runtime image.
 
 ## Installation
 
@@ -476,6 +504,7 @@ csrc/                  CUDA/C++ kernels and quantizers
 python/mxfp6/          Python API and persistent autotuner
 benchmarks/            GEMM, baseline and search tools
 benchmarks/results/    Reviewed dispatch and measurement metadata
+docs/                   Compatibility and runtime-delivery contracts
 tests/                 CUDA correctness and stream tests
 patches/cutlass/       Versioned SM120 CUTLASS fixes
 scripts/               Build and patch helpers
@@ -485,4 +514,4 @@ third_party/           Pinned CUTLASS submodule
 ## License
 
 The project is released under the BSD 3-Clause License. CUTLASS retains its
-upstream license.
+upstream license. See [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
