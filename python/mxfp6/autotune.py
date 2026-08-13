@@ -31,7 +31,7 @@ from ._loader import load_library
 AUTOTUNE_SCHEMA = 1
 CANDIDATE_ABI = "native-w6a8-30-v5"
 CANDIDATE_POLICY = "hybrid-all-families-through-m512-v2"
-TIMING_POLICY = "gemm-cuda-events-two-stage-v4"
+TIMING_POLICY = "gemm-cuda-graph-events-two-stage-v5"
 FALLBACK_CONFIG_ID = -1
 DEFAULT_AUTOTUNE_WARMUP = 3
 DEFAULT_AUTOTUNE_ITERATIONS = 10
@@ -484,42 +484,59 @@ def _measure_config(
     for _ in range(warmup):
         _run_config(config, a, b, sfa, sfb, m, n, k, out_dtype)
     torch.cuda.synchronize(a.device)
-    samples = []
-    for _ in range(repeats):
-        if flush is None:
-            start = torch.cuda.Event(enable_timing=True)
-            end = torch.cuda.Event(enable_timing=True)
-            start.record()
-            for _ in range(iterations):
-                _run_config(
-                    config, a, b, sfa, sfb, m, n, k, out_dtype
-                )
-            end.record()
-            starts = [start]
-            ends = [end]
-        else:
-            starts = [
-                torch.cuda.Event(enable_timing=True)
-                for _ in range(iterations)
-            ]
-            ends = [
-                torch.cuda.Event(enable_timing=True)
-                for _ in range(iterations)
-            ]
-            for start, end in zip(starts, ends, strict=True):
-                flush.zero_()
-                start.record()
-                _run_config(
-                    config, a, b, sfa, sfb, m, n, k, out_dtype
-                )
-                end.record()
-        torch.cuda.synchronize(a.device)
-        elapsed_us = [
-            start.elapsed_time(end) * 1_000
-            for start, end in zip(starts, ends, strict=True)
+    graph = torch.cuda.CUDAGraph()
+    output = None
+    captured = False
+    if flush is None:
+        starts = [torch.cuda.Event(enable_timing=True, external=True)]
+        ends = [torch.cuda.Event(enable_timing=True, external=True)]
+    else:
+        starts = [
+            torch.cuda.Event(enable_timing=True, external=True)
+            for _ in range(iterations)
         ]
-        samples.append(sum(elapsed_us) / iterations)
-    return statistics.median(samples)
+        ends = [
+            torch.cuda.Event(enable_timing=True, external=True)
+            for _ in range(iterations)
+        ]
+
+    try:
+        # Keep PyTorch's fail-closed global capture mode.  A service with
+        # conflicting CUDA work in another thread should retain the builtin
+        # dispatcher instead of weakening capture-safety checks.
+        with torch.cuda.graph(graph):
+            if flush is None:
+                starts[0].record()
+            for iteration in range(iterations):
+                if flush is not None:
+                    flush.zero_()
+                    starts[iteration].record()
+                output = _run_config(
+                    config, a, b, sfa, sfb, m, n, k, out_dtype
+                )
+                if flush is not None:
+                    ends[iteration].record()
+            if flush is None:
+                ends[0].record()
+        captured = True
+        samples = []
+        for _ in range(repeats):
+            # Keep unrelated stream work out of the captured timing interval.
+            torch.cuda.synchronize(a.device)
+            graph.replay()
+            ends[-1].synchronize()
+            elapsed_us = [
+                start.elapsed_time(end) * 1_000
+                for start, end in zip(starts, ends, strict=True)
+            ]
+            samples.append(sum(elapsed_us) / iterations)
+        return statistics.median(samples)
+    finally:
+        torch.cuda.synchronize(a.device)
+        if captured:
+            graph.reset()
+        # The captured output owns graph-private storage until replay ends.
+        del output, graph
 
 
 def _candidate_configs(m: int, k: int) -> tuple[list[W6A8Config], list[int]]:

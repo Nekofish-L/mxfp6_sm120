@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import math
 import os
 import sys
 import tempfile
@@ -1630,6 +1631,55 @@ def test_hybrid_autotune_candidate_policy(mxfp6) -> None:
     print("PASS hybrid runtime-autotune candidate policy")
 
 
+def test_autotune_graph_timer(mxfp6) -> None:
+    """Exercise graph-internal timing with and without explicit L2 flush."""
+    autotune = importlib.import_module("mxfp6.autotune")
+    m, n, k = 17, 136, 128
+    a_codes, b_codes, sfa, sfb = make_problem(m, n, k, 6818)
+    a6 = mxfp6.pack_operand(a_codes, sfa)
+    b = mxfp6.pack_operand(b_codes, sfb)
+    a8 = torch.ops.mxfp6.expand_fp6_to_fp8(a6.values, m, k)
+    config = autotune.W6A8Config(5, 1, 0)
+    allocated_before = torch.cuda.memory_allocated()
+    warm_latency = autotune._measure_config(
+        config,
+        a8,
+        b.values,
+        a6.scales,
+        b.scales,
+        m,
+        n,
+        k,
+        torch.bfloat16,
+        2,
+        5,
+        2,
+        None,
+    )
+    flush = torch.empty(250_000, dtype=torch.int32, device="cuda")
+    cold_latency = autotune._measure_config(
+        config,
+        a8,
+        b.values,
+        a6.scales,
+        b.scales,
+        m,
+        n,
+        k,
+        torch.bfloat16,
+        2,
+        5,
+        2,
+        flush,
+    )
+    del flush
+    torch.cuda.synchronize()
+    assert math.isfinite(warm_latency) and warm_latency > 0
+    assert math.isfinite(cold_latency) and cold_latency > 0
+    assert torch.cuda.memory_allocated() == allocated_before
+    print("PASS CUDA Graph autotune timing and graph storage release")
+
+
 def test_autotune_cache_only(mxfp6) -> None:
     """A deployment cache miss must not profile, while a hit installs."""
     autotune = importlib.import_module("mxfp6.autotune")
@@ -2088,6 +2138,7 @@ def main() -> None:
     test_w6a8_candidate_registry(mxfp6)
     test_stream_k_autotune_filter(mxfp6)
     test_hybrid_autotune_candidate_policy(mxfp6)
+    test_autotune_graph_timer(mxfp6)
     test_autotune_cache_only(mxfp6)
     test_float_w6a8_gemm(mxfp6)
     test_warmup_api(mxfp6)
