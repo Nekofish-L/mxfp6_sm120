@@ -1,10 +1,41 @@
-# SM120 MXFP6 GEMM
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/mxfp6-wordmark-dark.png">
+    <img src="docs/assets/mxfp6-wordmark-light.png" alt="MXFP6 SM120" width="700">
+  </picture>
+</p>
 
-Native mixed-precision GEMM for NVIDIA Blackwell GeForce SM120:
+<h3 align="center">Native MXFP6 kernels for NVIDIA Blackwell GeForce SM120</h3>
 
-```text
-D[M, N] = A[M, K] @ B[N, K].T
-```
+<p align="center">
+  <a href="https://github.com/Nekofish-L/mxfp6_sm120/actions/workflows/source-checks.yml"><img src="https://github.com/Nekofish-L/mxfp6_sm120/actions/workflows/source-checks.yml/badge.svg" alt="Source checks"></a>
+  <img src="https://img.shields.io/badge/version-0.1.1-243794" alt="Version 0.1.1">
+  <img src="https://img.shields.io/badge/CUDA-%E2%89%A512.8-76B900?logo=nvidia&logoColor=white" alt="CUDA 12.8 or newer">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSD--3--Clause-526A91" alt="BSD 3-Clause License"></a>
+</p>
+
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#performance">Performance</a> ·
+  <a href="#python-api">Python API</a> ·
+  <a href="docs/compatibility.md">Compatibility</a> ·
+  <a href="docs/runtime-integration.md">Runtime integration</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
+</p>
+
+MXFP6 is an SM120-native PyTorch kernel package for six-bit weight inference.
+It provides dense GEMM and Qwen3.5 MoE layer APIs, CUDA Graph-compatible
+execution, persistent runtime tuning and reproducible FP8 comparisons on RTX
+5090 GPUs.
+
+<table>
+  <tr>
+    <td width="25%"><strong>Native W6A8</strong><br>Bit-packed E3M2 weights with one UE8M0 scale per 32 values.</td>
+    <td width="25%"><strong>Dynamic MXFP8</strong><br>FP16 or BF16 activations mapped to E4M3/UE8M0 at runtime.</td>
+    <td width="25%"><strong>Dense + MoE</strong><br>General GEMM plus specialized Qwen3.5 TP2 MoE layer paths.</td>
+    <td width="25%"><strong>Graph native</strong><br>Caller-owned workspaces and CUDA Graph replay-aware autotuning.</td>
+  </tr>
+</table>
 
 > [!IMPORTANT]
 > This project is an experimental, SM120-only PyTorch kernel package. It
@@ -15,18 +46,52 @@ D[M, N] = A[M, K] @ B[N, K].T
 > Installing the wheel alone does not make `vllm serve` or SGLang load an
 > MXFP6 checkpoint.
 
-Community integration status and the exact remaining contracts are documented
-in:
+## Quick start
 
-- [`docs/compatibility.md`](docs/compatibility.md) — supported and measured
-  environments;
-- [`docs/checkpoint-format.md`](docs/checkpoint-format.md) — current in-memory
-  layout versus the missing persistent checkpoint contract;
-- [`docs/runtime-integration.md`](docs/runtime-integration.md) — vLLM and
-  SGLang delivery plan and acceptance bar.
+Build the wheel against the active CUDA-enabled PyTorch ABI:
 
-Contributions should follow [`CONTRIBUTING.md`](CONTRIBUTING.md), especially
-the correctness and provenance requirements for performance changes.
+```bash
+git clone --recurse-submodules https://github.com/Nekofish-L/mxfp6_sm120.git
+cd mxfp6_sm120
+./scripts/build_wheel.sh
+python3 -m pip install --no-deps dist/mxfp6_sm120-*.whl
+```
+
+Quantize a persistent weight once, then call the native GEMM with FP16 or BF16
+activations:
+
+```python
+import torch
+import mxfp6
+
+m, n, k = 32, 8192, 5120
+a = torch.randn((m, k), device="cuda", dtype=torch.bfloat16)
+weight = torch.randn((n, k), device="cuda", dtype=torch.bfloat16)
+
+packed_weight = mxfp6.quantize_mxfp6(weight)
+output = mxfp6.gemm(a, packed_weight, out_dtype=torch.bfloat16)
+```
+
+See [Installation](#installation) for development builds and ABI details, and
+[Python API](#python-api) for explicit quantization, prewarming and
+allocation-free layer interfaces.
+
+## Documentation
+
+| Guide | Scope |
+|---|---|
+| [Compatibility](docs/compatibility.md) | Supported hardware, CUDA/PyTorch environments and measured configurations |
+| [Checkpoint format](docs/checkpoint-format.md) | Current in-memory layout and the remaining persistent-format contract |
+| [Runtime integration](docs/runtime-integration.md) | vLLM/SGLang delivery plan, capability checks and acceptance bar |
+| [Contributing](CONTRIBUTING.md) | Correctness, provenance and performance-evidence requirements |
+
+## Execution model
+
+The native mixed-precision operation is:
+
+```text
+D[M, N] = A[M, K] @ B[N, K].T
+```
 
 Persistent weights are bit-packed E3M2 with one UE8M0 scale per 32 values.
 FP16 or BF16 activations are dynamically mapped 16-to-8 into E4M3/UE8M0 and
