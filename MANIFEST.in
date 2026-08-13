@@ -1,6 +1,6 @@
 include CMakeLists.txt README.md LICENSE CHANGELOG.md CONTRIBUTING.md THIRD_PARTY_NOTICES.md
 include .gitmodules
-recursive-include docs *.md
+recursive-include docs *.md *.png
 recursive-include benchmarks/results README.md *.json
 include scripts/build_wheel.sh scripts/build_profiler.sh scripts/apply_cutlass_patches.sh
 recursive-include csrc *.hpp *.cu
