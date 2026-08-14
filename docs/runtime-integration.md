@@ -2,10 +2,11 @@
 
 ## Current verdict
 
-This repository is ready to be reviewed as an SM120 kernel package and layer
-benchmark reference. It is not yet a drop-in serving backend for vLLM or
-SGLang. The missing work is at the checkpoint, loader, model and runtime
-boundaries rather than in installation prose.
+This repository is ready to be reviewed as an SM120 kernel package, layer
+benchmark reference and exact two-model serving prototype. The checked-in
+[public vLLM v0.25.1 reproducer](../examples/vllm/README.md) loads and serves
+Qwen3.5-27B and Qwen3.5-35B-A3B without internal infrastructure. It is not yet
+a drop-in backend for unmodified vLLM or SGLang.
 
 The repository also publishes pinned Qwen3.5-27B and Qwen3.5-35B-A3B serving
 comparisons from one internally maintained vLLM environment. Those experiments
@@ -30,9 +31,11 @@ A production contribution still needs:
 6. upstream unit tests plus public full-model prefill/decode, TP and graph
    validation.
 
-The Qwen3.5 TP2 adapter used during development is intentionally not shipped
-in this wheel. It is tied to a particular runtime tree and has not been reduced
-to a stable vLLM extension contract.
+The experimental Qwen3.5 TP2 adapter and a narrow vLLM v0.25.1 compatibility
+patch are shipped under `examples/vllm`, not in the wheel. They exist so the
+two measured profiles can be run publicly while the maintainable upstream
+extension boundary is discussed. They are deliberately version-locked and
+fail outside their tested model, format, topology and SM120 scope.
 
 ## SGLang
 
@@ -65,13 +68,13 @@ this runtime acceptance bar.
 
 ## Recommended sequence
 
-1. Freeze checkpoint format v1 and add a converter plus CPU metadata validator
-   in this repository.
-2. Implement the vLLM dense backend against its public MXFP6 kernel interface,
-   then add the narrow Qwen3.5 MoE path.
-3. Validate one model revision and SM120 TP2 configuration end to end before
-   proposing upstream support.
-4. Implement and validate SGLang independently after the format stabilizes.
+1. Publish and pin the two tested llm-compressor conversion recipes.
+2. Validate both measured models through the public vLLM reproducer, including
+   TP2 CUDA Graph serving and public FP8/MXFP6 A/B evidence.
+3. Present the working prototype and its exact limits to the vLLM community,
+   then agree on the maintainable dense and routed-MoE integration boundaries.
+4. Generalize checkpoint and model coverage only after that feedback; validate
+   SGLang independently rather than copying the vLLM adapter.
 
 ## Upstream references
 

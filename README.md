@@ -40,12 +40,19 @@ Measured on RTX 5090 with pinned runtime and workload configurations. See
 [benchmark methodology](docs/benchmarks.md) before interpreting or reproducing
 these results.
 
+The experimental public vLLM reproducer separately measured **+9.11%** on the
+27B fixed-token contract and **+16.95%** on a public 35B-A3B `random-mm`
+workload. The latter is not the private workload behind the `+13.58%` headline.
+
 > [!NOTE]
 > **Integration status**
 >
-> The standalone SM120 kernel package is usable today. Native loading of MXFP6
-> checkpoints in unmodified community vLLM and SGLang is under development.
-> See [Runtime Integration](docs/runtime-integration.md).
+> The standalone SM120 kernel package is usable today. An
+> [experimental public vLLM v0.25.1 reproducer](examples/vllm/README.md) now
+> loads and serves the exact Qwen3.5-27B and Qwen3.5-35B-A3B profiles measured
+> by this project without internal infrastructure. Native loading in
+> unmodified community vLLM and SGLang is still under development. See
+> [Runtime Integration](docs/runtime-integration.md).
 
 ## What is MXFP6 SM120?
 
@@ -128,8 +135,9 @@ The wheel provides the standalone PyTorch operators and can be embedded in a
 pinned runtime today. Full serving measurements in this repository used an
 internally maintained vLLM 0.25.1 environment for both FP8 and MXFP6 variants.
 
-The repository does **not** yet provide a stable portable checkpoint converter,
-a community-vLLM `QuantizationConfig` and loader, or an SGLang quantization
+The repository now provides a pinned experimental vLLM v0.25.1 reproducer for
+the two measured Qwen3.5 profiles. It does **not** yet provide a stable general
+checkpoint ABI, an upstream community-vLLM backend, or an SGLang quantization
 backend. Installing the wheel alone therefore does not make an arbitrary
 MXFP6 checkpoint loadable by `vllm serve` or SGLang. Follow the explicit
 [checkpoint-format](docs/checkpoint-format.md) and

@@ -1,0 +1,167 @@
+{
+  "schema": "mxfp6-public-vllm-abba-v1",
+  "date": "2026-08-14",
+  "scope": "experimental public vLLM v0.25.1 reproduction",
+  "environment": {
+    "gpu": "NVIDIA GeForce RTX 5090",
+    "gpu_pairs": [
+      [4, 5],
+      [6, 7]
+    ],
+    "topology": "PIX within each TP2 pair",
+    "driver": "595.71.05",
+    "torch": "2.11.0+cu130",
+    "cuda_runtime": "13.0",
+    "vllm": "0.25.1",
+    "base_image": "vllm/vllm-openai:v0.25.1@sha256:e4f88a835143cd22aee2397a26ec6bb80b3a4a6fe0c882bcbc63822904766089",
+    "reproduction_image": "sha256:d765bacf1043b6461734b5bac53937a765cc50a07f48b29ea9c03c3dcfbaddb0",
+    "mxfp6_sm120": "efb3a7968ffa61d8521843600721dda3c93a5854"
+  },
+  "measurement": {
+    "order": ["fp8", "mxfp6", "mxfp6", "fp8"],
+    "fresh_service_per_block": true,
+    "warmup_requests_per_block": 4,
+    "metric": "server-compatible output tokens divided by benchmark wall time",
+    "sampling": {
+      "temperature": 0.0,
+      "ignore_eos": true,
+      "seed": 20260814
+    }
+  },
+  "qwen3_5_27b": {
+    "models": {
+      "fp8": "Qwen/Qwen3.5-27B-FP8",
+      "fp8_revision": "97f5941bf617e31c5e237364a8602ce3f03a551a",
+      "mxfp6_source": "Qwen/Qwen3.5-27B",
+      "source_revision": "fc05daec18b0a78c049392ed2e771dde82bdf654"
+    },
+    "contract": {
+      "dataset": "vllm random",
+      "requests": 320,
+      "input_tokens_per_request": 3000,
+      "output_tokens_per_request": 1000,
+      "request_rate": 20,
+      "max_concurrency": 32,
+      "max_num_batched_tokens": 4096,
+      "speculative_decoding": false
+    },
+    "blocks": [
+      {
+        "format": "fp8",
+        "output_tokens_per_second": 1230.740296150111,
+        "mean_tpot_ms": 24.41375420999343,
+        "p99_tpot_ms": 25.70274044344718,
+        "p99_ttft_ms": 5963.327225702234,
+        "completed": 320,
+        "raw_sha256": "9e3b128b09bbc2ee4fd138c23b3b048aaa3d523cb0ccd2fc01ebf78bcc021bbf"
+      },
+      {
+        "format": "mxfp6",
+        "output_tokens_per_second": 1340.472329310476,
+        "mean_tpot_ms": 22.306944382991013,
+        "p99_tpot_ms": 23.572402532175786,
+        "p99_ttft_ms": 5862.577714653744,
+        "completed": 320,
+        "raw_sha256": "8bfaf2d6cd1dcac65c529f38ea237576171265d58d82df2fe73b87d4b595d67c"
+      },
+      {
+        "format": "mxfp6",
+        "output_tokens_per_second": 1343.475631511227,
+        "mean_tpot_ms": 22.26545475617516,
+        "p99_tpot_ms": 23.53874595562421,
+        "p99_ttft_ms": 5808.017633376294,
+        "completed": 320,
+        "raw_sha256": "82ef96256c68666b9f8e48d13f377f5eed2c18282cc78479c8a335998e39362c"
+      },
+      {
+        "format": "fp8",
+        "output_tokens_per_second": 1229.0679090733195,
+        "mean_tpot_ms": 24.452432764226593,
+        "p99_tpot_ms": 25.750466837046687,
+        "p99_ttft_ms": 5953.401245874994,
+        "completed": 320,
+        "raw_sha256": "c83bad2e74af332124f6abdfc95812efc9e0a9dadd1d57b1caf53b09e02d692e"
+      }
+    ],
+    "aggregate": {
+      "fp8_output_tokens_per_second": 1229.9041026117152,
+      "mxfp6_output_tokens_per_second": 1341.9739804108515,
+      "output_throughput_gain_percent": 9.112082605558802,
+      "mean_tpot_reduction_percent": 8.786828072587483,
+      "p99_tpot_reduction_percent": 8.43884963093442,
+      "p99_ttft_change_percent": -2.065442072748791,
+      "fp8_repeat_spread_percent": 0.13597703050506987,
+      "mxfp6_repeat_spread_percent": 0.22379734962011316
+    }
+  },
+  "qwen3_5_35b_a3b": {
+    "models": {
+      "fp8": "Qwen/Qwen3.5-35B-A3B-FP8",
+      "fp8_revision": "9d1823d2dee688a6b25e77009dc727688c44936e",
+      "mxfp6_source": "Qwen/Qwen3.5-35B-A3B",
+      "source_revision": "59d61f3ce65a6d9863b86d2e96597125219dc754"
+    },
+    "contract": {
+      "dataset": "vllm random-mm",
+      "requests": 64,
+      "text_input_tokens_per_request": 128,
+      "output_tokens_per_request": 512,
+      "multimodal_items_per_request": 1,
+      "image_bucket": [256, 256, 1],
+      "total_server_input_tokens": 13078,
+      "request_rate": "inf",
+      "max_concurrency": 4,
+      "cuda_graph_capture_sizes": [1, 2, 4],
+      "speculative_decoding": false
+    },
+    "blocks": [
+      {
+        "format": "fp8",
+        "output_tokens_per_second": 678.027050901796,
+        "mean_tpot_ms": 5.447776489053239,
+        "p99_tpot_ms": 5.663514262045471,
+        "p99_ttft_ms": 274.1974185765139,
+        "completed": 64,
+        "raw_sha256": "971ac8ab298cc295d4ee7f275c3784afbb21fd40ccbb19eeac05c4538209c40a"
+      },
+      {
+        "format": "mxfp6",
+        "output_tokens_per_second": 792.2917670722338,
+        "mean_tpot_ms": 4.581678366805399,
+        "p99_tpot_ms": 4.814485119568702,
+        "p99_ttft_ms": 293.553584140318,
+        "completed": 64,
+        "raw_sha256": "f10652e7c98fe9510e6ec265517d0f895b5dd7eed6978a474d151ec57d545d8f"
+      },
+      {
+        "format": "mxfp6",
+        "output_tokens_per_second": 794.3666859467369,
+        "mean_tpot_ms": 4.577701927411014,
+        "p99_tpot_ms": 4.835902779504229,
+        "p99_ttft_ms": 356.6625666775508,
+        "completed": 64,
+        "raw_sha256": "4f2a29be79271de61c6779e6ca4f0f2f0a7f1834ee59981271ef39df6c61965f"
+      },
+      {
+        "format": "fp8",
+        "output_tokens_per_second": 678.7074507901988,
+        "mean_tpot_ms": 5.464338470460239,
+        "p99_tpot_ms": 5.691957532139103,
+        "p99_ttft_ms": 262.12333900126396,
+        "completed": 64,
+        "raw_sha256": "1985781b3f8c66b03ecfbfe6a69321aa8382d47253319845293c4fe0b574bd90"
+      }
+    ],
+    "aggregate": {
+      "fp8_output_tokens_per_second": 678.3672508459974,
+      "mxfp6_output_tokens_per_second": 793.3292265094854,
+      "output_throughput_gain_percent": 16.946864035685373,
+      "mean_tpot_reduction_percent": 16.062281893108032,
+      "p99_tpot_reduction_percent": 15.015526664289357,
+      "p99_ttft_change_percent": 21.236432047583698,
+      "fp8_repeat_spread_percent": 0.10029963674606504,
+      "mxfp6_repeat_spread_percent": 0.26154574988146445
+    },
+    "claim_boundary": "This public random-mm result is not a reproduction of the private real-multimodal +13.58% result."
+  }
+}
