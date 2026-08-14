@@ -44,7 +44,7 @@ respectively. The 35B-A3B P99 TTFT regressed by 21.24%.
 
 See the [public reproducer](examples/vllm/README.md) for commands and the
 [benchmark artifact](benchmarks/results/qwen35_public_vllm_tp2.json) for the
-complete measurement contract and raw block results.
+complete measurement contract and all four per-block metric summaries.
 
 ### Kernel and layer results
 
