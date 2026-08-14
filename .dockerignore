@@ -1,6 +1,5 @@
 .git
 .github
-third_party
 build*
 dist
 *.whl
