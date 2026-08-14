@@ -38,15 +38,15 @@ checkpoints. It is benchmark code, not a supported loader.
 
 The two model-specific Quark layouts used by Qwen3.5-27B and
 Qwen3.5-35B-A3B are accepted by the
-[experimental vLLM reproducer](../examples/vllm/README.md). Companion public
+[version-locked vLLM reproducer](../examples/vllm/README.md). Companion public
 llm-compressor recipes reproduce those tested layouts. This support is exact
 and model-scoped; it does not promote the physical tensors to a stable general
 checkpoint ABI.
 
 ## Acceptance bar for checkpoint format v1
 
-A future persistent format must include all of the following before a vLLM or
-SGLang loader is published:
+A future persistent format must include all of the following before a supported
+general vLLM or SGLang loader is published:
 
 1. a versioned quantization section declaring E3M2 weights, UE8M0 scales,
    group size 32, byte order, padding and fused-projection ordering;
@@ -58,3 +58,6 @@ SGLang loader is published:
 
 Until that contract exists, runtime adapters must fail with a clear
 unsupported-checkpoint error instead of guessing a layout.
+
+The version-locked model-scoped support and its runtime limits are documented in
+[vLLM and SGLang integration status](runtime-integration.md).

@@ -32,23 +32,22 @@ on RTX 5090 GPUs. Each manifest states its own model, runtime and measurement
 boundary. None is a compatibility promise for arbitrary framework or model
 revisions.
 
-The serving measurements used the same internally maintained vLLM 0.25.1
-environment for FP8 and MXFP6. They are valid comparisons inside that frozen
-environment, but not results from an unmodified community vLLM release. The
-adapter and checkpoint loader used there are not shipped as package APIs. A
-supported runtime integration must additionally record its exact vLLM or
-SGLang commit, extension wheel hash, checkpoint revision and launch command.
+Two serving evidence sets are published. The public reproducer uses a
+version-locked vLLM v0.25.1 image and a checked-in compatibility layer for
+Qwen3.5-27B and Qwen3.5-35B-A3B. The internal reference uses an independently
+optimized vLLM v0.25.1 environment and frozen workloads. Neither is a claim
+that the standalone wheel is a general vLLM or SGLang backend.
 
 ## Runtime status
 
-| Consumer | Dense operator | Qwen3.5 MoE layer | Checkpoint loader | Supported serving integration |
-|---|---:|---:|---:|---:|
-| PyTorch package | Yes | Experimental | No | Not applicable |
-| vLLM | Benchmark use only | Benchmark use only | No | No |
-| SGLang | Not integrated | Not integrated | No | No |
+| Consumer | Available path | Boundary |
+|---|---|---|
+| PyTorch package | Dense and Qwen3.5 MoE operators | No model checkpoint loader |
+| vLLM v0.25.1 | Public two-model TP2 reproducer under [`examples/vllm`](../examples/vllm/README.md) | Version-locked compatibility layer; not an upstream or general backend |
+| SGLang | Not integrated | No checkpoint or execution adapter |
 
-See [runtime integration](runtime-integration.md) for the work required to
-change the last column.
+See [runtime integration](runtime-integration.md) for the current upstream
+status and remaining integration work.
 
 ## Upgrade policy
 

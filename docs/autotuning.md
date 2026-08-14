@@ -24,6 +24,8 @@ Later calls use the in-process override. Later processes load the JSON cache
 without profiling. Tuning and file I/O are disabled during CUDA Graph capture
 and `torch.compile` tracing.
 
+### Qwen3.5-specific static refinements
+
 For Qwen3.5-27B TP2, the static eager-prefill path also includes two bounded
 post-graph rules for `1024 < M < 2048`: the shallow-K `5120x3072` projection
 selects the 64x128 ping-pong tile when its final wave is fuller than the
@@ -67,7 +69,8 @@ An example offline retuning command is:
 ```bash
 MXFP6_AUTOTUNE_WARMUP=5 MXFP6_AUTOTUNE_ITERATIONS=20 \
 MXFP6_AUTOTUNE_REPEATS=5 python3 benchmarks/retune_runtime.py \
-  --devices=0,1,2,3 --library build/mxfp6_torch.so
+  --devices=0,1,2,3 --library build/mxfp6_torch.so \
+  --output benchmarks/results/runtime_autotune_v5.json
 ```
 
 The profiler and timing method can influence the selected configuration. A
