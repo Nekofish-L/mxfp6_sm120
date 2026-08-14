@@ -46,16 +46,22 @@ Download the exact source and official FP8 revisions:
 
 ```bash
 mkdir -p models
-for spec in \
-  'Qwen/Qwen3.5-27B fc05daec18b0a78c049392ed2e771dde82bdf654 Qwen3.5-27B' \
-  'Qwen/Qwen3.5-27B-FP8 97f5941bf617e31c5e237364a8602ce3f03a551a Qwen3.5-27B-FP8' \
-  'Qwen/Qwen3.5-35B-A3B 59d61f3ce65a6d9863b86d2e96597125219dc754 Qwen3.5-35B-A3B' \
-  'Qwen/Qwen3.5-35B-A3B-FP8 9d1823d2dee688a6b25e77009dc727688c44936e Qwen3.5-35B-A3B-FP8'
-do
-  set -- $spec
-  docker run --rm -v "$PWD/models:/models" mxfp6-community:public-v1 \
-    hf download "$1" --revision "$2" --local-dir "/models/$3"
-done
+docker run --rm -v "$PWD/models:/models" mxfp6-community:public-v1 \
+  hf download Qwen/Qwen3.5-27B \
+  --revision fc05daec18b0a78c049392ed2e771dde82bdf654 \
+  --local-dir /models/Qwen3.5-27B
+docker run --rm -v "$PWD/models:/models" mxfp6-community:public-v1 \
+  hf download Qwen/Qwen3.5-27B-FP8 \
+  --revision 97f5941bf617e31c5e237364a8602ce3f03a551a \
+  --local-dir /models/Qwen3.5-27B-FP8
+docker run --rm -v "$PWD/models:/models" mxfp6-community:public-v1 \
+  hf download Qwen/Qwen3.5-35B-A3B \
+  --revision 59d61f3ce65a6d9863b86d2e96597125219dc754 \
+  --local-dir /models/Qwen3.5-35B-A3B
+docker run --rm -v "$PWD/models:/models" mxfp6-community:public-v1 \
+  hf download Qwen/Qwen3.5-35B-A3B-FP8 \
+  --revision 9d1823d2dee688a6b25e77009dc727688c44936e \
+  --local-dir /models/Qwen3.5-35B-A3B-FP8
 ```
 
 Install the pinned public converter and run its two model-specific recipes:

@@ -11,6 +11,9 @@
 | Internal Qwen3.5-35B-A3B serving | +13.58% output tok/s | `qwen35_moe_service_tp2.json` |
 | B4 MoE implementation refinement | paired scalar/vector result | `qwen35_moe_b4_vector.json` |
 
+Serving, layer and kernel artifacts have different measurement boundaries;
+their speedups should not be combined.
+
 The public serving artifact contains all four fresh
 FP8/MXFP6/MXFP6/FP8 blocks, workload parameters and latency guardrails. Its
 35B-A3B workload is public `random-mm`, not the private real-multimodal

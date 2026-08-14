@@ -9,16 +9,17 @@ speedup is never used as a substitute for an end-to-end result.
 
 | Model | Evidence level | FP8 baseline | Headline MXFP6 result | Artifact |
 |---|---|---|---:|---|
-| Qwen3.5-27B | five real linear-layer shapes | vLLM block FP8 | 1.633x geometric mean | [`native_w6a8_dispatch.json`](../benchmarks/results/native_w6a8_dispatch.json) |
-| Qwen3.5-27B | full TP2 serving | official Qwen FP8 checkpoint | +22.44% output tok/s | [`qwen35_27b_service_tp2.json`](../benchmarks/results/qwen35_27b_service_tp2.json) |
-| Qwen3.5-35B-A3B | complete TP2 MoE layer | vLLM FP8 MoE path | 1.278x geometric mean, B16-B96 | [`qwen35_moe_tp2.json`](../benchmarks/results/qwen35_moe_tp2.json) |
-| Qwen3.5-35B-A3B | full TP2 serving | official Qwen FP8 checkpoint | +13.58% output tok/s | [`qwen35_moe_service_tp2.json`](../benchmarks/results/qwen35_moe_service_tp2.json) |
 | Qwen3.5-27B | public vLLM v0.25.1 TP2 serving | official Qwen FP8 checkpoint | +9.11% output tok/s | [`qwen35_public_vllm_tp2.json`](../benchmarks/results/qwen35_public_vllm_tp2.json) |
 | Qwen3.5-35B-A3B | public vLLM v0.25.1 TP2 serving, public random-mm | official Qwen FP8 checkpoint | +16.95% output tok/s | [`qwen35_public_vllm_tp2.json`](../benchmarks/results/qwen35_public_vllm_tp2.json) |
+| Qwen3.5-27B | five real linear-layer shapes | vLLM block FP8 | 1.633x geometric mean | [`native_w6a8_dispatch.json`](../benchmarks/results/native_w6a8_dispatch.json) |
+| Qwen3.5-35B-A3B | complete TP2 MoE layer | vLLM FP8 MoE path | 1.278x geometric mean, B16-B96 | [`qwen35_moe_tp2.json`](../benchmarks/results/qwen35_moe_tp2.json) |
+| Qwen3.5-27B | internal vLLM TP2 serving | official Qwen FP8 checkpoint | +22.44% output tok/s | [`qwen35_27b_service_tp2.json`](../benchmarks/results/qwen35_27b_service_tp2.json) |
+| Qwen3.5-35B-A3B | internal vLLM TP2 serving, frozen real multimodal | official Qwen FP8 checkpoint | +13.58% output tok/s | [`qwen35_moe_service_tp2.json`](../benchmarks/results/qwen35_moe_service_tp2.json) |
 
-The first four rows are environment-bound results from the internally
-maintained vLLM 0.25.1 stack. The last two use the pinned public reproducer;
-neither is a drop-in backend for unmodified vLLM or SGLang.
+The first two rows are the primary community-facing results. The next two
+isolate kernel and complete-layer behavior. The final two are bounded references
+from the internally maintained vLLM 0.25.1 stack. These evidence levels explain
+different parts of the system and their speedups must not be combined.
 
 ### Experimental public vLLM reproduction
 
