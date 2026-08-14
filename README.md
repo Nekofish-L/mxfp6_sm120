@@ -46,16 +46,24 @@ See the [public reproducer](examples/vllm/README.md) for commands and the
 [benchmark artifact](benchmarks/results/qwen35_public_vllm_tp2.json) for the
 complete measurement contract and all four per-block metric summaries.
 
+### Internally optimized vLLM reference
+
+| Model and workload | Official FP8 | MXFP6 | Output throughput gain |
+|---|---:|---:|---:|
+| Qwen3.5-27B, 3000 input / 1000 output, c32 | 1157.79 tok/s | 1417.63 tok/s | **+22.44%** |
+| Qwen3.5-35B-A3B, frozen real multimodal, c4 | 589.41 tok/s | 669.45 tok/s | **+13.58%** |
+
+These results used the internally maintained vLLM 0.25.1 stack. They are useful
+optimization references, but are not claims about unmodified community vLLM
+or generally available workloads. Their complete environment and measurement
+boundaries are retained in [Benchmark methodology](docs/benchmarks.md).
+
 ### Kernel and layer results
 
 | Scope | Result | Baseline |
 |---|---:|---|
 | Dense GEMM | **1.633×** | vLLM block-FP8 |
 | Complete Qwen3.5 MoE layer | **1.278×** | vLLM FP8 MoE |
-
-Additional internally maintained vLLM results are retained in
-[Benchmark methodology](docs/benchmarks.md), with their environment and
-workload boundaries. They are not the public reproduction headline.
 
 > [!NOTE]
 > **Integration status**
