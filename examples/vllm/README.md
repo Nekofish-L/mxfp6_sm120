@@ -1,4 +1,4 @@
-# Experimental public vLLM reproduction
+# Public vLLM reproduction
 
 This directory reproduces the two Qwen3.5 configurations measured by this
 project without the internally maintained vLLM environment:
@@ -12,6 +12,14 @@ required.
 
 This is an exact two-model reproduction, not a general MXFP6 checkpoint ABI or
 an assertion that unmodified vLLM already supports this package.
+
+| Model and workload | FP8 | MXFP6 | Gain |
+|---|---:|---:|---:|
+| Qwen3.5-27B, 3000 input / 1000 output, c32 | 1229.90 tok/s | 1341.97 tok/s | **+9.11%** |
+| Qwen3.5-35B-A3B, public `random-mm`, c4 | 678.37 tok/s | 793.33 tok/s | **+16.95%** |
+
+The 35B-A3B P99 TTFT regressed by 21.24%. Full metrics are in the
+[benchmark artifact](../../benchmarks/results/qwen35_public_vllm_tp2.json).
 
 ## 1. Build the public image
 
@@ -154,12 +162,8 @@ Always change `--model` to the served FP8 name for FP8 blocks. Retain the raw
 JSON, complete server log, image digest, model revision, GPU topology and
 preflight utilization for every block.
 
-## Validated scope
+## Validation
 
-On 2026-08-14, both full conversions reproduced every tested safetensors shard
-byte for byte, then loaded, captured CUDA Graphs and generated under TP2 on RTX
-5090. The public FP8/MXFP6/MXFP6/FP8 run measured +9.11% output throughput for
-27B and +16.95% for the public 35B-A3B `random-mm` workload. See the
-[benchmark artifact](../../benchmarks/results/qwen35_public_vllm_tp2.json) and
-[conversion validation](../../benchmarks/results/qwen35_public_conversion_validation.json)
-for image digests, raw hashes, secondary metrics and the 35B TTFT guardrail.
+Both converted checkpoints matched the tested safetensors shards, loaded under
+TP2, captured CUDA Graphs and completed generation on RTX 5090. See the
+[conversion artifact](../../benchmarks/results/qwen35_public_conversion_validation.json).

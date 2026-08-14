@@ -1,66 +1,29 @@
-# Reviewed benchmark results
+# Benchmark artifacts
 
-The checked-in results intentionally separate isolated implementation evidence
-from full-serving evidence:
+| Scope | Key result | Artifact |
+|---|---:|---|
+| Public Qwen3.5-27B TP2 serving | +9.11% output tok/s | `qwen35_public_vllm_tp2.json` |
+| Public Qwen3.5-35B-A3B TP2 serving | +16.95% output tok/s | `qwen35_public_vllm_tp2.json` |
+| Public conversion and TP2 smoke | both models pass | `qwen35_public_conversion_validation.json` |
+| Dense Qwen3.5 GEMM shapes | 1.633x vs vLLM block-FP8 | `native_w6a8_dispatch.json` |
+| Complete Qwen3.5 MoE layer | 1.278x vs vLLM FP8 MoE | `qwen35_moe_tp2.json` |
+| Internal Qwen3.5-27B serving | +22.44% output tok/s | `qwen35_27b_service_tp2.json` |
+| Internal Qwen3.5-35B-A3B serving | +13.58% output tok/s | `qwen35_moe_service_tp2.json` |
+| B4 MoE implementation refinement | paired scalar/vector result | `qwen35_moe_b4_vector.json` |
 
-| Model | Evidence level | Artifact |
-|---|---|---|
-| Qwen3.5-27B | five real linear-layer GEMM shapes | `native_w6a8_dispatch.json` |
-| Qwen3.5-27B | full TP2 serving | `qwen35_27b_service_tp2.json` |
-| Qwen3.5-35B-A3B | complete TP2 MoE layer | `qwen35_moe_tp2.json` |
-| Qwen3.5-35B-A3B | full TP2 serving and reference fidelity | `qwen35_moe_service_tp2.json` |
-| Qwen3.5-35B-A3B | B4 MXFP6 implementation refinement | `qwen35_moe_b4_vector.json` |
-| Qwen3.5-27B and 35B-A3B | experimental public vLLM TP2 serving | `qwen35_public_vllm_tp2.json` |
-| Qwen3.5-27B and 35B-A3B | public conversion, load and CUDA Graph validation | `qwen35_public_conversion_validation.json` |
+The public serving artifact contains all four fresh
+FP8/MXFP6/MXFP6/FP8 blocks, workload parameters and latency guardrails. Its
+35B-A3B workload is public `random-mm`, not the private real-multimodal
+workload used by the internal serving result.
 
-`native_w6a8_dispatch.json` is the reviewed dense production manifest. It
-records:
+The internal serving artifacts are retained as bounded research evidence.
+They do not imply support in unmodified vLLM or SGLang. The 27B workload did
+not score task quality; the 35B quality section measures reference-output
+fidelity rather than audited business accuracy.
 
-- the FP16/BF16 16-to-8 activation and packed-W6 weight formats;
-- native FP16 and BF16 GEMM epilogues;
-- exact small-batch tile, scheduler, raster and swizzle selections;
-- the large-batch native CUTLASS policy;
-- the historical RTX 5090 GEMM-only comparison against Humming W6A8 and the
-  current comparison against vLLM block-FP8 W8A8.
-
-`persistent_workspace.json` compares Stream-K launches with per-call CUTLASS
-initialization against the self-resetting persistent arena.
-`runtime_autotune_v4.json` records the post-change FP16/BF16 retune across the
-50 Qwen3.5-27B TP2 shapes, including the measurement policy and timings.
-`qwen35_27b_service_tp2.json` records the full-model Qwen3.5-27B TP2 serving
-comparison against the official community FP8 checkpoint, including the
-fixed-token workload, server-usage metric contract and four fresh service
-lifecycle samples.
-`qwen35_moe_tp2.json` records CUDA-Graph whole-layer Qwen3.5 MoE latency,
-numerics, and the measured batch-dependent schedule on two RTX 5090 GPUs.
-`qwen35_moe_service_tp2.json` records the full-model Qwen3.5-35B-A3B TP2
-comparison against the official community FP8 checkpoint, plus the separately
-measured 742-case reference-output fidelity summary.
-`qwen35_moe_b4_vector.json` records the paired scalar/vector B=4 TP2 layer
-comparison with programmatic router-to-W1 dependency ordering.
-`qwen35_public_vllm_tp2.json` records the public-image FP8/MXFP6/MXFP6/FP8
-reproduction. Its 27B workload matches the published fixed-token contract. Its
-35B-A3B workload is a deterministic public `random-mm` replacement and is not
-the private real-multimodal workload used by the headline service result.
-`qwen35_public_conversion_validation.json` records a full conversion of local
-mirrors of both public source models, byte-exact shard comparison, and TP2
-CUDA Graph generation smokes. Checkpoints are not distributed here.
-
-The serving manifests are environment-bound integration snapshots from a
-pinned internally maintained vLLM integration. They are not publicly
-reproducible MXFP6 checkpoint recipes or general workload claims, and they do
-not promise that the wheel alone can load the checkpoint in an unmodified vLLM
-or SGLang release. The 27B workload did not score task quality; the 35B quality
-section measures reference-output fidelity rather than audited business-task
-accuracy.
-
-Humming is not a submodule, dependency or backend of the current project. Its
-checked-in measurements are retained as an external historical reference from
-[`inclusionAI/humming@694298e9`](https://github.com/inclusionAI/humming/tree/694298e9eb25ffdfc088353b49ba537ebf304479).
-Unknown W6A8 shapes are selected from the compiled native portfolio on first
-use and cached per build, GPU, shape and measurement policy. Machine-local
-autotune caches and raw profiler CSV files are generated artifacts and are
-intentionally ignored.
+Other JSON files record autotuning, persistent workspace and historical kernel
+experiments. Machine-local caches and raw profiler exports are intentionally
+not checked in.
 
 Reproduce the current native and vLLM warm-cache comparison with:
 

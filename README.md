@@ -31,28 +31,38 @@
 
 ## Performance highlights
 
-| Dense GEMM | Qwen3.5-27B serving | MoE layer | Qwen3.5-35B-A3B serving |
-|---:|---:|---:|---:|
-| **1.633×** | **+22.44%** | **1.278×** | **+13.58%** |
-| vs vLLM block-FP8 | output tok/s | vs vLLM FP8 | output tok/s |
+### Public vLLM reproduction
 
-Measured on RTX 5090 with pinned runtime and workload configurations. See
-[benchmark methodology](docs/benchmarks.md) before interpreting or reproducing
-these results.
+| Model and workload | Official FP8 | MXFP6 | Output throughput gain |
+|---|---:|---:|---:|
+| Qwen3.5-27B, 3000 input / 1000 output, c32 | 1229.90 tok/s | 1341.97 tok/s | **+9.11%** |
+| Qwen3.5-35B-A3B, public `random-mm`, c4 | 678.37 tok/s | 793.33 tok/s | **+16.95%** |
 
-The experimental public vLLM reproducer separately measured **+9.11%** on the
-27B fixed-token contract and **+16.95%** on a public 35B-A3B `random-mm`
-workload. The latter is not the private workload behind the `+13.58%` headline.
+Both comparisons used two RTX 5090 GPUs, TP2 and four fresh service lifecycles
+in FP8/MXFP6/MXFP6/FP8 order. Mean TPOT improved by 8.79% and 16.06%,
+respectively. The 35B-A3B P99 TTFT regressed by 21.24%.
+
+See the [public reproducer](examples/vllm/README.md) for commands and the
+[benchmark artifact](benchmarks/results/qwen35_public_vllm_tp2.json) for the
+complete measurement contract and raw block results.
+
+### Kernel and layer results
+
+| Scope | Result | Baseline |
+|---|---:|---|
+| Dense GEMM | **1.633×** | vLLM block-FP8 |
+| Complete Qwen3.5 MoE layer | **1.278×** | vLLM FP8 MoE |
+
+Additional internally maintained vLLM results are retained in
+[Benchmark methodology](docs/benchmarks.md), with their environment and
+workload boundaries. They are not the public reproduction headline.
 
 > [!NOTE]
 > **Integration status**
 >
-> The standalone SM120 kernel package is usable today. An
-> [experimental public vLLM v0.25.1 reproducer](examples/vllm/README.md) now
-> loads and serves the exact Qwen3.5-27B and Qwen3.5-35B-A3B profiles measured
-> by this project without internal infrastructure. Native loading in
-> unmodified community vLLM and SGLang is still under development. See
-> [Runtime Integration](docs/runtime-integration.md).
+> The standalone kernel package is usable today. A version-locked
+> [vLLM v0.25.1 reproducer](examples/vllm/README.md) loads Qwen3.5-27B and
+> Qwen3.5-35B-A3B. Upstream vLLM and SGLang integration is not yet available.
 
 ## What is MXFP6 SM120?
 
@@ -64,14 +74,6 @@ E4M3/UE8M0, and executes native SM120 block-scaled Tensor Core kernels.
 The project includes general dense GEMM and specialized Qwen3.5 MoE execution
 paths. It is intentionally narrow: the current package targets compute
 capability 12.0 rather than presenting a portable GPU abstraction.
-
-## Highlights
-
-- Native SM120 W6A8 Tensor Core GEMM.
-- Persistent E3M2 weights with UE8M0 block scales.
-- Dynamic E4M3 activation quantization.
-- Dense and Qwen3.5 MoE execution paths.
-- CUDA Graph-safe workspaces and deployment-oriented autotuning.
 
 ## Quick start
 
@@ -89,7 +91,7 @@ python3 -m pip install --no-deps dist/mxfp6_sm120-*.whl
 For an existing clone, initialize the pinned CUTLASS dependency first:
 
 ```bash
-git submodule update --init --depth 1 third_party/cutlass
+git submodule update --init third_party/cutlass
 ```
 
 ### Run a dense GEMM
@@ -131,18 +133,11 @@ the [MoE guide](docs/qwen35-moe.md).
 
 ## Runtime integration status
 
-The wheel provides the standalone PyTorch operators and can be embedded in a
-pinned runtime today. Full serving measurements in this repository used an
-internally maintained vLLM 0.25.1 environment for both FP8 and MXFP6 variants.
-
-The repository now provides a pinned experimental vLLM v0.25.1 reproducer for
-the two measured Qwen3.5 profiles. It does **not** yet provide a stable general
-checkpoint ABI, an upstream community-vLLM backend, or an SGLang quantization
-backend. Installing the wheel alone therefore does not make an arbitrary
-MXFP6 checkpoint loadable by `vllm serve` or SGLang. Follow the explicit
-[checkpoint-format](docs/checkpoint-format.md) and
-[runtime-integration](docs/runtime-integration.md) status before integrating a
-model artifact.
+The wheel provides standalone PyTorch operators. The version-locked
+[vLLM reproducer](examples/vllm/README.md) supports the two measured Qwen3.5
+profiles, but it is not a general checkpoint ABI or an upstream runtime
+backend. See [Checkpoint format](docs/checkpoint-format.md) and
+[Runtime integration](docs/runtime-integration.md) for the current boundary.
 
 ## Architecture
 
