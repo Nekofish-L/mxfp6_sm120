@@ -74,6 +74,7 @@ def test_plan_is_public_and_builds_the_runtime_from_source(capsys):
 
 def test_one_image_pins_conversion_serving_and_benchmark_tools():
     dockerfile = (ROOT / "examples/vllm/Dockerfile").read_text()
+    dockerignore = (ROOT / ".dockerignore").read_text()
     readme = (ROOT / "examples/vllm/README.md").read_text()
 
     assert "ARG REPRODUCER_REF" in dockerfile
@@ -81,6 +82,7 @@ def test_one_image_pins_conversion_serving_and_benchmark_tools():
     assert "pip install --no-deps -e /opt/llm-compressor" in dockerfile
     assert "COPY . /opt/mxfp6_sm120" in dockerfile
     assert "git clone https://github.com/Nekofish-L" not in dockerfile
+    assert "**/.git" in dockerignore
     assert "mxfp6-community:public-v1" in readme
     assert "vllm bench serve" in readme
 
