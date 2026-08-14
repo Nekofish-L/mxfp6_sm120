@@ -11,10 +11,10 @@
 
 <p align="center">
   <a href="#overview">Overview</a> ·
+  <a href="#performance">Performance</a> ·
   <a href="#execution-model">Design</a> ·
   <a href="#build-and-minimal-use">Build</a> ·
   <a href="#operator-surface">Operators</a> ·
-  <a href="#benchmark-evidence">Benchmarks</a> ·
   <a href="#runtime-integration">vLLM Integration</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
@@ -37,6 +37,50 @@ The repository contains a general Dense GEMM engine and a Qwen3.5 MoE schedule.
 The MoE implementation owns the GPU path from routing through W1, activation
 requantization, W2, shared-expert combine and final reduction. The checked-in
 benchmarks measure both isolated kernels and the complete TP2 MoE layer.
+
+## Performance
+
+### End-to-end serving on public vLLM
+
+| Model and workload | Official FP8 | MXFP6 | Output throughput gain |
+|---|---:|---:|---:|
+| Qwen3.5-27B, 3000 input / 1000 output, c32 | 1229.90 tok/s | 1341.97 tok/s | **+9.11%** |
+| Qwen3.5-35B-A3B, public `random-mm`, c4 | 678.37 tok/s | 793.33 tok/s | **+16.95%** |
+
+Both tests used two PIX-connected RTX 5090 GPUs, tensor parallel size 2, and
+four fresh service runs in FP8/MXFP6/MXFP6/FP8 order. See the
+[public vLLM reproducer](examples/vllm/README.md) and the
+[four-block result artifact](benchmarks/results/qwen35_public_vllm_tp2.json).
+
+### Native kernel and MoE layer
+
+| Scope | Result | Baseline |
+|---|---:|---|
+| Qwen3.5 Dense GEMM, five shapes × 10 batch sizes | **1.633×** geometric mean | vLLM block-FP8 GEMM |
+| Complete Qwen3.5 MoE layer, B16-B96 | **1.278×** geometric mean | vLLM FP8 MoE layer |
+
+Kernel, layer and serving results have different boundaries and are not
+additive. The [benchmark methodology](docs/benchmarks.md) records the full
+contracts, per-shape data and latency metrics. All checked-in data is indexed in
+[benchmark artifacts](benchmarks/results/README.md).
+
+<details>
+<summary>Internal vLLM reference results</summary>
+
+The internal runtime includes additional vLLM 0.25.1 optimizations and uses
+frozen workloads. These numbers are retained as optimization references, not as
+results for the public reproducer.
+
+| Model and workload | Official FP8 | MXFP6 | Output throughput gain |
+|---|---:|---:|---:|
+| Qwen3.5-27B, 3000 input / 1000 output, c32 | 1157.79 tok/s | 1417.63 tok/s | **+22.44%** |
+| Qwen3.5-35B-A3B, frozen real multimodal, c4 | 589.41 tok/s | 669.45 tok/s | **+13.58%** |
+
+The 35B-A3B artifact includes a 742-case reference-output comparison. Its paired
+intervals did not detect a significant fidelity loss. This measures reference
+fidelity, not audited task accuracy.
+
+</details>
 
 ## Execution model
 
@@ -166,50 +210,6 @@ Checked-in dense overrides cover the primary Qwen3.5-27B TP2 linear shapes.
 Other valid shapes use the native dispatcher or a generated autotune cache.
 Qwen3.5 MoE shapes, tensor ordering and workspace contracts are documented in
 [Qwen3.5 MoE kernels](docs/qwen35-moe.md).
-
-## Benchmark evidence
-
-Serving, layer and kernel measurements answer different questions and their
-speedups are not additive. Full contracts, per-shape tables and per-block
-summaries are in [Benchmark methodology](docs/benchmarks.md) and
-[Benchmark artifacts](benchmarks/results/README.md).
-
-### Public vLLM end-to-end reproduction
-
-| Model and workload | Official FP8 | MXFP6 | Output throughput gain |
-|---|---:|---:|---:|
-| Qwen3.5-27B, 3000 input / 1000 output, c32 | 1229.90 tok/s | 1341.97 tok/s | **+9.11%** |
-| Qwen3.5-35B-A3B, public `random-mm`, c4 | 678.37 tok/s | 793.33 tok/s | **+16.95%** |
-
-Both comparisons used two PIX-connected RTX 5090 GPUs, TP2 and four fresh
-service lifecycles in FP8/MXFP6/MXFP6/FP8 order. The
-[public reproducer](examples/vllm/README.md) contains the complete commands;
-the [serving artifact](benchmarks/results/qwen35_public_vllm_tp2.json) records
-all four block summaries and latency metrics.
-
-### Kernel and complete-layer measurements
-
-| Scope | Result | Baseline |
-|---|---:|---|
-| Qwen3.5 Dense GEMM, five shapes × 10 batch sizes | **1.633×** geometric mean | vLLM block-FP8 GEMM |
-| Complete Qwen3.5 MoE layer, B16-B96 | **1.278×** geometric mean | vLLM FP8 MoE layer |
-
-These measurements isolate the native implementation and do not substitute for
-the end-to-end serving results above.
-
-### Additional internal runtime reference
-
-| Model and workload | Official FP8 | MXFP6 | Output throughput gain |
-|---|---:|---:|---:|
-| Qwen3.5-27B, 3000 input / 1000 output, c32 | 1157.79 tok/s | 1417.63 tok/s | **+22.44%** |
-| Qwen3.5-35B-A3B, frozen real multimodal, c4 | 589.41 tok/s | 669.45 tok/s | **+13.58%** |
-
-These runs used our internal vLLM 0.25.1 stack and frozen workloads. They are
-included as additional reference; the public reproduction above is the result
-that can be rerun without internal infrastructure. The 35B-A3B artifact also
-contains a 742-case reference-output comparison. The paired intervals did not
-detect a significant fidelity loss; this is reference fidelity rather than
-audited task accuracy.
 
 ## Runtime integration
 
