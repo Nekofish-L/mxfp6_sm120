@@ -80,6 +80,9 @@ def test_one_image_pins_conversion_serving_and_benchmark_tools():
     assert "ARG REPRODUCER_REF" in dockerfile
     assert "ARG LLM_COMPRESSOR_REF=37242a6a" in dockerfile
     assert "pip install --no-deps -e /opt/llm-compressor" in dockerfile
+    assert "COPY --from=llmcompressor" in dockerfile
+    assert "llm-compressor.sha256" in dockerfile
+    assert "git clone https://github.com/troycheng/llm-compressor" not in dockerfile
     assert "COPY . /opt/mxfp6_sm120" in dockerfile
     assert "git clone https://github.com/Nekofish-L" not in dockerfile
     assert "**/.git" in dockerignore

@@ -23,9 +23,10 @@ RUN cd /opt/mxfp6_sm120 \
     && ./scripts/build_wheel.sh \
     && python3 -m pip install --no-cache-dir --no-deps dist/mxfp6_sm120-*.whl
 
-RUN git clone https://github.com/troycheng/llm-compressor.git \
-        /opt/llm-compressor \
-    && git -C /opt/llm-compressor checkout --detach ${LLM_COMPRESSOR_REF} \
+COPY --from=llmcompressor . /opt/llm-compressor
+RUN cd /opt/llm-compressor \
+    && sha256sum -c \
+        /opt/mxfp6_sm120/examples/vllm/llm-compressor.sha256 \
     && python3 -m pip install --no-deps -e /opt/llm-compressor
 
 ARG REPRODUCER_REF
@@ -51,6 +52,7 @@ RUN chmod +x /opt/mxfp6-repro/reproduce.py \
 
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility \
     NVIDIA_VISIBLE_DEVICES=all \
+    MXFP6_LLM_COMPRESSOR_REF=${LLM_COMPRESSOR_REF} \
     MXFP6_REPRODUCER_REF=${REPRODUCER_REF} \
     VLLM_USE_DEEP_GEMM=0
 
