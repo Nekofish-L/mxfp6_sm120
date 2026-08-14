@@ -72,21 +72,19 @@ def test_plan_is_public_and_builds_the_runtime_from_source(capsys):
     assert len(plan["models"]["fp8_revision"]) == 40
 
 
-def test_one_image_pins_conversion_serving_and_benchmark_tools():
+def test_runtime_image_and_converter_are_pinned():
     dockerfile = (ROOT / "examples/vllm/Dockerfile").read_text()
     dockerignore = (ROOT / ".dockerignore").read_text()
     readme = (ROOT / "examples/vllm/README.md").read_text()
 
     assert "ARG REPRODUCER_REF" in dockerfile
-    assert "ARG LLM_COMPRESSOR_REF=37242a6a" in dockerfile
-    assert "pip install --no-deps -e /opt/llm-compressor" in dockerfile
-    assert "COPY --from=llmcompressor" in dockerfile
-    assert "llm-compressor.sha256" in dockerfile
-    assert "git clone https://github.com/troycheng/llm-compressor" not in dockerfile
+    assert "COPY --from=llmcompressor" not in dockerfile
     assert "COPY . /opt/mxfp6_sm120" in dockerfile
     assert "git clone https://github.com/Nekofish-L" not in dockerfile
     assert "**/.git" in dockerignore
     assert "mxfp6-community:public-v1" in readme
+    assert "37242a6a1bf6869857084d2ac7ccb22d1af7168d" in readme
+    assert "BUILD_TYPE=release" in readme
     assert "vllm bench serve" in readme
 
 

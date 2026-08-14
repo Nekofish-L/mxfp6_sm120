@@ -2,7 +2,6 @@ ARG VLLM_BASE_IMAGE=vllm/vllm-openai:v0.25.1@sha256:e4f88a835143cd22aee2397a26ec
 FROM ${VLLM_BASE_IMAGE}
 
 USER root
-ARG LLM_COMPRESSOR_REF=37242a6a1bf6869857084d2ac7ccb22d1af7168d
 ARG PYPI_INDEX_URL=https://pypi.org/simple
 
 RUN apt-get update \
@@ -22,12 +21,6 @@ COPY . /opt/mxfp6_sm120
 RUN cd /opt/mxfp6_sm120 \
     && ./scripts/build_wheel.sh \
     && python3 -m pip install --no-cache-dir --no-deps dist/mxfp6_sm120-*.whl
-
-COPY --from=llmcompressor . /opt/llm-compressor
-RUN cd /opt/llm-compressor \
-    && sha256sum -c \
-        /opt/mxfp6_sm120/examples/vllm/llm-compressor.sha256 \
-    && python3 -m pip install --no-deps -e /opt/llm-compressor
 
 ARG REPRODUCER_REF
 RUN test -n "${REPRODUCER_REF}"
@@ -52,7 +45,6 @@ RUN chmod +x /opt/mxfp6-repro/reproduce.py \
 
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility \
     NVIDIA_VISIBLE_DEVICES=all \
-    MXFP6_LLM_COMPRESSOR_REF=${LLM_COMPRESSOR_REF} \
     MXFP6_REPRODUCER_REF=${REPRODUCER_REF} \
     VLLM_USE_DEEP_GEMM=0
 

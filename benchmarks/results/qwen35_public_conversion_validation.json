@@ -1,0 +1,57 @@
+{
+  "schema": "mxfp6-public-conversion-validation-v1",
+  "date": "2026-08-14",
+  "scope": "local mirror of public source models compared with the checkpoints used by the published measurements",
+  "environment": {
+    "gpu": "NVIDIA GeForce RTX 5090",
+    "driver": "595.71.05",
+    "torch": "2.11.0+cu130",
+    "cuda_runtime": "13.0",
+    "runtime_image": "sha256:d765bacf1043b6461734b5bac53937a765cc50a07f48b29ea9c03c3dcfbaddb0",
+    "llm_compressor_base": "20499a97bb1802ab14de880e45f4486b94b7e018",
+    "llm_compressor_commit": "37242a6a1bf6869857084d2ac7ccb22d1af7168d"
+  },
+  "qwen3_5_27b": {
+    "public_source": "Qwen/Qwen3.5-27B",
+    "public_source_revision": "fc05daec18b0a78c049392ed2e771dde82bdf654",
+    "validated_mxfp6_weights": 408,
+    "output_tensor_count": 1607,
+    "packed_weight_count": 408,
+    "weight_scale_count": 408,
+    "safetensors_shards": 11,
+    "serialized_shards_exact_to_tested_checkpoint": true,
+    "quantization_config_exact_to_tested_checkpoint": true,
+    "tp2_load": true,
+    "cuda_graph_capture": {
+      "piecewise": true,
+      "full": true
+    },
+    "generation_smoke": {
+      "http_success": true,
+      "completion_tokens": 14,
+      "raw_sha256": "4c6908f18fd395cfb0796de44811e84d99e5c5b30b36aeed531c383488ab8df3"
+    }
+  },
+  "qwen3_5_35b_a3b": {
+    "public_source": "Qwen/Qwen3.5-35B-A3B",
+    "public_source_revision": "59d61f3ce65a6d9863b86d2e96597125219dc754",
+    "validated_mxfp6_weights": 31746,
+    "output_tensor_count": 64197,
+    "packed_weight_count": 31746,
+    "weight_scale_count": 31746,
+    "safetensors_shards": 14,
+    "serialized_shards_exact_to_tested_checkpoint": true,
+    "quantization_config_exact_to_tested_checkpoint": true,
+    "tp2_load": true,
+    "cuda_graph_capture": {
+      "piecewise": true,
+      "full": true
+    },
+    "generation_smoke": {
+      "http_success": true,
+      "completion_tokens": 16,
+      "raw_sha256": "67e98efa377efe21cdbb88ee18178e1cc06cda33ce2a6d3df592e2f9f51da6df"
+    }
+  },
+  "claim_boundary": "No checkpoint is published by this repository. Exactness is against the local checkpoints used by the recorded performance experiments, not an independent Hugging Face snapshot audit."
+}

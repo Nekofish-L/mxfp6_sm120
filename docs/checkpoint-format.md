@@ -29,16 +29,19 @@ Hugging Face checkpoint ABI. This release does not define:
 - tensor names for packed values and scales;
 - padding and sharding rules for tensor, pipeline or expert parallelism;
 - fused projection ordering and model-specific tensor mapping;
-- a converter, validator or deterministic round-trip manifest;
+- a package-owned general converter, validator or deterministic round-trip
+  manifest beyond the two model-scoped companion recipes;
 - forward compatibility across package minor versions.
 
 The Qwen3.5 benchmark contains a model-specific reader for local research
 checkpoints. It is benchmark code, not a supported loader.
 
-The checked-in full-serving manifests were produced with pinned research
-exports and an external runtime adapter. Publishing those measurements does not
-promote that physical checkpoint layout to a stable or supported serialized
-ABI.
+The two model-specific Quark layouts used by Qwen3.5-27B and
+Qwen3.5-35B-A3B are accepted by the
+[experimental vLLM reproducer](../examples/vllm/README.md). Companion public
+llm-compressor recipes reproduce those tested layouts. This support is exact
+and model-scoped; it does not promote the physical tensors to a stable general
+checkpoint ABI.
 
 ## Acceptance bar for checkpoint format v1
 

@@ -10,6 +10,8 @@ from full-serving evidence:
 | Qwen3.5-35B-A3B | complete TP2 MoE layer | `qwen35_moe_tp2.json` |
 | Qwen3.5-35B-A3B | full TP2 serving and reference fidelity | `qwen35_moe_service_tp2.json` |
 | Qwen3.5-35B-A3B | B4 MXFP6 implementation refinement | `qwen35_moe_b4_vector.json` |
+| Qwen3.5-27B and 35B-A3B | experimental public vLLM TP2 serving | `qwen35_public_vllm_tp2.json` |
+| Qwen3.5-27B and 35B-A3B | public conversion, load and CUDA Graph validation | `qwen35_public_conversion_validation.json` |
 
 `native_w6a8_dispatch.json` is the reviewed dense production manifest. It
 records:
@@ -36,6 +38,13 @@ comparison against the official community FP8 checkpoint, plus the separately
 measured 742-case reference-output fidelity summary.
 `qwen35_moe_b4_vector.json` records the paired scalar/vector B=4 TP2 layer
 comparison with programmatic router-to-W1 dependency ordering.
+`qwen35_public_vllm_tp2.json` records the public-image FP8/MXFP6/MXFP6/FP8
+reproduction. Its 27B workload matches the published fixed-token contract. Its
+35B-A3B workload is a deterministic public `random-mm` replacement and is not
+the private real-multimodal workload used by the headline service result.
+`qwen35_public_conversion_validation.json` records a full conversion of local
+mirrors of both public source models, byte-exact shard comparison, and TP2
+CUDA Graph generation smokes. Checkpoints are not distributed here.
 
 The serving manifests are environment-bound integration snapshots from a
 pinned internally maintained vLLM integration. They are not publicly
