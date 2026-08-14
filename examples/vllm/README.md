@@ -6,9 +6,9 @@ project without the internally maintained vLLM environment:
 - `Qwen/Qwen3.5-27B` with native dense SM120 W6A8 kernels;
 - `Qwen/Qwen3.5-35B-A3B` with native dense and routed-MoE SM120 W6A8 kernels.
 
-The runtime image pins vLLM `v0.25.1` and mxfp6_sm120. Conversion uses the
-pinned public llm-compressor branch below. No internal image or source tree is
-required.
+The runtime image pins vLLM `v0.25.1` and records the exact mxfp6_sm120
+checkout used for each build. Conversion uses the pinned public llm-compressor
+commit below. No internal image or source tree is required.
 
 This is an exact two-model reproduction, not a general MXFP6 checkpoint ABI or
 an assertion that unmodified vLLM already supports this package.
@@ -24,9 +24,8 @@ The 35B-A3B P99 TTFT regressed by 21.24%. Full metrics are in the
 ## 1. Build the public image
 
 ```bash
-git clone https://github.com/troycheng/mxfp6_sm120.git
+git clone https://github.com/Nekofish-L/mxfp6_sm120.git
 cd mxfp6_sm120
-git checkout integration/community-repro-v1
 git submodule update --init third_party/cutlass
 docker build --build-arg REPRODUCER_REF="$(git rev-parse HEAD)" \
   -f examples/vllm/Dockerfile -t mxfp6-community:public-v1 .
@@ -46,6 +45,7 @@ docker run --rm mxfp6-community:public-v1 \
 Download the exact source and official FP8 revisions:
 
 ```bash
+mkdir -p models
 for spec in \
   'Qwen/Qwen3.5-27B fc05daec18b0a78c049392ed2e771dde82bdf654 Qwen3.5-27B' \
   'Qwen/Qwen3.5-27B-FP8 97f5941bf617e31c5e237364a8602ce3f03a551a Qwen3.5-27B-FP8' \
@@ -53,7 +53,7 @@ for spec in \
   'Qwen/Qwen3.5-35B-A3B-FP8 9d1823d2dee688a6b25e77009dc727688c44936e Qwen3.5-35B-A3B-FP8'
 do
   set -- $spec
-  docker run --rm -v /models:/models mxfp6-community:public-v1 \
+  docker run --rm -v "$PWD/models:/models" mxfp6-community:public-v1 \
     hf download "$1" --revision "$2" --local-dir "/models/$3"
 done
 ```
@@ -68,12 +68,13 @@ BUILD_TYPE=release llm-compressor/.venv/bin/pip install -e llm-compressor
 
 llm-compressor/.venv/bin/python \
   llm-compressor/examples/quantization_w6a8_mxfp6/qwen35_27b_example.py \
-  --model /models/Qwen3.5-27B --output /models/Qwen3.5-27B-MXFP6
+  --model "$PWD/models/Qwen3.5-27B" \
+  --output "$PWD/models/Qwen3.5-27B-MXFP6"
 
 llm-compressor/.venv/bin/python \
   llm-compressor/examples/quantization_w6a8_mxfp6/qwen35_35b_example.py \
-  --model /models/Qwen3.5-35B-A3B \
-  --output /models/Qwen3.5-35B-A3B-MXFP6
+  --model "$PWD/models/Qwen3.5-35B-A3B" \
+  --output "$PWD/models/Qwen3.5-35B-A3B-MXFP6"
 ```
 
 The recipes reproduce the model-specific Quark layouts used by the published
@@ -89,25 +90,25 @@ host model directory and GPU indices as needed.
 ```bash
 # Dense MXFP6
 docker run --rm --gpus all --network host \
-  -v /models:/models:ro mxfp6-community:public-v1 \
+  -v "$PWD/models:/models:ro" mxfp6-community:public-v1 \
   mxfp6-reproduce serve --profile qwen3.5-27b --format mxfp6 \
   --model-path /models/Qwen3.5-27B-MXFP6 --gpus 0,1 --port 8251
 
 # Dense official FP8 baseline
 docker run --rm --gpus all --network host \
-  -v /models:/models:ro mxfp6-community:public-v1 \
+  -v "$PWD/models:/models:ro" mxfp6-community:public-v1 \
   mxfp6-reproduce serve --profile qwen3.5-27b --format fp8 \
   --model-path /models/Qwen3.5-27B-FP8 --gpus 0,1 --port 8251
 
 # MoE MXFP6
 docker run --rm --gpus all --network host \
-  -v /models:/models:ro mxfp6-community:public-v1 \
+  -v "$PWD/models:/models:ro" mxfp6-community:public-v1 \
   mxfp6-reproduce serve --profile qwen3.5-35b-a3b --format mxfp6 \
   --model-path /models/Qwen3.5-35B-A3B-MXFP6 --gpus 0,1 --port 8251
 
 # MoE official FP8 baseline
 docker run --rm --gpus all --network host \
-  -v /models:/models:ro mxfp6-community:public-v1 \
+  -v "$PWD/models:/models:ro" mxfp6-community:public-v1 \
   mxfp6-reproduce serve --profile qwen3.5-35b-a3b --format fp8 \
   --model-path /models/Qwen3.5-35B-A3B-FP8 --gpus 0,1 --port 8251
 ```
@@ -126,7 +127,7 @@ Create a result directory, then run the pinned client from the same image. The
 
 ```bash
 mkdir -p results
-docker run --rm --network host -v /models:/models:ro \
+docker run --rm --network host -v "$PWD/models:/models:ro" \
   -v "$PWD/results:/results" -w /results mxfp6-community:public-v1 \
   vllm bench serve --backend openai \
   --base-url http://127.0.0.1:8251 --endpoint /v1/completions \
@@ -142,7 +143,7 @@ The public 35B-A3B contract is deterministic `random-mm`; it is not the private
 workload behind the environment-bound `+13.58%` result:
 
 ```bash
-docker run --rm --network host -v /models:/models:ro \
+docker run --rm --network host -v "$PWD/models:/models:ro" \
   -v "$PWD/results:/results" -w /results mxfp6-community:public-v1 \
   vllm bench serve --backend openai-chat \
   --base-url http://127.0.0.1:8251 --endpoint /v1/chat/completions \

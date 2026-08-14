@@ -2,6 +2,8 @@ include CMakeLists.txt README.md LICENSE CHANGELOG.md CONTRIBUTING.md THIRD_PART
 include .gitmodules
 recursive-include docs *.md *.png
 recursive-include benchmarks/results README.md *.json
+include examples/vllm/Dockerfile
+recursive-include examples/vllm *.md *.patch *.py
 include scripts/build_wheel.sh scripts/build_profiler.sh scripts/apply_cutlass_patches.sh
 recursive-include csrc *.hpp *.cu
 recursive-include patches *.patch *.md
