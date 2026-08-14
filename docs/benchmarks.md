@@ -21,13 +21,18 @@ isolate kernel and complete-layer behavior. The final two are bounded references
 from the internally maintained vLLM 0.25.1 stack. These evidence levels explain
 different parts of the system and their speedups must not be combined.
 
-### Experimental public vLLM reproduction
+### Public vLLM reproduction
 
 The checked-in example uses the official vLLM v0.25.1 image and four fresh
 FP8/MXFP6/MXFP6/FP8 service lifecycles. The complete metrics, including the
 35B-A3B P99 TTFT regression, are in the
 [benchmark artifact](../benchmarks/results/qwen35_public_vllm_tp2.json).
 See [`examples/vllm`](../examples/vllm/README.md) for commands.
+
+| Model | FP8 output tok/s | MXFP6 output tok/s | Gain | Mean TPOT change | P99 TTFT change |
+|---|---:|---:|---:|---:|---:|
+| Qwen3.5-27B | 1229.90 | 1341.97 | +9.11% | -8.79% | -2.07% |
+| Qwen3.5-35B-A3B | 678.37 | 793.33 | +16.95% | -16.06% | +21.24% |
 
 ## Qwen3.5-27B
 
@@ -231,10 +236,14 @@ emulated TP2 shard or two `torchrun` workers:
 ```bash
 torchrun --nproc-per-node=2 \
   benchmarks/benchmark_qwen35_moe_layer.py \
-  --batch-sizes 1 --mx-mode array \
-  --warmup 20 --iterations 1000 --repeats 9
+  --fp8-model "$PWD/models/Qwen3.5-35B-A3B-FP8" \
+  --mx-model "$PWD/models/Qwen3.5-35B-A3B-MXFP6" \
+  --batch-sizes 1 2 4 8 10 12 14 16 24 32 40 48 56 64 80 96 \
+  --mx-mode auto --route-stats \
+  --warmup 40 --iterations 1000 --repeats 9
 ```
 
-Serving artifacts include their full launch and request contracts. Reproduce
-them only in a runtime with the same model, tokenizer, adapter, sampling and
-scheduler configuration; the standalone wheel is not a community-vLLM loader.
+Serving artifacts include their full launch and request contracts. Use the
+[public vLLM reproducer](../examples/vllm/README.md) for the checked-in public
+service comparison. Internal serving references require their recorded model,
+tokenizer, adapter, sampling and scheduler configuration.

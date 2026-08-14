@@ -9,10 +9,13 @@ git clone --recurse-submodules https://github.com/Nekofish-L/mxfp6_sm120.git
 cd mxfp6_sm120
 ```
 
+Toolchain and platform requirements are listed in
+[Compatibility](compatibility.md).
+
 For an existing clone:
 
 ```bash
-git submodule update --init --depth 1 third_party/cutlass
+git submodule update --init third_party/cutlass
 ```
 
 Build a wheel against the active PyTorch ABI:
@@ -71,7 +74,7 @@ randomized validation under the target execution mode.
 Run the source checks before submitting a change:
 
 ```bash
-python3 -m compileall -q python benchmarks tests
+python3 -m compileall -q python benchmarks tests tools
 git diff --check
 ```
 
@@ -87,7 +90,9 @@ python/mxfp6/          Python API and persistent autotuner
 benchmarks/            GEMM, baseline and search tools
 benchmarks/results/    Reviewed dispatch and measurement metadata
 docs/                  User guides and integration contracts
+examples/vllm/         Version-locked public vLLM reproducer
 tests/                 CUDA correctness and stream tests
+tools/                 Build and Qwen3.5 workspace validation helpers
 patches/cutlass/       Versioned SM120 CUTLASS fixes
 scripts/               Build and patch helpers
 third_party/           Pinned CUTLASS submodule

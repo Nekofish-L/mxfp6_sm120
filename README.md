@@ -245,7 +245,8 @@ measured toolchain and upgrade policy.
 | [Benchmark methodology](docs/benchmarks.md) | Baselines, workloads, metrics, full result tables and commands |
 | [Autotuning](docs/autotuning.md) | Dispatch policy, cache generation and serving controls |
 | [Checkpoint format](docs/checkpoint-format.md) | Current in-memory layout and persistent-format acceptance bar |
-| [Runtime integration](docs/runtime-integration.md) | vLLM/SGLang status and proposed upstream boundary |
+| [Compatibility](docs/compatibility.md) | Supported platform, build ABI and runtime integration boundary |
+| [Runtime integration](docs/runtime-integration.md) | vLLM/SGLang status, evidence boundary and upstream discussion |
 | [Development](docs/development.md) | Source build, CUTLASS patch queue, tests and repository layout |
 
 ## Contributing

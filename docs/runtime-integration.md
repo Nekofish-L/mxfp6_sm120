@@ -1,9 +1,9 @@
 # vLLM and SGLang integration status
 
-## Current verdict
+## Current status
 
-This repository is ready to be reviewed as an SM120 kernel package, layer
-benchmark reference and exact two-model serving prototype. The checked-in
+The repository provides an SM120 kernel package, layer benchmarks and a
+version-locked two-model serving prototype. The checked-in
 [public vLLM v0.25.1 reproducer](../examples/vllm/README.md) loads and serves
 Qwen3.5-27B and Qwen3.5-35B-A3B without internal infrastructure. It is not yet
 a drop-in backend for unmodified vLLM or SGLang.
@@ -15,12 +15,14 @@ do not turn the private research adapter into a supported public integration.
 
 ## vLLM
 
-Current vLLM main provides an `MxFp6LinearKernel` backend interface and an
-out-of-tree kernel registration mechanism. Its own CPU test describes software
-emulation as the only available implementation at the time of this release.
-That interface is the preferred dense integration point for this project.
+vLLM can recognize Quark/OCP MXFP6 checkpoints, but the CUDA implementation
+available when this prototype was published uses software emulation. The public
+reproducer connects that loading path to this package for the two tested model
+profiles. The upstream discussion is tracked in
+[vLLM issue #52347](https://github.com/vllm-project/vllm/issues/52347).
 
-A production contribution still needs:
+The package does not yet provide an upstream runtime backend. Such a backend
+would need:
 
 1. an SM120 backend implementing support checks, weight post-processing and
    `apply_weights` without importing private benchmark code;
@@ -31,7 +33,7 @@ A production contribution still needs:
 6. upstream unit tests plus public full-model prefill/decode, TP and graph
    validation.
 
-The experimental Qwen3.5 TP2 adapter and a narrow vLLM v0.25.1 compatibility
+The version-locked Qwen3.5 TP2 adapter and a narrow vLLM v0.25.1 compatibility
 patch are shipped under `examples/vllm`, not in the wheel. They exist so the
 two measured profiles can be run publicly while the maintainable upstream
 extension boundary is discussed. They are deliberately version-locked and
@@ -66,15 +68,13 @@ interfaces differ.
 Kernel and layer speedups alone are useful evidence, but they do not satisfy
 this runtime acceptance bar.
 
-## Recommended sequence
+## Upstream status and next work
 
-1. Publish and pin the two tested llm-compressor conversion recipes.
-2. Validate both measured models through the public vLLM reproducer, including
-   TP2 CUDA Graph serving and public FP8/MXFP6 A/B evidence.
-3. Present the working prototype and its exact limits to the vLLM community,
-   then agree on the maintainable dense and routed-MoE integration boundaries.
-4. Generalize checkpoint and model coverage only after that feedback; validate
-   SGLang independently rather than copying the vLLM adapter.
+The two tested conversion recipes, public TP2 reproducer and FP8/MXFP6 serving
+comparisons are published. Issue #52347 presents their measured scope to the
+vLLM community. Further work should follow the runtime boundary and additional
+evidence requested in that discussion. SGLang integration remains separate and
+requires its own implementation and validation.
 
 ## Upstream references
 

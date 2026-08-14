@@ -1,8 +1,9 @@
 # Qwen3.5 MoE kernels
 
 The repository includes specialized SM120 execution paths for the Qwen3.5
-Mixture-of-Experts topology. These are standalone PyTorch operators and layer
-benchmarks, not a community-vLLM model loader.
+Mixture-of-Experts topology. The wheel exposes standalone PyTorch operators and
+layer benchmarks. A separate, version-locked vLLM v0.25.1 reproducer supports
+the tested Qwen3.5-35B-A3B profile.
 
 ## Execution paths
 
@@ -59,10 +60,10 @@ cross-model MoE ABI.
 optionally imports vLLM for the FP8 runtime baseline and its custom TP
 all-reduce.
 
-Full serving evidence used a pinned adapter and internally maintained vLLM
-0.25.1 environment. That integration is evidence for the kernels and model
-path, not a promise that the wheel alone can load an MXFP6 Hugging Face
-checkpoint. See [Runtime integration](runtime-integration.md).
+Serving evidence includes a public two-model vLLM v0.25.1 reproducer and an
+independently optimized internal vLLM reference. The wheel alone does not load
+an MXFP6 Hugging Face checkpoint, and neither adapter is a general runtime
+backend. See [Runtime integration](runtime-integration.md).
 
 ## Benchmarking
 
@@ -71,8 +72,11 @@ Run the real Qwen3.5 MoE layer benchmark with two workers:
 ```bash
 torchrun --nproc-per-node=2 \
   benchmarks/benchmark_qwen35_moe_layer.py \
-  --batch-sizes 1 --mx-mode array \
-  --warmup 20 --iterations 1000 --repeats 9
+  --fp8-model "$PWD/models/Qwen3.5-35B-A3B-FP8" \
+  --mx-model "$PWD/models/Qwen3.5-35B-A3B-MXFP6" \
+  --batch-sizes 1 2 4 8 10 12 14 16 24 32 40 48 56 64 80 96 \
+  --mx-mode auto --route-stats \
+  --warmup 40 --iterations 1000 --repeats 9
 ```
 
 The benchmark can also emulate a TP2 shard in one process. For checked-in
