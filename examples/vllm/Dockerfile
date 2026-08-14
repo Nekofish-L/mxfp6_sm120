@@ -4,10 +4,7 @@ FROM ${VLLM_BASE_IMAGE}
 USER root
 ARG MXFP6_REF=efb3a7968ffa61d8521843600721dda3c93a5854
 ARG LLM_COMPRESSOR_REF=37242a6a1bf6869857084d2ac7ccb22d1af7168d
-ARG REPRODUCER_REF
 ARG PYPI_INDEX_URL=https://pypi.org/simple
-
-RUN test -n "${REPRODUCER_REF}"
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
@@ -35,6 +32,9 @@ RUN git clone https://github.com/troycheng/llm-compressor.git \
         /opt/llm-compressor \
     && git -C /opt/llm-compressor checkout --detach ${LLM_COMPRESSOR_REF} \
     && python3 -m pip install --no-deps -e /opt/llm-compressor
+
+ARG REPRODUCER_REF
+RUN test -n "${REPRODUCER_REF}"
 
 COPY examples/vllm/patches/vllm-v0.25.1-mxfp6.patch /tmp/
 COPY examples/vllm/adapter/mxfp6_tp2_vllm.py /tmp/
