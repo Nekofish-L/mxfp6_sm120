@@ -2,7 +2,6 @@ ARG VLLM_BASE_IMAGE=vllm/vllm-openai:v0.25.1@sha256:e4f88a835143cd22aee2397a26ec
 FROM ${VLLM_BASE_IMAGE}
 
 USER root
-ARG MXFP6_REF=efb3a7968ffa61d8521843600721dda3c93a5854
 ARG LLM_COMPRESSOR_REF=37242a6a1bf6869857084d2ac7ccb22d1af7168d
 ARG PYPI_INDEX_URL=https://pypi.org/simple
 
@@ -18,11 +17,7 @@ RUN apt-get update \
     && UV_HTTP_TIMEOUT=300 uv pip install --system --no-cache \
         --index-url "${PYPI_INDEX_URL}" cmake==3.31.10
 
-RUN git clone https://github.com/Nekofish-L/mxfp6_sm120.git \
-        /opt/mxfp6_sm120 \
-    && git -C /opt/mxfp6_sm120 checkout --detach ${MXFP6_REF} \
-    && git -C /opt/mxfp6_sm120 \
-        submodule update --init third_party/cutlass
+COPY . /opt/mxfp6_sm120
 
 RUN cd /opt/mxfp6_sm120 \
     && ./scripts/build_wheel.sh \
