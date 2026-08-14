@@ -1,0 +1,12 @@
+.git
+.github
+third_party
+build*
+dist
+*.whl
+*.ncu-rep
+*.nsys-rep
+*.sqlite
+*.log
+__pycache__
+.pytest_cache

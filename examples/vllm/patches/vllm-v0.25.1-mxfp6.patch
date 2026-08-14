@@ -1,0 +1,612 @@
+diff --git a/vllm/model_executor/layers/quantization/quark/schemes/quark_ocp_mx.py b/vllm/model_executor/layers/quantization/quark/schemes/quark_ocp_mx.py
+index 70a7e81..ef56b31 100644
+--- a/vllm/model_executor/layers/quantization/quark/schemes/quark_ocp_mx.py
++++ b/vllm/model_executor/layers/quantization/quark/schemes/quark_ocp_mx.py
+@@ -4,6 +4,7 @@
+ from collections.abc import Callable
+ from fractions import Fraction
+ from functools import partial
++import os
+ from typing import Any
+ 
+ import torch
+@@ -15,10 +15,18 @@ from vllm.model_executor.layers.quantization.utils.mxfp4_utils import (
+     dequant_mxfp4,
+     quant_dequant_mxfp4,
+ )
++from vllm.model_executor.layers.quantization.utils.mxfp6_sm120_utils import (
++    is_mxfp6_sm120_available,
++    mxfp6_sm120_gemm,
++    pack_mxfp6_sm120_scales,
++)
+ from vllm.model_executor.layers.quantization.utils.mxfp6_utils import (
+     dequant_mxfp6,
+     quant_dequant_mxfp6,
+ )
++from vllm.model_executor.layers.quantization.utils.mxfp8_utils import (
++    mxfp8_e4m3_quantize,
++)
+ from vllm.model_executor.layers.quantization.utils.ocp_mx_utils import (
+     OCP_MX_BLOCK_SIZE,
+     OCP_MX_Scheme,
+@@ -202,16 +210,38 @@ class QuarkOCP_MX(QuarkScheme):
+                 "implemented. Please open an issue."
+             )
+ 
+-        # TODO: integrate (or test) mixed-precision kernel.
+-        self.emulate = not current_platform.supports_mx() or (
+-            self.input_dtype != "mxfp4" or self.weight_dtype != "mxfp4"
++        is_mxfp6_sm120_config = self._is_mxfp6_sm120_config()
++        self.require_mxfp6_sm120 = (
++            os.environ.get("MXFP6_SM120_REQUIRE_NATIVE") == "1"
++        )
++        self.use_mxfp6_sm120 = (
++            is_mxfp6_sm120_config and is_mxfp6_sm120_available()
++        )
++        if (
++            self.require_mxfp6_sm120
++            and is_mxfp6_sm120_config
++            and not self.use_mxfp6_sm120
++        ):
++            raise RuntimeError(
++                "This reproduction requires the native mxfp6-sm120 backend, "
++                "but the extension or required W6A8 API is unavailable."
++            )
++        self.output_size_per_partition: int | None = None
++        self.emulate = not self.use_mxfp6_sm120 and (
++            not current_platform.supports_mx()
++            or self.input_dtype != "mxfp4"
++            or self.weight_dtype != "mxfp4"
+         )
+ 
+         self.rocm_use_aiter_fp4_asm_gemm = (
+             rocm_aiter_ops.is_asm_fp4_gemm_dynamic_quant_enabled()
+         )
+ 
+-        if not self.emulate and (dynamic_mxfp4_quant is None or gemm_afp4wfp4 is None):
++        if (
++            not self.emulate
++            and not self.use_mxfp6_sm120
++            and (dynamic_mxfp4_quant is None or gemm_afp4wfp4 is None)
++        ):
+             # Currently need these kernels if not emulating
+             raise NotImplementedError(
+                 f"{self.__class__.__name__} requires AITER to be installed "
+@@ -219,7 +236,22 @@ class QuarkOCP_MX(QuarkScheme):
+                 "https://github.com/ROCm/aiter for installation details."
+             )
+ 
+-        if not current_platform.supports_mx():
++        if self.use_mxfp6_sm120:
++            logger.info_once(
++                "Using the mxfp6-sm120 native W6A8 kernel for Quark "
++                "E3M2 weights and dynamic E4M3 activations."
++            )
++        elif (
++            self._is_mxfp6_sm120_config()
++            and current_platform.is_cuda()
++            and current_platform.is_device_capability(120)
++        ):
++            logger.warning_once(
++                "The Quark W6A8 checkpoint is compatible with the native "
++                "SM120 kernel, but mxfp6-sm120 could not be loaded. Falling "
++                "back to MXFP6 emulation."
++            )
++        elif not current_platform.supports_mx():
+             logger.warning_once(
+                 "The current platform does not support native MXFP4/MXFP6 "
+                 "computation. Simulated weight dequantization and activation "
+@@ -227,8 +259,10 @@ class QuarkOCP_MX(QuarkScheme):
+                 "layers computed in high precision."
+             )
+ 
+-        if current_platform.supports_mx() and (
+-            self.input_dtype != "mxfp4" or self.weight_dtype != "mxfp4"
++        if (
++            not self.use_mxfp6_sm120
++            and current_platform.supports_mx()
++            and (self.input_dtype != "mxfp4" or self.weight_dtype != "mxfp4")
+         ):
+             logger.warning_once(
+                 "The current platform supports native MXFP4/MXFP6 "
+@@ -239,6 +273,30 @@ class QuarkOCP_MX(QuarkScheme):
+                 "layers computed in high precision."
+             )
+ 
++    def _is_mxfp6_sm120_config(self) -> bool:
++        input_spec = self.input_quant_spec
++        return (
++            self.weight_quant_spec.get("dtype") == "fp6_e3m2"
++            and self.weight_quant_spec.get("qscheme") == "per_group"
++            and self.weight_quant_spec.get("group_size") == OCP_MX_BLOCK_SIZE
++            and self.weight_quant_spec.get("scale_format") == "e8m0"
++            and self.weight_quant_spec.get("symmetric") is True
++            and not self.weight_quant_spec.get("is_dynamic")
++            and input_spec is not None
++            and input_spec.get("dtype") == "fp8_e4m3"
++            and input_spec.get("qscheme") == "per_group"
++            and input_spec.get("group_size") == OCP_MX_BLOCK_SIZE
++            and input_spec.get("scale_format") == "e8m0"
++            and input_spec.get("symmetric") is True
++            and input_spec.get("is_dynamic") is True
++        )
++
++    @staticmethod
++    def _is_mxfp6_sm120_problem_supported(
++        output_features: int, input_features: int
++    ) -> bool:
++        return output_features % 8 == 0 and input_features % 128 == 0
++
+     def get_packed_dim(self, dim: int, quant_dtype: str):
+         if quant_dtype == "mxfp4":
+             assert dim % 2 == 0
+@@ -268,7 +326,12 @@ class QuarkOCP_MX(QuarkScheme):
+     def process_weights_after_loading(self, layer: torch.nn.Module) -> None:
+         layer.weight = torch.nn.Parameter(layer.weight.data, requires_grad=False)
+ 
+-        if self.emulate:
++        if self.use_mxfp6_sm120:
++            layer.weight_scale = torch.nn.Parameter(
++                pack_mxfp6_sm120_scales(layer.weight_scale.data),
++                requires_grad=False,
++            )
++        elif self.emulate:
+             if self.dynamic_mxfp4_quant:
+                 self.process_dynamic_mxfp4_weights_after_loading(layer)
+             else:
+@@ -328,6 +391,27 @@ class QuarkOCP_MX(QuarkScheme):
+         else:
+             output_size_per_partition = sum(output_partition_sizes)
+             layer.logical_widths = output_partition_sizes
++            self.output_size_per_partition = output_size_per_partition
++
++            if self.use_mxfp6_sm120 and not self._is_mxfp6_sm120_problem_supported(
++                output_size_per_partition, input_size_per_partition
++            ):
++                if self.require_mxfp6_sm120:
++                    raise RuntimeError(
++                        "This reproduction requires the native mxfp6-sm120 "
++                        "backend, but a partition has unsupported dimensions "
++                        f"N={output_size_per_partition}, "
++                        f"K={input_size_per_partition}."
++                    )
++                self.use_mxfp6_sm120 = False
++                self.emulate = True
++                logger.warning_once(
++                    "mxfp6-sm120 requires N to be divisible by 8 and K by "
++                    "128, but a partition has N=%d and K=%d. Falling back "
++                    "to MXFP6 emulation for that layer.",
++                    output_size_per_partition,
++                    input_size_per_partition,
++                )
+ 
+             # WEIGHT
+             weight = PackedvLLMParameter(
+@@ -363,6 +440,25 @@ class QuarkOCP_MX(QuarkScheme):
+         x: torch.Tensor,
+         bias: torch.Tensor | None = None,
+     ) -> torch.Tensor:
++        if self.use_mxfp6_sm120:
++            assert self.output_size_per_partition is not None
++            output_shape = (*x.shape[:-1], self.output_size_per_partition)
++            x_2d = x.reshape(-1, x.shape[-1]).contiguous()
++            quantized_x, input_scale = mxfp8_e4m3_quantize(
++                x_2d, is_sf_swizzled_layout=True
++            )
++            y = mxfp6_sm120_gemm(
++                quantized_x,
++                input_scale,
++                layer.weight,
++                layer.weight_scale,
++                self.output_size_per_partition,
++                x.dtype,
++            ).reshape(output_shape)
++            if bias is not None:
++                y = y + bias
++            return y
++
+         if self.emulate:
+             dq_w = self.dequant_func(layer.weight, layer.weight_scale, x.dtype)
+             qdq_x = self.quant_dequant_func(x)
+diff --git a/vllm/model_executor/layers/quantization/utils/mxfp6_sm120_utils.py b/vllm/model_executor/layers/quantization/utils/mxfp6_sm120_utils.py
+new file mode 100644
+index 0000000..dca8192
+--- /dev/null
++++ b/vllm/model_executor/layers/quantization/utils/mxfp6_sm120_utils.py
+@@ -0,0 +1,267 @@
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++"""Helpers for the optional ``mxfp6-sm120`` W6A8 backend."""
++
++import importlib
++from types import ModuleType
++
++import torch
++
++from vllm.logger import init_logger
++from vllm.model_executor.layers.quantization.utils.mxfp8_utils import (
++    mxfp8_e4m3_quantize,
++)
++from vllm.platforms import current_platform
++from vllm.utils.torch_utils import direct_register_custom_op
++
++logger = init_logger(__name__)
++
++_W6A8Problem = tuple[int, int, torch.Tensor, torch.Tensor]
++
++_REQUIRED_API = (
++    "MXFP8Tensor",
++    "PackedMXFP6Tensor",
++    "autotune_w6a8",
++    "begin_workspace_planning",
++    "finalize_workspace_planning",
++    "gemm_w6a8",
++    "is_available",
++    "load_library",
++    "pack_scales",
++    "workspace_stats",
++)
++
++
++def _import_mxfp6() -> ModuleType:
++    return importlib.import_module("mxfp6")
++
++
++def is_mxfp6_sm120_available() -> bool:
++    """Return whether the native extension can run on the current device."""
++    if not current_platform.is_cuda() or not current_platform.is_device_capability(120):
++        return False
++
++    try:
++        mxfp6 = _import_mxfp6()
++        if not all(hasattr(mxfp6, name) for name in _REQUIRED_API):
++            logger.debug("mxfp6-sm120 does not provide the required W6A8 API")
++            return False
++        mxfp6.load_library()
++        return True
++    except Exception:
++        logger.debug("mxfp6-sm120 is unavailable", exc_info=True)
++        return False
++
++
++def pack_mxfp6_sm120_scales(logical_scales: torch.Tensor) -> torch.Tensor:
++    """Convert logical UE8M0 scales to the CUTLASS SM120 layout."""
++    return _import_mxfp6().pack_scales(logical_scales.contiguous())
++
++
++def _mxfp6_sm120_gemm_impl(
++    quantized_x: torch.Tensor,
++    input_scale: torch.Tensor,
++    weight: torch.Tensor,
++    weight_scale: torch.Tensor,
++    output_features: int,
++    output_dtype: torch.dtype,
++) -> torch.Tensor:
++    mxfp6 = _import_mxfp6()
++    mxfp6.load_library()
++    rows, input_features = quantized_x.shape
++    output = torch.ops.mxfp6.gemm_w6a8(
++        quantized_x.view(torch.uint8),
++        weight,
++        input_scale,
++        weight_scale,
++        rows,
++        output_features,
++        input_features,
++        1.0,
++        output_dtype,
++    )
++    return output
++
++
++def _mxfp6_sm120_gemm_fake(
++    quantized_x: torch.Tensor,
++    input_scale: torch.Tensor,
++    weight: torch.Tensor,
++    weight_scale: torch.Tensor,
++    output_features: int,
++    output_dtype: torch.dtype,
++) -> torch.Tensor:
++    del input_scale, weight, weight_scale
++    return torch.empty(
++        (quantized_x.shape[0], output_features),
++        dtype=output_dtype,
++        device=quantized_x.device,
++    )
++
++
++direct_register_custom_op(
++    op_name="mxfp6_sm120_gemm",
++    op_func=_mxfp6_sm120_gemm_impl,
++    mutates_args=[],
++    fake_impl=_mxfp6_sm120_gemm_fake,
++)
++
++
++def mxfp6_sm120_gemm(
++    quantized_x: torch.Tensor,
++    input_scale: torch.Tensor,
++    weight: torch.Tensor,
++    weight_scale: torch.Tensor,
++    output_features: int,
++    output_dtype: torch.dtype,
++) -> torch.Tensor:
++    """Run native W6A8 GEMM with an already-quantized MXFP8 activation."""
++    return torch.ops.vllm.mxfp6_sm120_gemm(
++        quantized_x,
++        input_scale,
++        weight,
++        weight_scale,
++        output_features,
++        output_dtype,
++    )
++
++
++def _collect_w6a8_problems(model: torch.nn.Module) -> list[_W6A8Problem]:
++    problems: dict[tuple[int, int], tuple[torch.Tensor, torch.Tensor]] = {}
++    for layer in model.modules():
++        scheme = getattr(layer, "scheme", None)
++        if not getattr(scheme, "use_mxfp6_sm120", False):
++            continue
++
++        weight = layer.weight
++        weight_scale = layer.weight_scale
++        output_features, packed_features = weight.shape
++        input_features = packed_features * 4 // 3
++        problems.setdefault((output_features, input_features), (weight, weight_scale))
++
++    return [
++        (output_features, input_features, weight, weight_scale)
++        for (output_features, input_features), (
++            weight,
++            weight_scale,
++        ) in problems.items()
++    ]
++
++
++def _normalize_warmup_inputs(
++    token_sizes: list[int],
++    dtype: torch.dtype,
++) -> tuple[list[int], torch.dtype]:
++    sizes = sorted({size for size in token_sizes if size > 0}, reverse=True)
++    if dtype not in (torch.float16, torch.bfloat16):
++        dtype = torch.bfloat16
++    return sizes, dtype
++
++
++def _run_w6a8_warmup(
++    mxfp6: ModuleType,
++    problems: list[_W6A8Problem],
++    sizes: list[int],
++    dtype: torch.dtype,
++    *,
++    autotune: bool,
++    initial_lane_count: int | None = None,
++) -> None:
++    for output_features, input_features, weight, weight_scale in problems:
++        packed_weight = mxfp6.PackedMXFP6Tensor(
++            values=weight,
++            scales=weight_scale,
++            rows=output_features,
++            k=input_features,
++        )
++        for num_tokens in sizes:
++            x = torch.empty(
++                (num_tokens, input_features), device=weight.device, dtype=dtype
++            ).uniform_(-1.0, 1.0)
++            quantized_values, input_scale = mxfp8_e4m3_quantize(
++                x, is_sf_swizzled_layout=True
++            )
++            quantized_x = mxfp6.MXFP8Tensor(
++                values=quantized_values.view(torch.uint8),
++                scales=input_scale,
++                rows=num_tokens,
++                k=input_features,
++            )
++            if autotune:
++                mxfp6.autotune_w6a8(quantized_x, packed_weight, out_dtype=dtype)
++            output = mxfp6.gemm_w6a8(quantized_x, packed_weight, out_dtype=dtype)
++            del quantized_values, input_scale, quantized_x
++            del x, output
++            if (
++                initial_lane_count is not None
++                and mxfp6.workspace_stats(weight.device)["lanes"] > initial_lane_count
++            ):
++                return
++
++
++@torch.inference_mode()
++def warmup_mxfp6_sm120(
++    model: torch.nn.Module,
++    token_sizes: list[int],
++    dtype: torch.dtype,
++) -> None:
++    """Warm and autotune each distinct native W6A8 problem before capture."""
++    problems = _collect_w6a8_problems(model)
++    if not problems:
++        return
++
++    sizes, dtype = _normalize_warmup_inputs(token_sizes, dtype)
++    if not sizes:
++        return
++
++    mxfp6 = _import_mxfp6()
++    workspace_device = problems[0][2].device
++    mxfp6.begin_workspace_planning(workspace_device)
++    logger.info(
++        "Warming mxfp6-sm120 for %d W6A8 shapes and %d token sizes",
++        len(problems),
++        len(sizes),
++    )
++    _run_w6a8_warmup(mxfp6, problems, sizes, dtype, autotune=True)
++
++    workspace_stats = mxfp6.finalize_workspace_planning(workspace_device)
++    torch.accelerator.synchronize()
++    logger.info(
++        "Frozen mxfp6-sm120 Stream-K workspace: %d layouts, %.2f MiB "
++        "per CUDA stream lane",
++        workspace_stats["layouts"],
++        workspace_stats["arena_bytes"] / (1 << 20),
++    )
++
++
++@torch.inference_mode()
++def warmup_mxfp6_sm120_stream(
++    model: torch.nn.Module,
++    token_sizes: list[int],
++    dtype: torch.dtype,
++) -> None:
++    """Register the current CUDA stream with the frozen Stream-K workspace."""
++    problems = _collect_w6a8_problems(model)
++    if not problems:
++        return
++
++    sizes, dtype = _normalize_warmup_inputs(token_sizes, dtype)
++    if not sizes:
++        return
++    sizes.reverse()
++
++    mxfp6 = _import_mxfp6()
++    workspace_device = problems[0][2].device
++    workspace_stats = mxfp6.workspace_stats(workspace_device)
++    if workspace_stats["layouts"] == 0:
++        return
++
++    _run_w6a8_warmup(
++        mxfp6,
++        problems,
++        sizes,
++        dtype,
++        autotune=False,
++        initial_lane_count=workspace_stats["lanes"],
++    )
++    torch.accelerator.synchronize()
+diff --git a/vllm/model_executor/models/qwen3_next.py b/vllm/model_executor/models/qwen3_next.py
+index ef320dd..5cfe04e 100644
+--- a/vllm/model_executor/models/qwen3_next.py
++++ b/vllm/model_executor/models/qwen3_next.py
+@@ -2,6 +2,7 @@
+ # SPDX-FileCopyrightText: Copyright contributors to the vLLM project
+ """Inference-only Qwen3Next model."""
+ 
++import os
+ from collections.abc import Iterable
+ from itertools import islice
+ 
+@@ -173,6 +174,17 @@ class Qwen3NextSparseMoeBlock(nn.Module):
+                 prefix=f"{prefix}.shared_expert",
+             )
+ 
++        runner_cls = None
++        if os.environ.get("QWEN35_MXFP6_TP2") == "1":
++            from mxfp6_tp2_vllm import (
++                MXFP6_TP2_ADAPTER_VERSION,
++                mxfp6_tp2_runner_cls,
++            )
++
++            if MXFP6_TP2_ADAPTER_VERSION != 3:
++                raise RuntimeError("expected MXFP6 TP2 adapter v3")
++            runner_cls = mxfp6_tp2_runner_cls()
++
+         self.experts = FusedMoE(
+             shared_experts=self.shared_expert,
+             gate=self.gate,
+@@ -190,6 +202,7 @@ class Qwen3NextSparseMoeBlock(nn.Module):
+             shared_expert_gate=self.shared_expert_gate
+             if self.shared_expert is None
+             else None,
++            runner_cls=runner_cls,
+         )
+ 
+     def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+diff --git a/vllm/model_executor/warmup/kernel_warmup.py b/vllm/model_executor/warmup/kernel_warmup.py
+index b7f3c26..cebff39 100644
+--- a/vllm/model_executor/warmup/kernel_warmup.py
++++ b/vllm/model_executor/warmup/kernel_warmup.py
+@@ -12,6 +12,9 @@ import torch
+ 
+ import vllm.envs as envs
+ from vllm.logger import init_logger
++from vllm.model_executor.layers.quantization.utils.mxfp6_sm120_utils import (
++    warmup_mxfp6_sm120,
++)
+ from vllm.model_executor.warmup.cutedsl_warmup import cutedsl_warmup
+ from vllm.model_executor.warmup.deep_gemm_warmup import deep_gemm_warmup
+ from vllm.model_executor.warmup.deepseek_v4_mhc_warmup import (
+@@ -83,6 +86,13 @@ def kernel_warmup(worker: "Worker"):
+         max_tokens = worker.scheduler_config.max_num_batched_tokens
+         deep_gemm_warmup(model, max_tokens)
+ 
++    capture_sizes = worker.vllm_config.compilation_config.cudagraph_capture_sizes or []
++    warmup_mxfp6_sm120(
++        worker.get_model(),
++        [1, worker.scheduler_config.max_num_batched_tokens, *capture_sizes],
++        worker.model_config.dtype,
++    )
++
+     minimax_m3_msa_warmup(worker)
+ 
+     enable_flashinfer_autotune = (
+diff --git a/vllm/v1/worker/gpu/cudagraph_utils.py b/vllm/v1/worker/gpu/cudagraph_utils.py
+index 9b93d17..aa5b4f6 100644
+--- a/vllm/v1/worker/gpu/cudagraph_utils.py
++++ b/vllm/v1/worker/gpu/cudagraph_utils.py
+@@ -301,6 +301,7 @@ class CudaGraphManager:
+         self,
+         create_forward_fn: CreateForwardFn,
+         progress_bar_desc: str = "Capturing CUDA graphs",
++        capture_stream_warmup: Callable[[], None] | None = None,
+     ) -> dict[BatchExecutionDescriptor, AttentionStatePair]:
+         """Capture CUDA graphs.
+ 
+@@ -315,6 +316,9 @@ class CudaGraphManager:
+         """
+         attn_states: dict[BatchExecutionDescriptor, AttentionStatePair] = {}
+         with graph_capture(device=self.device):
++            if capture_stream_warmup is not None:
++                capture_stream_warmup()
++
+             # Capture in order: PIECEWISE first, then FULL. PIECEWISE has larger
+             # activations so FULL activations should fit in already allocated
+             # buffers in the graph pool.
+@@ -356,7 +360,11 @@ class CudaGraphManager:
+                         # Sync offloader's copy stream before capture.
+                         # Ensure any pre-capture prefetches from offloader are complete.
+                         get_offloader().sync_prev_onload()
+-                        with torch.cuda.graph(graph, self.pool):
++                        with torch.cuda.graph(
++                            graph,
++                            self.pool,
++                            stream=torch.cuda.current_stream(),
++                        ):
+                             forward_fn(CUDAGraphMode.NONE)
+                             # Join offloader's copy stream after forward to avoid
+                             # unjoined stream error. The last layer's start_prefetch
+@@ -573,7 +581,26 @@ class ModelCudaGraphManager(CudaGraphManager):
+ 
+             return forward_fn, AttentionState(attn_metadata, slot_mappings)
+ 
+-        return super().capture(create_forward_fn, progress_bar_desc)
++        capture_sizes = [
++            desc.num_tokens for descs in self._capture_descs.values() for desc in descs
++        ]
++
++        def warmup_capture_stream() -> None:
++            from vllm.model_executor.layers.quantization.utils import (
++                mxfp6_sm120_utils,
++            )
++
++            mxfp6_sm120_utils.warmup_mxfp6_sm120_stream(
++                model,
++                capture_sizes,
++                self.vllm_config.model_config.dtype,
++            )
++
++        return super().capture(
++            create_forward_fn,
++            progress_bar_desc,
++            capture_stream_warmup=warmup_capture_stream,
++        )
+ 
+     def run_fullgraph(
+         self, desc: BatchExecutionDescriptor
