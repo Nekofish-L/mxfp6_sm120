@@ -8788,6 +8788,7 @@ void qwen35_w1_splitk_silu_mxfp8_out_cuda(
           properties.cooperativeLaunch,
       "Qwen3.5 split-K W1 requires cooperative SM120");
   int active_blocks = 0;
+  bool use_compact_four_token_grid = false;
   if (separate_shared && tokens == 1) {
     C10_CUDA_CHECK(
         cudaOccupancyMaxActiveBlocksPerMultiprocessor(
@@ -8866,10 +8867,45 @@ void qwen35_w1_splitk_silu_mxfp8_out_cuda(
             direct_moe::kThreads,
             sizeof(direct_moe::SplitKSharedStorage)));
   }
-  int const grid_blocks =
+  int grid_blocks =
       include_shared
       ? (tokens == 4 || tokens == 8 ? 288 : 144)
       : (tokens == 4 || tokens == 8 ? 256 : 128);
+  // The fused B=4/8 path normally uses 288 cooperative CTAs.  Smaller SM120
+  // parts cannot make that entire grid resident even though the underlying
+  // work fits comfortably.  Preserve the fused schedule by using a single-K
+  // split B=4 grid (144 CTAs); B=8 is issued as two such grids with disjoint
+  // partial/output storage.  Programmatic dependency lets the second grid
+  // overlap the first grid's short reduction tail without violating the
+  // cooperative-grid residency requirement.
+  if ((tokens == 4 || tokens == 8) &&
+      (!separate_shared || tokens == 4) &&
+      active_blocks * properties.multiProcessorCount < grid_blocks) {
+    if (separate_shared) {
+      C10_CUDA_CHECK(
+          cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+              &active_blocks,
+              direct_moe::qwen35_w1_splitk_kernel<4, 1, true, true>,
+              direct_moe::kThreads,
+              sizeof(direct_moe::SplitKSharedStorage)));
+    } else if (include_shared) {
+      C10_CUDA_CHECK(
+          cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+              &active_blocks,
+              direct_moe::qwen35_w1_splitk_kernel<4, 1>,
+              direct_moe::kThreads,
+              sizeof(direct_moe::SplitKSharedStorage)));
+    } else {
+      C10_CUDA_CHECK(
+          cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+              &active_blocks,
+              direct_moe::qwen35_w1_splitk_kernel<4, 1, false>,
+              direct_moe::kThreads,
+              sizeof(direct_moe::SplitKSharedStorage)));
+    }
+    use_compact_four_token_grid = true;
+    grid_blocks = include_shared ? 144 : 128;
+  }
   TORCH_CHECK(
       active_blocks * properties.multiProcessorCount >= grid_blocks,
       "Qwen3.5 split-K W1 needs ",
@@ -8942,6 +8978,20 @@ void qwen35_w1_splitk_silu_mxfp8_out_cuda(
         partial_ptr,
         output_ptr,
         output_scales_ptr));
+  } else if (separate_shared && use_compact_four_token_grid) {
+    C10_CUDA_CHECK(cudaLaunchKernelEx(
+        &config,
+        direct_moe::qwen35_w1_splitk_kernel<4, 1, true, true>,
+        activation_ptr,
+        scales_ptr,
+        weight_ptr,
+        weight_scales_ptr,
+        shared_weight_ptr,
+        shared_weight_scales_ptr,
+        ids_ptr,
+        partial_ptr,
+        output_ptr,
+        output_scales_ptr));
   } else if (separate_shared) {
     C10_CUDA_CHECK(cudaLaunchKernelEx(
         &config,
@@ -8984,6 +9034,52 @@ void qwen35_w1_splitk_silu_mxfp8_out_cuda(
         partial_ptr,
         output_ptr,
         output_scales_ptr));
+  } else if (include_shared && tokens == 4 &&
+             use_compact_four_token_grid) {
+    C10_CUDA_CHECK(cudaLaunchKernelEx(
+        &config,
+        direct_moe::qwen35_w1_splitk_kernel<4, 1>,
+        activation_ptr,
+        scales_ptr,
+        weight_ptr,
+        weight_scales_ptr,
+        nullptr,
+        nullptr,
+        ids_ptr,
+        partial_ptr,
+        output_ptr,
+        output_scales_ptr));
+  } else if (include_shared && tokens == 8 &&
+             use_compact_four_token_grid) {
+    constexpr int kTokenOffset = 4;
+    constexpr int kRouteOffset = kTokenOffset * 9;
+    constexpr int kPartialBlocks = 144;
+    C10_CUDA_CHECK(cudaLaunchKernelEx(
+        &config,
+        direct_moe::qwen35_w1_splitk_kernel<4, 1>,
+        activation_ptr,
+        scales_ptr,
+        weight_ptr,
+        weight_scales_ptr,
+        nullptr,
+        nullptr,
+        ids_ptr,
+        partial_ptr,
+        output_ptr,
+        output_scales_ptr));
+    C10_CUDA_CHECK(cudaLaunchKernelEx(
+        &config,
+        direct_moe::qwen35_w1_splitk_kernel<4, 1>,
+        activation_ptr + kTokenOffset * 2048,
+        scales_ptr + kTokenOffset * 64,
+        weight_ptr,
+        weight_scales_ptr,
+        nullptr,
+        nullptr,
+        ids_ptr + kTokenOffset * 8,
+        partial_ptr + kPartialBlocks * direct_moe::kTileM,
+        output_ptr + kRouteOffset * 256,
+        output_scales_ptr + kRouteOffset * 8));
   } else if (include_shared && tokens == 4) {
     C10_CUDA_CHECK(cudaLaunchKernelEx(
         &config,
@@ -9012,6 +9108,50 @@ void qwen35_w1_splitk_silu_mxfp8_out_cuda(
         partial_ptr,
         output_ptr,
         output_scales_ptr));
+  } else if (tokens == 4 && use_compact_four_token_grid) {
+    C10_CUDA_CHECK(cudaLaunchKernelEx(
+        &config,
+        direct_moe::qwen35_w1_splitk_kernel<4, 1, false>,
+        activation_ptr,
+        scales_ptr,
+        weight_ptr,
+        weight_scales_ptr,
+        nullptr,
+        nullptr,
+        ids_ptr,
+        partial_ptr,
+        output_ptr,
+        output_scales_ptr));
+  } else if (tokens == 8 && use_compact_four_token_grid) {
+    constexpr int kTokenOffset = 4;
+    constexpr int kRouteOffset = kTokenOffset * 8;
+    constexpr int kPartialBlocks = 128;
+    C10_CUDA_CHECK(cudaLaunchKernelEx(
+        &config,
+        direct_moe::qwen35_w1_splitk_kernel<4, 1, false>,
+        activation_ptr,
+        scales_ptr,
+        weight_ptr,
+        weight_scales_ptr,
+        nullptr,
+        nullptr,
+        ids_ptr,
+        partial_ptr,
+        output_ptr,
+        output_scales_ptr));
+    C10_CUDA_CHECK(cudaLaunchKernelEx(
+        &config,
+        direct_moe::qwen35_w1_splitk_kernel<4, 1, false>,
+        activation_ptr + kTokenOffset * 2048,
+        scales_ptr + kTokenOffset * 64,
+        weight_ptr,
+        weight_scales_ptr,
+        nullptr,
+        nullptr,
+        ids_ptr + kTokenOffset * 8,
+        partial_ptr + kPartialBlocks * direct_moe::kTileM,
+        output_ptr + kRouteOffset * 256,
+        output_scales_ptr + kRouteOffset * 8));
   } else if (tokens == 1) {
     C10_CUDA_CHECK(cudaLaunchKernelEx(
         &config,
