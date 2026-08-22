@@ -1,85 +1,65 @@
-# vLLM and SGLang integration status
+# Runtime integration
 
-## Current status
-
-The repository provides an SM120 kernel package, layer benchmarks and a
-version-locked two-model serving prototype. The checked-in
-[public vLLM v0.25.1 reproducer](../examples/vllm/README.md) loads and serves
-Qwen3.5-27B and Qwen3.5-35B-A3B without internal infrastructure. It is not yet
-a drop-in backend for unmodified vLLM or SGLang.
-
-The repository also publishes pinned Qwen3.5-27B and Qwen3.5-35B-A3B serving
-comparisons from one internally maintained vLLM environment. Those experiments
-demonstrate end-to-end potential and preserve their measurement contracts; they
-do not turn the private research adapter into a supported public integration.
+`mxfp6-sm120` is an optional CUDA operator package. It has no vLLM or SGLang
+dependency and can be built and tested as a standalone PyTorch extension.
 
 ## vLLM
 
-vLLM can recognize Quark/OCP MXFP6 checkpoints, but the CUDA implementation
-available when this prototype was published uses software emulation. The public
-reproducer connects that loading path to this package for the two tested model
-profiles. The upstream discussion is tracked in
-[vLLM issue #52347](https://github.com/vllm-project/vllm/issues/52347).
+vLLM recognizes Quark/OCP MXFP6 checkpoints. Its current CUDA MXFP6 backend
+uses software emulation when no native implementation is registered.
 
-The package does not yet provide an upstream runtime backend. Such a backend
-would need:
+vLLM commit `e9d1398d9edfd90fcc1cf783805240e3effec013` (reviewed 2026-08-22)
+exposes the two integration surfaces needed by this package:
 
-1. an SM120 backend implementing support checks, weight post-processing and
-   `apply_weights` without importing private benchmark code;
-2. a versioned checkpoint mapping and loader path;
-3. model-layer selection for dense projections and a separate MoE design;
-4. custom-op fake/meta behavior where required by compilation and CUDA Graphs;
-5. exact unsupported-platform and unsupported-checkpoint behavior;
-6. upstream unit tests plus public full-model prefill/decode, TP and graph
-   validation.
+| Model path | vLLM interface | mxfp6-sm120 implementation |
+|---|---|---|
+| Dense | `MxFp6LinearKernel` | Weight processing, capability checks and native W6A8 GEMM |
+| Routed MoE | `FusedMoEExpertsModular` | Routing, W1, activation, W2, shared expert and reduction |
 
-The version-locked Qwen3.5 TP2 adapter and a narrow vLLM v0.25.1 compatibility
-patch are shipped under `examples/vllm`, not in the wheel. They exist so the
-two measured profiles can be run publicly while the maintainable upstream
-extension boundary is discussed. They are deliberately version-locked and
-fail outside their tested model, format, topology and SM120 scope.
+The Dense kernel registry already supports an optional out-of-tree
+implementation and retains `EmulationMxfp6LinearKernel` as fallback. The MoE
+integration must select the native experts implementation only for a recognized
+Quark MXFP6 layout, supported Qwen3.5 geometry and SM120 device. Other cases
+continue through vLLM's existing path.
+
+The repository's [`examples/vllm`](../examples/vllm/README.md) directory is a
+version-locked vLLM v0.25.1 reproducer. It loads and serves Qwen3.5-27B and
+Qwen3.5-35B-A3B, including TP2 and CUDA Graph execution. The adapter proves the
+two model mappings but is not intended for current-main submission.
+
+The current performance and correctness evidence is in
+[Benchmark methodology](benchmarks.md). Discussion with vLLM maintainers is
+tracked in [issue #52347](https://github.com/vllm-project/vllm/issues/52347).
+
+### Contribution scope
+
+A current-main integration needs to preserve one backend across both model
+paths while keeping the changes reviewable:
+
+1. register the SM120 Dense implementation through `MxFp6LinearKernel`;
+2. connect the same Quark MXFP6 format to the native routed-MoE experts path;
+3. keep package import optional and retain emulation fallback;
+4. test checkpoint loading, TP2, CUDA Graph capture and unsupported cases;
+5. document installation and the tested model and hardware boundary.
+
+Under this boundary, CUDA sources and GPU-specific tests remain with the
+optional package and the vLLM change is limited to registration, dispatch and
+fallback coverage.
 
 ## SGLang
 
-SGLang exposes its own `QuantizationConfig`, linear and fused-MoE integration
-contracts. It currently has no MXFP6 backend in its quantization registry.
-Integration therefore requires a separate design and PR covering:
+SGLang has separate quantization, linear and fused-MoE contracts. It currently
+has no MXFP6 entry in its quantization registry, so vLLM adapter code cannot be
+reused directly. A SGLang integration would need its own config recognition,
+weight loading, kernel registration, graph tests and fallback behavior.
 
-1. quantization config recognition and capability gating;
-2. serialized weight creation/loading and post-load packing;
-3. linear and Qwen3.5 fused-MoE dispatch;
-4. CUDA Graph/custom-op integration and fallback behavior;
-5. SGLang-native correctness, accuracy and serving benchmarks.
+The native operators and checkpoint data layout can be shared across runtimes.
+The framework glue remains runtime specific.
 
-The vLLM adapter must not be copied into SGLang: their model, MoE and graph
-interfaces differ.
+## References
 
-## Required evidence for an upstream runtime PR
-
-- a public, checksummed checkpoint conversion or conversion recipe;
-- a pinned CUDA, PyTorch, runtime and model compatibility matrix;
-- package build/install smoke tests in a clean Linux environment;
-- config detection, tensor mapping, packing and dispatch unit tests;
-- full-model prefill and decode under CUDA Graphs and TP2;
-- public quality results with a stated acceptance threshold;
-- end-to-end serving throughput, TTFT and TPOT against a reproducible baseline;
-- raw commands and artifacts, with every claim limited to its measured scope.
-
-Kernel and layer speedups alone are useful evidence, but they do not satisfy
-this runtime acceptance bar.
-
-## Upstream status and next work
-
-The two tested conversion recipes, public TP2 reproducer and FP8/MXFP6 serving
-comparisons are published. Issue #52347 presents their measured scope to the
-vLLM community. Further work should follow the runtime boundary and additional
-evidence requested in that discussion. SGLang integration remains separate and
-requires its own implementation and validation.
-
-## Upstream references
-
-- [vLLM MXFP6 kernel interface](https://github.com/vllm-project/vllm/blob/main/vllm/model_executor/kernels/linear/mxfp6/base.py)
-- [vLLM kernel selection test](https://github.com/vllm-project/vllm/blob/main/tests/kernels/quantization/test_mxfp6_kernel_selection.py)
-- [vLLM quantization configuration contract](https://github.com/vllm-project/vllm/blob/main/vllm/model_executor/layers/quantization/base_config.py)
-- [SGLang quantization configuration contract](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/layers/quantization/base_config.py)
-- [SGLang MXFP4 reference implementation](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/layers/quantization/mxfp4.py)
+- [vLLM MXFP6 kernel interface](https://github.com/vllm-project/vllm/blob/e9d1398d9edfd90fcc1cf783805240e3effec013/vllm/model_executor/kernels/linear/mxfp6/base.py)
+- [vLLM MXFP6 kernel selection tests](https://github.com/vllm-project/vllm/blob/e9d1398d9edfd90fcc1cf783805240e3effec013/tests/kernels/quantization/test_mxfp6_kernel_selection.py)
+- [vLLM modular MoE design](https://github.com/vllm-project/vllm/blob/e9d1398d9edfd90fcc1cf783805240e3effec013/docs/design/fused_moe_modular_kernel.md)
+- [vLLM Quark OCP MX scheme](https://github.com/vllm-project/vllm/blob/e9d1398d9edfd90fcc1cf783805240e3effec013/vllm/model_executor/layers/quantization/quark/schemes/quark_ocp_mx.py)
+- [SGLang quantization base](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/layers/quantization/base_config.py)

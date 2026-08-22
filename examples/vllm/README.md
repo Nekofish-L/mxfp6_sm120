@@ -145,8 +145,8 @@ docker run --rm --network host -v "$PWD/models:/models:ro" \
   --save-result --save-detailed
 ```
 
-The public 35B-A3B contract is deterministic `random-mm`; it is not the private
-workload behind the environment-bound `+13.58%` result:
+The public 35B-A3B contract is deterministic `random-mm`; it is separate from
+the frozen real multimodal workload used by the Champion sweep:
 
 ```bash
 docker run --rm --network host -v "$PWD/models:/models:ro" \

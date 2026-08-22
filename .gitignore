@@ -43,6 +43,9 @@ wheelhouse/
 !/benchmarks/results/qwen35_moe_service_tp2.json
 !/benchmarks/results/qwen35_public_conversion_validation.json
 !/benchmarks/results/qwen35_public_vllm_tp2.json
+!/benchmarks/results/qwen35_champion_concurrency_tp2.json
+!/benchmarks/results/qwen35_dense_gemm_current_main.json
+!/benchmarks/results/qwen35_moe_layer_current_main.json
 /autotune_results/
 /autotune_*.csv
 /profiler_*.csv

@@ -6,16 +6,15 @@
 </p>
 
 <h3 align="center">
-  Native OCP W6A8 Execution on NVIDIA SM120 Tensor Cores
+  Native OCP W6A8 execution on NVIDIA SM120 Tensor Cores
 </h3>
 
 <p align="center">
-  <a href="#overview">Overview</a> ·
   <a href="#performance">Performance</a> ·
   <a href="#execution-model">Design</a> ·
-  <a href="#build-and-minimal-use">Build</a> ·
-  <a href="#operator-surface">Operators</a> ·
-  <a href="#runtime-integration">vLLM Integration</a> ·
+  <a href="#build">Build</a> ·
+  <a href="#python-api">API</a> ·
+  <a href="#vllm-integration">vLLM</a> ·
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
@@ -26,141 +25,148 @@
   <img alt="PyTorch" src="https://img.shields.io/badge/PyTorch-CUDA-EE4C2C">
 </p>
 
-## Overview
+`mxfp6-sm120` is a PyTorch CUDA extension for native OCP MXFP6 inference on
+NVIDIA compute capability 12.0. It keeps weights in packed MXFP6 E3M2, creates
+MXFP8 E4M3 activations at runtime, and executes W6A8 matrix products with SM120
+block-scaled Tensor Core MMA.
 
-`mxfp6-sm120` is a PyTorch CUDA extension for OCP W6A8 inference on NVIDIA
-compute capability 12.0. It keeps model weights in packed MXFP6, quantizes
-activations to MXFP8 at runtime, and executes the mixed-precision operation with
-native SM120 block-scaled Tensor Core MMA.
+The package covers both execution patterns required by the tested Qwen3.5
+models:
 
-The repository contains a general Dense GEMM engine and a Qwen3.5 MoE schedule.
-The MoE implementation owns the GPU path from routing through W1, activation
-requantization, W2, shared-expert combine and final reduction. The checked-in
-benchmarks measure both isolated kernels and the complete TP2 MoE layer.
+| Path | Implementation |
+|---|---|
+| Dense | Shape-aware W6A8 GEMM for linear, attention and MLP projections |
+| Routed MoE | Routing, W1, SiLU-and-mul, intermediate quantization, W2, shared-expert combine and routed/shared reduction |
+| Runtime | Persistent workspaces, prewarmed dispatch and CUDA Graph replay |
 
 ## Performance
 
-### End-to-end serving
+### Full-service concurrency sweep
 
-| Model and workload | Official FP8 | MXFP6 | Output throughput gain |
-|---|---:|---:|---:|
-| Qwen3.5-27B, 3000 input / 1000 output, c32 | 1229.90 tok/s | 1341.97 tok/s | **+9.11%** |
-| Qwen3.5-35B-A3B, public `random-mm`, c4 | 678.37 tok/s | 793.33 tok/s | **+16.95%** |
+The primary comparison uses one frozen internal Champion runtime for both
+formats. Each model ran four fresh service lifecycles in
+FP8/MXFP6/MXFP6/FP8 order. FP8 and MXFP6 used the same TP2 topology, scheduler,
+CUDA Graph sizes, FlashInfer kernels and request set. Only the checkpoint format
+and quantized execution path changed.
 
-These results use the public vLLM v0.25.1 reproducer, two PIX-connected RTX 5090
-GPUs and tensor parallel size 2. Each comparison consists of four fresh service
-lifecycles in FP8/MXFP6/MXFP6/FP8 order. The reported gain is computed from the
-mean output throughput of the two runs for each format. See the
-[reproduction procedure](examples/vllm/README.md) and the
-[result manifest](benchmarks/results/qwen35_public_vllm_tp2.json).
+| Model | Measured concurrency | Output throughput gain | Mean TPOT reduction |
+|---|---|---:|---:|
+| Qwen3.5-27B | 1, 2, 4, 8, 16, 24, 32 | **+9.59% to +20.98%** | 7.53% to 16.75% |
+| Qwen3.5-35B-A3B | 1, 2, 4, 8, 16, 24, 32 | **+14.01% to +32.70%** | 11.52% to 25.27% |
 
-### Operator and layer benchmarks
+![Full-service FP8 and MXFP6 throughput curves](docs/assets/full-service-throughput.svg)
 
-| Scope | Result | Baseline |
-|---|---:|---|
-| Qwen3.5 Dense GEMM, five shapes × 10 batch sizes | **1.633×** geometric mean | vLLM block-FP8 GEMM |
-| Complete Qwen3.5 MoE layer, B16-B96 | **1.278×** geometric mean | vLLM FP8 MoE layer |
+The 27B workload uses 3000 input and 1000 output tokens per request. The
+35B-A3B workload is a frozen real multimodal request set with fixed sampling,
+seeds and output lengths. Every point completed its full request and token
+contract. Mean and P99 TPOT and TTFT improved at every measured concurrency.
 
-Operator, layer and serving results have different measurement boundaries and
-must not be combined. The [benchmark methodology](docs/benchmarks.md) records
-the full contracts, per-shape data and latency metrics. The
-[artifact index](benchmarks/results/README.md) links every checked-in result.
+The full tables report the mean of two opposite-order lifecycles per format. The
+largest throughput difference between repeats was 0.63% for 27B. For 35B-A3B,
+it was 6.68% for FP8 and 0.68% for MXFP6; the FP8 difference followed whether a
+point ran first or last in its lifecycle. The
+[benchmark report](docs/benchmarks.md) and
+[machine-readable artifact](benchmarks/results/qwen35_champion_concurrency_tp2.json)
+retain all four blocks, absolute throughput and latency, and repeat spread. Here
+`concurrency` is client request concurrency, not the token batch `M` used by
+layer benchmarks.
 
-### Internal runtime reference
+This Champion comparison uses an internally optimized vLLM 0.25.1 runtime,
+PyTorch 2.11.0+cu130, CUDA 13.0, two PIX-connected RTX 5090 GPUs and TP2. The
+checked-in [public vLLM v0.25.1 reproducer](examples/vllm/README.md) remains
+available for independent setup and measured +9.11% on Qwen3.5-27B and +16.95%
+on Qwen3.5-35B-A3B in its own workloads.
 
-| Model and workload | Official FP8 | MXFP6 | Output throughput gain |
-|---|---:|---:|---:|
-| Qwen3.5-27B, 3000 input / 1000 output, c32 | 1157.79 tok/s | 1417.63 tok/s | **+22.44%** |
-| Qwen3.5-35B-A3B, frozen real multimodal, c4 | 589.41 tok/s | 669.45 tok/s | **+13.58%** |
+### Dense GEMM and MoE layer
 
-These environment-bound results use an internally optimized vLLM 0.25.1 stack
-and frozen workloads. They are retained as optimization references and are not
-results from the public reproducer. The 35B-A3B artifact also includes a
-742-case reference-output comparison; its paired intervals did not detect a
-significant fidelity loss. This is reference fidelity, not audited task
-accuracy.
+Current `main` was also tested at the execution layers used by the two models.
+These measurements explain kernel coverage; they are not added to the serving
+gains above.
+
+The Dense benchmark covers five Qwen3.5-27B TP2 shapes at 14 values of `M`.
+All 70 output comparisons were exact against a decoded FP32 matmul reference.
+
+| M | FP8 GEMM latency / MXFP6 GEMM latency |
+|---:|---:|
+| 1 / 2 / 4 / 8 | 1.981x / 1.983x / 1.985x / 1.999x |
+| 16 / 24 / 32 | 1.611x / **0.717x** / 1.532x |
+| 64 / 96 | 1.237x / 1.562x |
+| 512 / 1024 / 2048 | 1.798x / 1.735x / 1.671x |
+| 4096 / 8192 | 1.548x / 1.564x |
+| All 70 shapes | **1.592x** geometric mean |
+
+`M=24` is slower than the FP8 kernel for four of the five Dense shapes. The
+service result remains positive at concurrency 24, but the isolated result is a
+known dispatch gap rather than a claimed win. Per-shape data is in
+[`qwen35_dense_gemm_current_main.json`](benchmarks/results/qwen35_dense_gemm_current_main.json).
+
+The TP2 MoE benchmark captures routing, routed and shared experts, reduction
+and custom all-reduce in one CUDA Graph. It uses real layer-0 weights, 40
+warmups, 1000 replays and 9 paired repeats.
+
+| Token batch | Complete FP8 layer | Complete MXFP6 layer | Speedup |
+|---:|---:|---:|---:|
+| 1 | 29.3 us | 16.4 us | 1.787x |
+| 2 | 32.8 us | 20.5 us | 1.601x |
+| 4 | 32.8 us | 26.4 us | 1.241x |
+| 8 | 54.5 us | 38.6 us | 1.411x |
+| 16 | 123.7 us | 90.3 us | 1.370x |
+| 24 | 162.4 us | 127.1 us | 1.278x |
+| 32 | 188.4 us | 147.1 us | 1.281x |
+| 64 | 238.9 us | 188.3 us | 1.269x |
+| 96 | 264.6 us | 207.0 us | 1.278x |
+
+The MoE comparisons had relative RMS error 0.0903 to 0.1152, cosine similarity
+of at least 0.9936, and identical routed expert IDs. The
+[MoE layer artifact](benchmarks/results/qwen35_moe_layer_current_main.json)
+contains every paired sample and route statistic.
 
 ## Execution model
 
-### W6A8 data path
-
 ```text
-BF16/FP16 activation
-        │ dynamic E4M3 quantization + UE8M0 scale (1:32 along K)
-        ▼
-MXFP8 activation ───────────────────────────────────────────┐
-                                                            ├─► SM120 block-scaled MMA
-packed MXFP6 E3M2 weight + UE8M0 scale (1:32 along K) ──────┘            │
-                                                                         ▼
-                                                        FP32 accumulate ─► FP16/BF16 output
+FP16/BF16 activation
+        |
+        | dynamic E4M3 quantization, UE8M0 scale per 32 K values
+        v
+MXFP8 activation -------------------------------+
+                                                   | SM120 block-scaled MMA
+packed MXFP6 E3M2 weight, UE8M0 scale per 32 K ---+
+                                                   |
+                                                   v
+                                           FP32 accumulation
+                                                   |
+                                                   v
+                                            FP16/BF16 output
 ```
 
-Weights remain in the six-bit representation during inference. The GEMM does
-not expand them to FP8 or FP16 before the mainloop.
+Weights remain in their six-bit representation during inference. Four E3M2
+values occupy three bytes; the mainloop does not expand them to FP8 or FP16.
 
-| Operand | Representation | Scale granularity |
-|---|---|---|
-| Weight | MXFP6 E3M2, four values packed into three bytes | UE8M0 per 32 values along K |
-| Activation | MXFP8 E4M3 generated from FP16/BF16 | UE8M0 per 32 values along K |
-| Accumulator | FP32 | n/a |
-| Output | FP16 or BF16 | n/a |
+Dense dispatch selects among swapped small-M tiles, cooperative and persistent
+schedules, normal large-M tiles and Stream-K. Static overrides cover the five
+measured Qwen3.5-27B TP2 projection shapes. Other valid shapes use the native
+fallback policy or an autotune cache.
 
-### Dense dispatch
+The Qwen3.5-35B-A3B MoE implementation has separate small and grouped paths.
+Small token batches use allocation-free routing, split-K W1 and fused W2
+routed/shared reduction. Larger batches use indirect routing, TMA W1 and
+grouped W2. Caller-owned workspaces keep the production paths graph safe.
 
-The Dense operator computes `D[M,N] = A[M,K] @ B[N,K].T`. Its SM120 dispatch
-portfolio is shape-aware rather than a single universal kernel:
-
-| Region | Kernel policy |
-|---|---|
-| Small M | Swapped x8/x16/x32 tiles with ping-pong, cooperative and static-persistent schedules |
-| Large M | Normal 64x64, 64x128 and 128x128 Tensor Core tiles |
-| Selected shapes | Stream-K scheduling with a reusable persistent workspace |
-
-Exact overrides cover the five Qwen3.5-27B TP2 linear shapes at ten measured
-batch sizes. Other valid shapes use the native fallback policy or a generated
-autotune cache.
-
-### Qwen3.5 MoE schedule
-
-```text
-hidden states
-    │
-    ├─► router: gate GEMV + softmax/top-k + input quantization
-    │
-    └─► W1 gate/up ─► SiLU-and-mul ─► MXFP8 requantization
-                                      │
-                                      ▼
-                   W2 over 8 routed experts + shared expert
-                                      │
-                                      ▼
-                         routed/shared weighted reduction
-                                      │
-                                      ▼
-                               rank-local output
-```
-
-Batch 1/2/4 uses allocation-free routing, split-K W1 and fused W2 reduction.
-Larger batches use indirect routing, a TMA W1 path over the interleaved gate/up
-projection and grouped W2. Caller-owned workspaces keep every production path
-allocation-free during CUDA Graph capture and replay.
-
-### Validated scope
+## Validated scope
 
 | Component | Tested boundary |
 |---|---|
-| Dense W6A8 GEMM | Native SM120 dispatch for `M > 0`, `N % 8 == 0`, `K % 128 == 0` |
-| Qwen3.5 MoE | Specialized router, W1, W2, shared-expert and reduction paths; validated with Qwen3.5-35B-A3B TP2 |
-| CUDA Graphs | Prewarmed dispatch and persistent workspaces; no capture-time allocation or tuning |
-| Checkpoints | Two tested model-scoped Quark layouts; no stable general checkpoint ABI yet |
-| Serving runtime | Version-locked public vLLM v0.25.1 prototype for Qwen3.5-27B and Qwen3.5-35B-A3B |
+| GPU | NVIDIA SM120 on Linux |
+| Dense GEMM | `M > 0`, `N % 8 == 0`, `K % 128 == 0`; Qwen3.5-27B TP2 shapes measured |
+| Routed MoE | Qwen3.5-35B-A3B TP2 router, W1, activation, W2, shared expert and reduction |
+| CUDA Graph | Prewarmed dispatch with persistent workspaces |
+| Checkpoints | Model-scoped Quark layouts for Qwen3.5-27B and Qwen3.5-35B-A3B |
+| Serving | Version-locked public vLLM reproducer and the recorded internal Champion runtime |
 
-The package targets SM120. Devices, checkpoint layouts and runtime
-configurations outside this table have not been tested.
+Build the extension against the same CUDA-enabled PyTorch ABI that will load
+it. Other GPU architectures and unrecognized checkpoint layouts fail closed.
 
-## Build and minimal use
-
-Build the extension against the CUDA-enabled PyTorch installation that will load
-the resulting wheel:
+## Build
 
 ```bash
 git clone --recurse-submodules https://github.com/Nekofish-L/mxfp6_sm120.git
@@ -169,94 +175,77 @@ cd mxfp6_sm120
 python3 -m pip install --no-deps dist/mxfp6_sm120-*.whl
 ```
 
-For an existing clone, initialize the pinned CUTLASS dependency before building:
+An existing clone must initialize the pinned CUTLASS submodule before building:
 
 ```bash
 git submodule update --init third_party/cutlass
 ```
 
-Quantize a persistent weight once, then reuse it across calls:
+Requirements: Linux, an SM120 GPU, CUDA Toolkit 12.8 or newer, CUDA-enabled
+PyTorch, CMake 3.24 or newer and a C++17 compiler. See
+[compatibility](docs/compatibility.md) for the measured toolchain and ABI
+policy.
+
+## Python API
+
+Quantize a weight once and reuse its packed representation:
 
 ```python
 import torch
 import mxfp6
 
 m, n, k = 32, 8192, 5120
-a = torch.randn((m, k), device="cuda", dtype=torch.bfloat16)
+activation = torch.randn((m, k), device="cuda", dtype=torch.bfloat16)
 weight = torch.randn((n, k), device="cuda", dtype=torch.bfloat16)
 
 packed_weight = mxfp6.quantize_mxfp6(weight)
-output = mxfp6.gemm(a, packed_weight, out_dtype=torch.bfloat16)
+output = mxfp6.gemm(
+    activation,
+    packed_weight,
+    out_dtype=torch.bfloat16,
+)
 ```
 
-`out_dtype` accepts `torch.float16` and `torch.bfloat16`. Production runtimes
-should call the warmup and workspace-planning APIs before CUDA Graph capture;
-see [Dense GEMM](docs/dense-gemm.md) and [Autotuning](docs/autotuning.md).
+| Operation | Entry point |
+|---|---|
+| Weight quantization and packing | `quantize_mxfp6` |
+| Dense W6A8 GEMM | `gemm`, `gemm_w6a8` |
+| Activation quantization | `quantize_activation` |
+| Dispatch preparation | `warmup_w6a8`, configuration APIs |
+| Workspace planning | Persistent workspace APIs |
+| Qwen3.5 MoE | Qwen-specific workspace and layer operators |
 
-## Operator surface
+Production runtimes should finish dispatch selection and workspace allocation
+before CUDA Graph capture. See [Dense GEMM](docs/dense-gemm.md),
+[Qwen3.5 MoE](docs/qwen35-moe.md) and [Autotuning](docs/autotuning.md).
 
-| Operation | Public entry point | Contract |
-|---|---|---|
-| Weight quantization and packing | `quantize_mxfp6` | FP16/BF16 to persistent E3M2/UE8M0 storage |
-| Dense W6A8 GEMM | `gemm`, `gemm_w6a8` | Native mixed-precision GEMM with FP16/BF16 output |
-| Activation quantization | `quantize_activation` | Reusable dynamic E4M3/UE8M0 activation tensors |
-| Dispatch preparation | `warmup_w6a8`, configuration APIs | Resolve a supported kernel before graph capture |
-| Workspace planning | persistent workspace APIs | Allocate stable storage for graph replay |
-| Qwen3.5 MoE | Qwen-specific workspace and layer ops | Allocation-free router/W1/W2/reduction paths within the documented topology |
+## vLLM integration
 
-Checked-in dense overrides cover the primary Qwen3.5-27B TP2 linear shapes.
-Other valid shapes use the native dispatcher or a generated autotune cache.
-Qwen3.5 MoE shapes, tensor ordering and workspace contracts are documented in
-[Qwen3.5 MoE kernels](docs/qwen35-moe.md).
+vLLM can load Quark/OCP MXFP6 checkpoints, but its CUDA MXFP6 implementation
+currently uses software emulation. The package maps naturally to vLLM's
+`MxFp6LinearKernel` interface for Dense layers and `FusedMoEExpertsModular` for
+the complete routed-MoE experts path. Unsupported configurations retain the
+existing emulation fallback.
 
-## Runtime integration
-
-The wheel exports standalone PyTorch operators. `examples/vllm` contains a
-version-locked vLLM v0.25.1 compatibility layer that loads and serves the two
-measured Qwen3.5 profiles without internal infrastructure. It is a public
-reproducer, not a general checkpoint loader or an upstream backend.
-
-vLLM already recognizes Quark/OCP MXFP6 checkpoints, but its CUDA path currently
-uses software emulation. The public prototype connects the existing loading
-path to the native Dense and MoE operators for the two tested models. It does
-not change vLLM's behavior outside that version-locked setup. See
-[Runtime integration](docs/runtime-integration.md) and
-[Checkpoint format status](docs/checkpoint-format.md).
-
-## Compatibility
-
-- NVIDIA GPU with compute capability 12.0 (SM120).
-- CUDA Toolkit 12.8 or newer.
-- CUDA-enabled PyTorch.
-- CMake 3.24 or newer and a C++17 compiler.
-- Ninja is recommended.
-
-CUTLASS is pinned at `e6233cbac5d7c7a865c19c91cd684ceece19513c` with versioned
-SM120 runtime patches from this repository. Portable prebuilt CUDA wheels are
-not currently published. See [Compatibility](docs/compatibility.md) for the
-measured toolchain and upgrade policy.
+`examples/vllm` contains the version-locked two-model adapter used by the public
+reproducer. It demonstrates checkpoint loading and native execution on vLLM
+v0.25.1; it is not the proposed current-main integration. Upstream work is
+tracked in [vLLM issue #52347](https://github.com/vllm-project/vllm/issues/52347).
 
 ## Documentation
 
-| Guide | Scope |
+| Guide | Contents |
 |---|---|
-| [Dense GEMM](docs/dense-gemm.md) | Data formats, public API, supported shapes and workspace model |
-| [Qwen3.5 MoE](docs/qwen35-moe.md) | Specialized execution paths, TP2 evidence and graph-safe API |
-| [Benchmark methodology](docs/benchmarks.md) | Baselines, workloads, metrics, full result tables and commands |
-| [Autotuning](docs/autotuning.md) | Dispatch policy, cache generation and serving controls |
-| [Checkpoint format](docs/checkpoint-format.md) | Current in-memory layout and persistent-format acceptance bar |
-| [Compatibility](docs/compatibility.md) | Supported platform, build ABI and runtime integration boundary |
-| [Runtime integration](docs/runtime-integration.md) | vLLM/SGLang status, evidence boundary and upstream discussion |
-| [Development](docs/development.md) | Source build, CUTLASS patch queue, tests and repository layout |
+| [Benchmark methodology](docs/benchmarks.md) | Full serving, Dense and MoE contracts and results |
+| [Dense GEMM](docs/dense-gemm.md) | Formats, operators, shapes and workspaces |
+| [Qwen3.5 MoE](docs/qwen35-moe.md) | Routed-MoE execution and graph-safe API |
+| [Checkpoint format](docs/checkpoint-format.md) | Current Quark layouts and persistent-format status |
+| [Runtime integration](docs/runtime-integration.md) | vLLM and SGLang integration boundaries |
+| [Autotuning](docs/autotuning.md) | Dispatch policy and cache generation |
+| [Compatibility](docs/compatibility.md) | Platform, build ABI and upgrade policy |
+| [Development](docs/development.md) | Source build, tests and repository layout |
 
-## Contributing
+## License
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a change. Performance
-PRs must include correctness coverage, environment identity, paired samples and
-a claim explicitly bounded to kernel, layer or end-to-end service scope.
-
-## License and acknowledgements
-
-MXFP6 SM120 is released under the [BSD 3-Clause License](LICENSE). NVIDIA
-CUTLASS retains its upstream license. See
-[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for third-party notices.
+MXFP6 SM120 is released under the [BSD 3-Clause License](LICENSE). CUTLASS and
+other dependencies retain their own licenses.
