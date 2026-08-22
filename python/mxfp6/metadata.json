@@ -1,6 +1,6 @@
 {
   "name": "mxfp6-sm120",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "gpu_architecture": "sm_120a",
   "activation_input_dtype": ["float16", "bfloat16"],
   "activation_compute_format": "OCP E4M3",
