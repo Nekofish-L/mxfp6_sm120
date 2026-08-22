@@ -60,21 +60,21 @@ cross-model MoE ABI.
 optionally imports vLLM for the FP8 runtime baseline and its custom TP
 all-reduce.
 
-Serving evidence includes a public two-model vLLM v0.25.1 reproducer and an
-independently optimized internal vLLM reference. The wheel alone does not load
-an MXFP6 Hugging Face checkpoint, and neither adapter is a general runtime
-backend. See [Runtime integration](runtime-integration.md).
+Serving evidence includes a public two-model vLLM v0.25.1 reproducer and the
+internal Champion c1 through c32 sweep. The wheel alone does not load an MXFP6
+Hugging Face checkpoint. See [Runtime integration](runtime-integration.md).
 
 ## Benchmarking
 
 Run the real Qwen3.5 MoE layer benchmark with two workers:
 
 ```bash
-torchrun --nproc-per-node=2 \
+CUDA_VISIBLE_DEVICES=0,1 GLOO_SOCKET_IFNAME=lo \
+torchrun --master-addr 127.0.0.1 --nproc-per-node=2 \
   benchmarks/benchmark_qwen35_moe_layer.py \
   --fp8-model "$PWD/models/Qwen3.5-35B-A3B-FP8" \
   --mx-model "$PWD/models/Qwen3.5-35B-A3B-MXFP6" \
-  --batch-sizes 1 2 4 8 10 12 14 16 24 32 40 48 56 64 80 96 \
+  --batch-sizes 1 2 4 8 16 24 32 64 96 \
   --mx-mode auto --route-stats \
   --warmup 40 --iterations 1000 --repeats 9
 ```
@@ -83,8 +83,6 @@ The benchmark can also emulate a TP2 shard in one process. For checked-in
 results, the TP2 benchmark captures the complete MoE layer and vLLM custom
 all-reduce in one CUDA Graph using real layer-0 checkpoint weights.
 
-The current full batch table, numerical comparisons, refinement measurements,
-serving metrics and exact artifacts are in
-[Benchmark methodology](benchmarks.md). Performance PRs must retain the
-distinction between isolated kernel, complete layer and end-to-end serving
-evidence.
+The current batch table, numerical comparisons and serving metrics are in
+[Benchmark methodology](benchmarks.md). The machine-readable result is
+[`qwen35_moe_layer_current_main.json`](../benchmarks/results/qwen35_moe_layer_current_main.json).
