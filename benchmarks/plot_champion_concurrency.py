@@ -136,37 +136,12 @@ def main() -> None:
     fig.legend(
         handles,
         labels,
-        loc="upper right",
-        bbox_to_anchor=(0.965, 0.955),
+        loc="upper center",
+        bbox_to_anchor=(0.5, 0.99),
         frameon=False,
         ncol=2,
     )
-    fig.suptitle(
-        "Full-service output throughput",
-        x=0.07,
-        y=0.97,
-        ha="left",
-        color=INK,
-        fontsize=17,
-        fontweight="bold",
-    )
-    fig.text(
-        0.07,
-        0.915,
-        "Internal Champion, TP2 on 2 x RTX 5090; means of two opposite-order service lifecycles",
-        ha="left",
-        color=FP8_COLOR,
-        fontsize=9.5,
-    )
-    fig.text(
-        0.07,
-        0.02,
-        "Error bars show the two-run range. Labels show MXFP6 throughput gain over FP8 at the same concurrency.",
-        ha="left",
-        color=FP8_COLOR,
-        fontsize=8.5,
-    )
-    fig.subplots_adjust(left=0.07, right=0.97, top=0.80, bottom=0.14, wspace=0.20)
+    fig.subplots_adjust(left=0.07, right=0.98, top=0.84, bottom=0.13, wspace=0.20)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(args.output, facecolor="white", metadata={"Date": None})
     if args.output.suffix.lower() == ".svg":
