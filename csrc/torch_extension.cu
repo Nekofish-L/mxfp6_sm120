@@ -1267,6 +1267,24 @@ at::Tensor launch_w6a8_policy(at::Tensor const& a,
         2, RasterOrder::AlongM, 1, sm_count, use_pdl);
   }
 
+  if (target_nk && m == 24) {
+    if ((n == 5120 && k == 3072) || (n == 5120 && k == 8704)) {
+      return launch_swapped<swapped::KernelW6A8_64x32x128Pingpong>(
+          a, b, sfa, sfb, m, n, k, alpha, device_index,
+          1, RasterOrder::AlongM, 1, 0, use_pdl);
+    }
+    if ((n == 8192 && k == 5120) || (n == 7168 && k == 5120)) {
+      return launch_swapped<swapped::KernelW6A8_128x32Cooperative>(
+          a, b, sfa, sfb, m, n, k, alpha, device_index,
+          1, RasterOrder::AlongM, 1, 0, use_pdl);
+    }
+    if (n == 17408 && k == 5120) {
+      return launch_swapped<swapped::KernelW6A8_128x32Cooperative>(
+          a, b, sfa, sfb, m, n, k, alpha, device_index,
+          1, RasterOrder::AlongN, 1, 0, use_pdl);
+    }
+  }
+
   if (target_nk && m == 32) {
     if (n == 8192 && k == 5120) {
       return launch_swapped<swapped::KernelW6A8_128x32Cooperative>(

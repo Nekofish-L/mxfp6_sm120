@@ -22,7 +22,7 @@ TUNED_NK = frozenset(
         (5120, 8704),
     }
 )
-TUNED_M = frozenset((1, 16, 32, 64, 96, 512, 1024, 2048, 4096, 8192))
+TUNED_M = frozenset((1, 16, 24, 32, 64, 96, 512, 1024, 2048, 4096, 8192))
 _AUTOTUNE_STATE_LOCK = threading.Lock()
 _AUTOTUNE_READY: set[tuple[int, int, int, int, torch.dtype]] = set()
 
