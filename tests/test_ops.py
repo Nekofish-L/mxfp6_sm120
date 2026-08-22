@@ -1937,8 +1937,14 @@ def test_small_w6a8_dispatch(mxfp6) -> None:
         (16, 7168, 5120),   # 64x16x128 stage-3 ping-pong
         (16, 17408, 5120),  # 128x16 cooperative
         (16, 5120, 8704),   # deep-K 64x16x128 stage-3 ping-pong
+        (24, 8192, 5120),   # 128x32 cooperative
+        (24, 5120, 3072),   # 64x32x128 ping-pong
+        (24, 7168, 5120),   # 128x32 cooperative
+        (24, 17408, 5120),  # 128x32 cooperative, N-major raster
+        (24, 5120, 8704),   # deep-K 64x32x128 ping-pong
     )
     for index, (m, n, k) in enumerate(shapes):
+        assert mxfp6.is_tuned_shape(m, n, k)
         a_codes, b_codes, sfa, sfb = make_problem(m, n, k, 1800 + index)
         a6 = mxfp6.pack_operand(a_codes, sfa)
         b = mxfp6.pack_operand(b_codes, sfb)
