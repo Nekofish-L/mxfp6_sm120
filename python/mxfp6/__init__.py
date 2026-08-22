@@ -75,7 +75,7 @@ from .qwen35 import (
     qwen35_moe_b1_out,
 )
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 __all__ = [
     "MXFP8Tensor",

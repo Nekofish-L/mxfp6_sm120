@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+## 0.2.0 - 2026-08-22
+
+### Added
+
+- added a version-locked vLLM v0.25.1 reproducer for Qwen3.5-27B Dense and
+  Qwen3.5-35B-A3B routed MoE, including public conversion, loading and serving
+  checks;
+- added systematic Dense, MoE layer and TP2 full-service benchmark artifacts,
+  plus a reproducible concurrency-sweep plot;
+- added an occupancy-aware cooperative W1 schedule for Qwen3.5 MoE batches 4-8
+  on lower-SM-count SM120 devices.
+
+### Changed
+
+- extended exact Dense dispatch for the measured M24 Qwen3.5 shapes;
+- reorganized runtime, checkpoint, integration and benchmark documentation
+  around the two validated Qwen3.5 execution paths;
+- made the public reproducer build its runtime and converter from their pinned
+  source revisions.
+
+### Fixed
+
+- replaced profiler-backed autotune timing with CUDA Graph-safe event timing;
+- fixed the large-token split-K MoE path covered by the 5,000-token regression;
+- tightened packaging and Docker provenance so source artifacts are built from
+  the checked-out revision.
+
+### Compatibility boundary
+
+- native kernels remain specific to SM120 and are built against the active
+  PyTorch CUDA ABI;
+- the vLLM integration is a model-scoped, version-locked reproducer, not an
+  upstream vLLM backend or a stable cross-version checkpoint ABI.
+
 ### Documentation
 
 - organized Qwen3.5-27B and Qwen3.5-35B-A3B performance evidence into matching
