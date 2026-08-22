@@ -4,15 +4,15 @@
 
 | Artifact | Measurement boundary | Main result |
 |---|---|---:|
-| `qwen35_champion_concurrency_tp2.json` | Qwen3.5-27B and 35B-A3B TP2 full service, c1 through c32 | +9.59% to +32.70% output tok/s |
-| `qwen35_dense_gemm_current_main.json` | Five 27B TP2 Dense shapes at 14 values of M | 1.592x geometric mean over 70 shapes |
+| `qwen35_champion_concurrency_tp2.json` | Qwen3.5-27B and 35B-A3B TP2 full service, c1 through c32 | +14.42% to +32.92% output tok/s |
+| `qwen35_dense_gemm_current_main.json` | Five 27B TP2 Dense shapes at 14 values of M | 1.688x geometric mean over 70 shapes |
 | `qwen35_moe_layer_current_main.json` | Complete 35B-A3B TP2 MoE layer | 1.241x to 1.787x |
 
 These three files are environment-bound integration snapshots, not public
 reproducers. The service artifact compares official FP8 and MXFP6 on one frozen
-Champion runtime and contains two opposite-order lifecycles per format, all
-absolute latencies, token totals and repeat spread. The layer artifacts use
-`mxfp6_sm120` commit `eb1e582`.
+Champion runtime and contains two opposite-order samples per point, all
+absolute latencies, token totals and repeat spread. The Dense artifact uses
+`mxfp6_sm120` commit `53035f7`; the MoE artifact uses commit `eb1e582`.
 
 ## Public reproduction
 

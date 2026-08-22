@@ -44,25 +44,27 @@ models:
 ### Full-service concurrency sweep
 
 The primary comparison uses one frozen internal Champion runtime for both
-formats. Each model ran four fresh service lifecycles in
-FP8/MXFP6/MXFP6/FP8 order. FP8 and MXFP6 used the same TP2 topology, scheduler,
-CUDA Graph sizes, FlashInfer kernels and request set. Only the checkpoint format
-and quantized execution path changed.
+formats. Every point is the mean of two opposite-order service-lifecycle
+samples per format. FP8 and MXFP6 used the same TP2 topology, scheduler, CUDA
+Graph sizes, FlashInfer kernels and request set. Only the checkpoint format and
+quantized execution path changed.
 
 | Model | Measured concurrency | Output throughput gain | Mean TPOT reduction |
 |---|---|---:|---:|
-| Qwen3.5-27B | 1, 2, 4, 8, 16, 24, 32 | **+9.59% to +20.98%** | 7.53% to 16.75% |
-| Qwen3.5-35B-A3B | 1, 2, 4, 8, 16, 24, 32 | **+14.01% to +32.70%** | 11.52% to 25.27% |
+| Qwen3.5-27B | 1, 2, 4, 8, 16, 24, 32 | **+17.43% to +21.36%** | 14.13% to 16.73% |
+| Qwen3.5-35B-A3B | 1, 2, 4, 8, 16, 24, 32 | **+14.42% to +32.92%** | 12.14% to 24.65% |
 
 ![Full-service FP8 and MXFP6 throughput curves](docs/assets/full-service-throughput.svg)
 
 The 27B workload uses 3000 input and 1000 output tokens per request. The
 35B-A3B workload is a frozen real multimodal request set with fixed sampling,
 seeds and output lengths. Every point completed its full request and token
-contract. Mean and P99 TPOT and TTFT improved at every measured concurrency.
+contract. Mean and P99 TPOT improved at every measured concurrency; P99 TTFT
+also improved at every point. Mean TTFT increased by 2.08% at 35B-A3B c8 and
+improved elsewhere.
 
 The full tables report the mean of two opposite-order lifecycles per format. The
-largest throughput difference between repeats was 0.63% for 27B. For 35B-A3B,
+largest throughput difference between repeats was 0.39% for 27B. For 35B-A3B,
 it was 6.68% for FP8 and 0.68% for MXFP6; the FP8 difference followed whether a
 point ran first or last in its lifecycle. The
 [benchmark report](docs/benchmarks.md) and
@@ -88,16 +90,15 @@ All 70 output comparisons were exact against a decoded FP32 matmul reference.
 
 | M | FP8 GEMM latency / MXFP6 GEMM latency |
 |---:|---:|
-| 1 / 2 / 4 / 8 | 1.981x / 1.983x / 1.985x / 1.999x |
-| 16 / 24 / 32 | 1.611x / **0.717x** / 1.532x |
-| 64 / 96 | 1.237x / 1.562x |
-| 512 / 1024 / 2048 | 1.798x / 1.735x / 1.671x |
-| 4096 / 8192 | 1.548x / 1.564x |
-| All 70 shapes | **1.592x** geometric mean |
+| 1 / 2 / 4 / 8 | 1.977x / 1.983x / 1.981x / 1.998x |
+| 16 / 24 / 32 | 1.603x / 1.514x / 1.532x |
+| 64 / 96 | 1.232x / 1.555x |
+| 512 / 1024 / 2048 | 1.829x / 1.761x / 1.697x |
+| 4096 / 8192 | 1.590x / 1.588x |
+| All 70 shapes | **1.688x** geometric mean |
 
-`M=24` is slower than the FP8 kernel for four of the five Dense shapes. The
-service result remains positive at concurrency 24, but the isolated result is a
-known dispatch gap rather than a claimed win. Per-shape data is in
+Static dispatch covers all five measured projection shapes at `M=24`; their
+geometric-mean ratio improved from 0.717x to 1.514x. Per-shape data is in
 [`qwen35_dense_gemm_current_main.json`](benchmarks/results/qwen35_dense_gemm_current_main.json).
 
 The TP2 MoE benchmark captures routing, routed and shared experts, reduction
@@ -147,10 +148,11 @@ schedules, normal large-M tiles and Stream-K. Static overrides cover the five
 measured Qwen3.5-27B TP2 projection shapes. Other valid shapes use the native
 fallback policy or an autotune cache.
 
-The Qwen3.5-35B-A3B MoE implementation has separate small and grouped paths.
-Small token batches use allocation-free routing, split-K W1 and fused W2
-routed/shared reduction. Larger batches use indirect routing, TMA W1 and
-grouped W2. Caller-owned workspaces keep the production paths graph safe.
+The Qwen3.5-35B-A3B TP2 integration uses the small-batch path through token
+batch 4 and the grouped path from batch 5. Small batches use allocation-free
+routing, split-K W1 and fused W2 routed/shared reduction; the grouped path uses
+indirect routing, TMA W1 and grouped W2. Caller-owned workspaces keep both
+production paths graph safe.
 
 ## Validated scope
 

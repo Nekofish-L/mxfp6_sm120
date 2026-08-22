@@ -31,7 +31,7 @@ FP8 and MXFP6 ran in the same frozen environment:
 | Scheduler | 4096 maximum batched tokens, asynchronous scheduling |
 | Collective | FlashInfer TRT-LLM AllReduce/RMSNorm fusion |
 | Disabled | Prefix caching and speculative decoding |
-| mxfp6-sm120 | `eb1e582d96a5aa4e9a0d174e7abbc0fcd5beec1c` |
+| mxfp6-sm120 | `53035f78643ec0e04cefb635d5a1ff3cd65ae383` |
 
 Service logs confirmed the intended full CUDA Graph captures, fused GDN path,
 AllReduce/RMSNorm backend and quantized kernels. MXFP6 runs additionally logged
@@ -50,17 +50,19 @@ per-request seeds and requested output lengths were fixed. Concurrency 1 through
 
 ### Acquisition and aggregation
 
-Each model used four fresh service lifecycles:
+The original comparison used four fresh service lifecycles:
 
 1. FP8 A1, concurrency ascending;
 2. MXFP6 B1, concurrency descending;
 3. MXFP6 B2, concurrency ascending;
 4. FP8 A2, concurrency descending.
 
-Each point had a concurrency-matched warmup. The reported value is the mean of
-the two lifecycles for that format. The artifact retains both samples; no
-best-run selection is used. Every point completed its request count with zero
-failures. Prompt and completion totals matched across formats.
+Each point had a concurrency-matched warmup. The current update retained the
+unchanged FP8 samples, reran both complete 27B MXFP6 lifecycles, and reran the
+affected 35B-A3B points from c8 upward. The unchanged 35B-A3B c1/c2/c4 samples
+were retained. Every reported point remains the mean of two opposite-order
+service-lifecycle samples; no best-run selection is used. All points completed
+their request and token contracts with zero failures.
 
 ![Full-service FP8 and MXFP6 throughput curves](assets/full-service-throughput.svg)
 
@@ -72,13 +74,13 @@ Error bars show the range of the two opposite-order lifecycles.
 
 | c | FP8 tok/s | MXFP6 tok/s | Throughput gain | Mean TPOT reduction | P99 TPOT reduction | P99 TTFT change | Repeat spread, FP8 / MXFP6 |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 | 84.93 | 100.59 | +18.43% | 15.41% | 15.34% | -21.29% | 0.32% / 0.26% |
-| 2 | 160.12 | 193.15 | +20.63% | 16.75% | 17.01% | -27.63% | 0.04% / 0.19% |
-| 4 | 292.78 | 354.22 | +20.98% | 16.28% | 16.94% | -26.41% | 0.13% / 0.06% |
-| 8 | 514.85 | 617.34 | +19.91% | 15.96% | 16.89% | -20.89% | 0.06% / 0.10% |
-| 16 | 822.24 | 963.84 | +17.22% | 13.97% | 14.58% | -19.44% | 0.39% / 0.63% |
-| 24 | 1033.50 | 1132.62 | +9.59% | 7.53% | 8.82% | -20.42% | 0.21% / 0.06% |
-| 32 | 1179.66 | 1393.76 | +18.15% | 14.77% | 15.73% | -19.74% | 0.18% / 0.25% |
+| 1 | 84.93 | 100.70 | +18.57% | 15.51% | 15.51% | -21.31% | 0.32% / 0.21% |
+| 2 | 160.12 | 193.09 | +20.59% | 16.73% | 16.95% | -27.70% | 0.04% / 0.15% |
+| 4 | 292.78 | 355.31 | +21.36% | 16.72% | 17.33% | -28.26% | 0.13% / 0.14% |
+| 8 | 514.85 | 618.93 | +20.21% | 16.19% | 17.11% | -20.95% | 0.06% / 0.37% |
+| 16 | 822.24 | 965.53 | +17.43% | 14.13% | 14.82% | -19.41% | 0.39% / 0.31% |
+| 24 | 1033.50 | 1229.07 | +18.92% | 15.35% | 16.03% | -20.42% | 0.21% / 0.33% |
+| 32 | 1179.66 | 1395.28 | +18.28% | 14.86% | 15.77% | -19.78% | 0.18% / 0.28% |
 
 `c` is request concurrency. It does not imply that every projection executes
 with token batch `M=c`.
@@ -90,10 +92,10 @@ with token batch `M=c`.
 | 1 | 270.94 | 329.13 | +21.48% | 17.48% | 17.21% | -59.59% | 3.89% / 0.46% |
 | 2 | 415.02 | 526.67 | +26.90% | 21.92% | 19.91% | -10.65% | 0.86% / 0.68% |
 | 4 | 699.24 | 800.07 | +14.42% | 12.14% | 10.94% | -6.45% | 0.67% / 0.60% |
-| 8 | 1010.63 | 1152.24 | +14.01% | 11.52% | 10.23% | -8.53% | 1.21% / 0.12% |
-| 16 | 1365.96 | 1759.06 | +28.78% | 23.74% | 20.44% | -1.38% | 1.34% / 0.16% |
-| 24 | 1660.71 | 2193.75 | +32.10% | 24.21% | 17.09% | -7.91% | 2.10% / 0.19% |
-| 32 | 1757.01 | 2331.57 | +32.70% | 25.27% | 25.71% | -13.61% | 6.68% / 0.52% |
+| 8 | 1010.63 | 1262.86 | +24.96% | 20.68% | 17.76% | -13.48% | 1.21% / 0.19% |
+| 16 | 1365.96 | 1766.50 | +29.32% | 23.47% | 22.33% | -4.28% | 1.34% / 0.37% |
+| 24 | 1660.71 | 2182.02 | +31.39% | 23.64% | 18.21% | -5.36% | 2.10% / 0.04% |
+| 32 | 1757.01 | 2335.39 | +32.92% | 24.65% | 9.88% | -14.30% | 6.68% / 0.64% |
 
 The larger FP8 spread at c1 and c32 tracks lifecycle order. A point run first in
 a fresh FP8 service was slower than the same point after the rest of the curve.
@@ -124,26 +126,26 @@ separately and excluded from the ratio.
 
 | M | Geometric mean speedup over five shapes |
 |---:|---:|
-| 1 | 1.981x |
+| 1 | 1.977x |
 | 2 | 1.983x |
-| 4 | 1.985x |
-| 8 | 1.999x |
-| 16 | 1.611x |
-| 24 | 0.717x |
+| 4 | 1.981x |
+| 8 | 1.998x |
+| 16 | 1.603x |
+| 24 | 1.514x |
 | 32 | 1.532x |
-| 64 | 1.237x |
-| 96 | 1.562x |
-| 512 | 1.798x |
-| 1024 | 1.735x |
-| 2048 | 1.671x |
-| 4096 | 1.548x |
-| 8192 | 1.564x |
-| Overall | 1.592x |
+| 64 | 1.232x |
+| 96 | 1.555x |
+| 512 | 1.829x |
+| 1024 | 1.761x |
+| 2048 | 1.697x |
+| 4096 | 1.590x |
+| 8192 | 1.588x |
+| Overall | 1.688x |
 
 All 70 native outputs matched the decoded FP32 matmul reference exactly after
-FP16 output conversion. `M=24` is the only tested batch where the geometric
-mean is below one. Four shapes use a slower fallback at that batch; the down
-projection remains 1.500x faster. The full rows are in
+FP16 output conversion. Exact static dispatch now covers the five measured
+projection shapes at `M=24`, improving that batch's geometric-mean ratio from
+0.717x to 1.514x. The full rows are in
 [`qwen35_dense_gemm_current_main.json`](../benchmarks/results/qwen35_dense_gemm_current_main.json).
 
 Reproduce the sweep with:
