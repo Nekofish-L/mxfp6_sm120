@@ -12,6 +12,11 @@ question:
 Layer and GEMM speedups are diagnostic evidence. They are never added to the
 full-service gain.
 
+The separate [Qwen3.8-27B snapshot](qwen38-27b.md) compares BF16 fidelity,
+TP2 serving and TP1 capacity across official FP8, MXFP6 and standard NVFP4
+W4A4. Its integration environment and workload differ from the Qwen3.5
+Champion results below, so the numbers should not be combined.
+
 ## Champion full-service comparison
 
 ### Runtime
