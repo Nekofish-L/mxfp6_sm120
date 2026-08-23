@@ -10,6 +10,7 @@
 </h3>
 
 <p align="center">
+  <a href="docs/qwen38-27b.md">Qwen3.8-27B</a> ·
   <a href="#performance">Performance</a> ·
   <a href="#execution-model">Design</a> ·
   <a href="#build">Build</a> ·
@@ -40,6 +41,36 @@ models:
 | Runtime | Persistent workspaces, prewarmed dispatch and CUDA Graph replay |
 
 ## Performance
+
+### Qwen3.8-27B quality, serving and capacity snapshot
+
+A frozen RTX 5090 comparison now covers official FP8, MXFP6 and standard
+NVFP4 W4A4. Across 256 teacher-forced records, sample-mean token-logprob MAE
+against BF16 was 0.05719 for FP8, 0.09078 for MXFP6 and 0.17661 for NVFP4.
+MXFP6 therefore reduced MAE by 48.6% relative to NVFP4, while FP8 remained
+closest to BF16.
+
+At three TP2 serving workloads, MXFP6 produced 18.23% to 22.33% more output
+tokens/s than FP8. MXFP6 throughput was 14.59% to 16.46% below NVFP4. On a
+shared TP1 startup contract with `gpu_memory_utilization=0.90`, MXFP6 retained
+4.54 GiB for KV cache while FP8 retained no KV block; NVFP4 retained 9.42 GiB.
+
+The [Qwen3.8-27B report](docs/qwen38-27b.md) states the workload and claim
+boundaries and links the machine-readable quality, serving, capacity and
+environment artifacts. These are environment-bound integration results, not a
+universal quality or performance ranking.
+
+![Qwen3.8-27B quality-throughput trade-off](docs/assets/qwen38-quality-throughput-tradeoff.svg)
+
+Points show the mean throughput gain across three workloads. Horizontal bars
+are quality 95% confidence intervals; vertical bars span the three workload
+gains. The dashed connector links measured formats only.
+
+| Format | MAE vs BF16 | Quality 95% CI | Mean throughput gain vs FP8 | Workload gain range |
+|---|---:|---:|---:|---:|
+| FP8 | 0.05719 | [0.05042, 0.06431] | +0.00% | +0.00% to +0.00% |
+| MXFP6 | 0.09078 | [0.08250, 0.09932] | +19.71% | +18.23% to +22.33% |
+| NVFP4 | 0.17661 | [0.15886, 0.19576] | +41.34% | +39.27% to +43.24% |
 
 ### Full-service concurrency sweep
 
@@ -238,6 +269,7 @@ tracked in [vLLM issue #52347](https://github.com/vllm-project/vllm/issues/52347
 
 | Guide | Contents |
 |---|---|
+| [Qwen3.8-27B snapshot](docs/qwen38-27b.md) | BF16 fidelity, FP8/MXFP6/NVFP4 TP2 serving and TP1 capacity |
 | [Benchmark methodology](docs/benchmarks.md) | Full serving, Dense and MoE contracts and results |
 | [Dense GEMM](docs/dense-gemm.md) | Formats, operators, shapes and workspaces |
 | [Qwen3.5 MoE](docs/qwen35-moe.md) | Routed-MoE execution and graph-safe API |

@@ -1,0 +1,241 @@
+{
+  "schema": "qwen38-27b-fidelity-v1",
+  "date": "2026-08-23",
+  "scope": "environment-bound BF16 token-logprob fidelity comparison",
+  "claim_boundary": "Teacher-forced token-logprob fidelity is not downstream task accuracy.",
+  "models": {
+    "bf16": "Qwen/Qwen3.8-27B",
+    "fp8": "Qwen/Qwen3.8-27B-FP8",
+    "mxfp6": "experimental Qwen3.8-27B MXFP6 W6A8 checkpoint",
+    "nvfp4": "experimental Qwen3.8-27B standard NVFP4 W4A4 checkpoint"
+  },
+  "contract": {
+    "samples": 256,
+    "samples_per_domain": 64,
+    "domains": [
+      "math",
+      "code",
+      "english",
+      "chinese"
+    ],
+    "target_tokens": 10479,
+    "tensor_parallel_size": 4,
+    "teacher_forced": true,
+    "sample_weighting": "mean within each sample, then equal mean across samples",
+    "bootstrap": {
+      "unit": "sample",
+      "replicates": 20000,
+      "seed": 20260823
+    },
+    "selection_seed": 20260823,
+    "manifest_sha256": "7291b789284621ca7449342ba88e729d0b7477c37cfae451c38a6950347d5f29",
+    "manifest_file_sha256": "7291b789284621ca7449342ba88e729d0b7477c37cfae451c38a6950347d5f29",
+    "tokenizer": "Qwen/Qwen3.8-27B"
+  },
+  "sources": {
+    "gsm8k": {
+      "repo": "https://github.com/openai/grade-school-math",
+      "commit": "3101c7d5072418e28b9008a6636bde82a006892c",
+      "file": "gsm8k/grade_school_math/data/test.jsonl",
+      "sha256": "3730d312f6e3440559ace48831e51066acaca737f6eabec99bccb9e4b3c39d14"
+    },
+    "human_eval": {
+      "repo": "https://github.com/openai/human-eval",
+      "commit": "6d43fb980f9fee3c892a914eda09951f772ad10d",
+      "file": "human-eval/data/HumanEval.jsonl.gz",
+      "sha256": "b796127e635a67f93fb35c04f4cb03cf06f38c8072ee7cee8833d7bee06979ef"
+    },
+    "hellaswag": {
+      "repo": "https://github.com/rowanz/hellaswag",
+      "commit": "a29ff8e9a04bba4bd6588223785ce105328adc57",
+      "file": "hellaswag/data/hellaswag_val.jsonl",
+      "sha256": "0aa3b88843990f3f10a97b9575c94d7b71fb2205240ba04ae4884d9e9c992588"
+    },
+    "cmmlu": {
+      "repo": "https://github.com/haonan-li/CMMLU",
+      "commit": "d6e7b716d8ac694f38969a6c0407437d1fded799",
+      "files": [
+        {
+          "file": "cmmlu_raw/chinese_history.csv",
+          "sha256": "1f7b977f5e3ff67eb5a910c3adce74c725fccb7ab286ef97e266eeffbbc51644"
+        }
+      ]
+    }
+  },
+  "summaries": {
+    "fp8": {
+      "sample_mean_mae": 0.057185011689839936,
+      "sample_mean_nll_abs_delta": 0.027652131441707535,
+      "sample_mean_top1_agreement": 0.974688008964097,
+      "token_weighted_mae": 0.05493472950722553,
+      "sample_count": 256,
+      "target_tokens": 10479
+    },
+    "mxfp6": {
+      "sample_mean_mae": 0.09077733378046399,
+      "sample_mean_nll_abs_delta": 0.03970294945755165,
+      "sample_mean_top1_agreement": 0.9657286628293442,
+      "token_weighted_mae": 0.09071602663576508,
+      "sample_count": 256,
+      "target_tokens": 10479
+    },
+    "nvfp4": {
+      "sample_mean_mae": 0.17661168122068274,
+      "sample_mean_nll_abs_delta": 0.07941497133887204,
+      "sample_mean_top1_agreement": 0.9327368541649677,
+      "token_weighted_mae": 0.17226683310944285,
+      "sample_count": 256,
+      "target_tokens": 10479
+    }
+  },
+  "sample_mean_mae_ci95": {
+    "fp8": [
+      0.05042039389510631,
+      0.0643130435709545
+    ],
+    "mxfp6": [
+      0.08249950383859839,
+      0.09931908731448529
+    ],
+    "nvfp4": [
+      0.15885828061761537,
+      0.19575666678789796
+    ]
+  },
+  "paired_mae_differences": {
+    "nvfp4_minus_mxfp6": {
+      "mean": 0.08583434744021871,
+      "ci95": [
+        0.07355685612292386,
+        0.09945476102531695
+      ]
+    },
+    "fp8_minus_mxfp6": {
+      "mean": -0.03359232209062405,
+      "ci95": [
+        -0.03897332397742239,
+        -0.028227032627989226
+      ]
+    },
+    "nvfp4_minus_fp8": {
+      "mean": 0.11942666953084277,
+      "ci95": [
+        0.10674407835726685,
+        0.13303948919298694
+      ]
+    }
+  },
+  "by_domain": {
+    "chinese": {
+      "fp8": {
+        "sample_mean_mae": 0.030951329886949444,
+        "sample_mean_nll_abs_delta": 0.01565953247124608,
+        "sample_mean_top1_agreement": 0.9836551902958153,
+        "token_weighted_mae": 0.02609291314552969,
+        "sample_count": 64,
+        "target_tokens": 558
+      },
+      "mxfp6": {
+        "sample_mean_mae": 0.058523694102084516,
+        "sample_mean_nll_abs_delta": 0.03238486006324824,
+        "sample_mean_top1_agreement": 0.9781892586580087,
+        "token_weighted_mae": 0.050157824083861435,
+        "sample_count": 64,
+        "target_tokens": 558
+      },
+      "nvfp4": {
+        "sample_mean_mae": 0.10155242820373492,
+        "sample_mean_nll_abs_delta": 0.06268346112337653,
+        "sample_mean_top1_agreement": 0.9530990710678211,
+        "token_weighted_mae": 0.09235025338509288,
+        "sample_count": 64,
+        "target_tokens": 558
+      }
+    },
+    "code": {
+      "fp8": {
+        "sample_mean_mae": 0.018883606099511896,
+        "sample_mean_nll_abs_delta": 0.008263941469468215,
+        "sample_mean_top1_agreement": 0.9864404669228096,
+        "token_weighted_mae": 0.01806023673311667,
+        "sample_count": 64,
+        "target_tokens": 3158
+      },
+      "mxfp6": {
+        "sample_mean_mae": 0.033260070372389185,
+        "sample_mean_nll_abs_delta": 0.012633662122004216,
+        "sample_mean_top1_agreement": 0.9833652906400809,
+        "token_weighted_mae": 0.029771921088918074,
+        "sample_count": 64,
+        "target_tokens": 3158
+      },
+      "nvfp4": {
+        "sample_mean_mae": 0.06796997137868915,
+        "sample_mean_nll_abs_delta": 0.03073924950432892,
+        "sample_mean_top1_agreement": 0.9681130061800931,
+        "token_weighted_mae": 0.06511107292123641,
+        "sample_count": 64,
+        "target_tokens": 3158
+      }
+    },
+    "english": {
+      "fp8": {
+        "sample_mean_mae": 0.1255606726029725,
+        "sample_mean_nll_abs_delta": 0.06486776416662625,
+        "sample_mean_top1_agreement": 0.9416724834088679,
+        "token_weighted_mae": 0.12668694184537296,
+        "sample_count": 64,
+        "target_tokens": 1835
+      },
+      "mxfp6": {
+        "sample_mean_mae": 0.16689153283246566,
+        "sample_mean_nll_abs_delta": 0.05084739840209791,
+        "sample_mean_top1_agreement": 0.9304056744320749,
+        "token_weighted_mae": 0.16906043826148792,
+        "sample_count": 64,
+        "target_tokens": 1835
+      },
+      "nvfp4": {
+        "sample_mean_mae": 0.3567147027329747,
+        "sample_mean_nll_abs_delta": 0.14393658141418356,
+        "sample_mean_top1_agreement": 0.8576306503622038,
+        "token_weighted_mae": 0.354648038549114,
+        "sample_count": 64,
+        "target_tokens": 1835
+      }
+    },
+    "math": {
+      "fp8": {
+        "sample_mean_mae": 0.05334443816992592,
+        "sample_mean_nll_abs_delta": 0.021817287659489606,
+        "sample_mean_top1_agreement": 0.9869838952288956,
+        "token_weighted_mae": 0.05511290971622746,
+        "sample_count": 64,
+        "target_tokens": 4928
+      },
+      "mxfp6": {
+        "sample_mean_mae": 0.10443403781491661,
+        "sample_mean_nll_abs_delta": 0.06294587724285622,
+        "sample_mean_top1_agreement": 0.9709544275872122,
+        "token_weighted_mae": 0.1051906546811595,
+        "sample_count": 64,
+        "target_tokens": 4928
+      },
+      "nvfp4": {
+        "sample_mean_mae": 0.1802096225673321,
+        "sample_mean_nll_abs_delta": 0.08030059331359918,
+        "sample_mean_top1_agreement": 0.9521046890497525,
+        "token_weighted_mae": 0.18207239929831193,
+        "sample_count": 64,
+        "target_tokens": 4928
+      }
+    }
+  },
+  "gates": {
+    "all_formats_have_256_samples": true,
+    "mxfp6_mae_lower_than_nvfp4": true,
+    "mxfp6_vs_nvfp4_ci_lower_gt_0": true,
+    "mxfp6_lower_than_nvfp4_in_all_domains": true
+  },
+  "source_artifact_sha256": "d6a25f0f493192937aa1f2707fa3df43355dfe39db17376d9e0f01de5035cf91"
+}

@@ -1,0 +1,119 @@
+{
+  "schema": 1,
+  "generated_at_utc": "2026-08-23T04:35:10.605652+00:00",
+  "host": "redacted",
+  "gpus": [
+    {
+      "index": 0,
+      "name": "NVIDIA GeForce RTX 5090",
+      "memory_mib": 32607,
+      "driver": "595.71.05"
+    },
+    {
+      "index": 1,
+      "name": "NVIDIA GeForce RTX 5090",
+      "memory_mib": 32607,
+      "driver": "595.71.05"
+    },
+    {
+      "index": 2,
+      "name": "NVIDIA GeForce RTX 5090",
+      "memory_mib": 32607,
+      "driver": "595.71.05"
+    },
+    {
+      "index": 3,
+      "name": "NVIDIA GeForce RTX 5090",
+      "memory_mib": 32607,
+      "driver": "595.71.05"
+    },
+    {
+      "index": 4,
+      "name": "NVIDIA GeForce RTX 5090",
+      "memory_mib": 32607,
+      "driver": "595.71.05"
+    },
+    {
+      "index": 5,
+      "name": "NVIDIA GeForce RTX 5090",
+      "memory_mib": 32607,
+      "driver": "595.71.05"
+    },
+    {
+      "index": 6,
+      "name": "NVIDIA GeForce RTX 5090",
+      "memory_mib": 32607,
+      "driver": "595.71.05"
+    },
+    {
+      "index": 7,
+      "name": "NVIDIA GeForce RTX 5090",
+      "memory_mib": 32607,
+      "driver": "595.71.05"
+    }
+  ],
+  "runtime": {
+    "image": "mxfp6-internal-refresh:20260822-base",
+    "image_id": "sha256:d4d8ff2fef2eababb6833fcdbefb918a7af796f760298ba7dc42c190775abf9d",
+    "vllm": "0.25.1",
+    "vllm_build": "752a3a504485790a2e8491cacbb35c137339ad34",
+    "text_only": true,
+    "VLLM_HYBRID_NVFP4_LM_HEAD": "0"
+  },
+  "checkpoints": {
+    "bf16": {
+      "file_bytes": 55586176913,
+      "config_sha256": "191e0af232104ed8b65258cf3fb2b842e288008baca7633c11b82a1ac7203aab",
+      "index_sha256": "77042094076611b69791a610065f28b7013b8c621795fa86ddccc8bac7d1b9df",
+      "referenced_weight_files": 18,
+      "referenced_weight_bytes": 55563006776,
+      "all_referenced_weights_exist": true
+    },
+    "fp8": {
+      "file_bytes": 30890053333,
+      "config_sha256": "74227dd615bf1ea975aa676bdf355a0379858c12f394b5365cd9dfa5fc2c70bc",
+      "index_sha256": "f0838c766951bdfe76d6afbdb2771a8f67aaa2231dedb3d33cebd817729843a2",
+      "referenced_weight_files": 66,
+      "referenced_weight_bytes": 30866866928,
+      "all_referenced_weights_exist": true
+    },
+    "mxfp6": {
+      "file_bytes": 25937779338,
+      "config_sha256": "055395f13ca6ee16ce1f233e0bec5d862d3eca90a4eb7e5d603f4fa0498d3817",
+      "index_sha256": "aa3d40cbebddabdc0c1190dece2851dd7cf05f86d3eff27779b4f720e04a88b9",
+      "referenced_weight_files": 18,
+      "referenced_weight_bytes": 25914569608,
+      "all_referenced_weights_exist": true
+    },
+    "nvfp4": {
+      "file_bytes": 20613420509,
+      "config_sha256": "45bfa7d59bfc50b8bb4ada600a3f2c2fa3f73ce88a702c475fdcc9901b2670c4",
+      "index_sha256": "97917609f3adf43411c3782d198df8b250ca5e62d4243ed0681d6db99e5e08e8",
+      "referenced_weight_files": 7,
+      "referenced_weight_bytes": 20593153360,
+      "all_referenced_weights_exist": true
+    }
+  },
+  "quantized_matrix_coverage": {
+    "mxfp6_count": 400,
+    "nvfp4_count": 400,
+    "sets_identical": true,
+    "mxfp6_only": [],
+    "nvfp4_only": [],
+    "categories": {
+      "linear_attn.in_proj_qkv": 48,
+      "linear_attn.in_proj_z": 48,
+      "linear_attn.out_proj": 48,
+      "mlp.down_proj": 64,
+      "mlp.gate_proj": 64,
+      "mlp.up_proj": 64,
+      "self_attn.k_proj": 16,
+      "self_attn.o_proj": 16,
+      "self_attn.q_proj": 16,
+      "self_attn.v_proj": 16
+    },
+    "lm_head_kept_bf16": true
+  },
+  "scope": "frozen internal integration environment; not a public reproducer image",
+  "source_artifact_sha256": "8bc044ebde71eb67c2b5aaa8874662e33c9ff287d5fa16c980fda7703244a993"
+}

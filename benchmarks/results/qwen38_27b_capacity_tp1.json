@@ -1,0 +1,67 @@
+{
+  "schema": "qwen38-27b-tp1-capacity-v1",
+  "gpu": "RTX 5090 32607 MiB",
+  "contract": {
+    "tensor_parallel_size": 1,
+    "max_model_len": 4096,
+    "max_num_batched_tokens": 4096,
+    "max_num_seqs": 64,
+    "gpu_memory_utilization": 0.9,
+    "enforce_eager": true,
+    "text_only": true
+  },
+  "variants": [
+    {
+      "variant": "bf16",
+      "outcome": "failed",
+      "checkpoint_file_bytes": 55586176913,
+      "checkpoint_file_gib": 51.76866139564663,
+      "model_loading_gib": null,
+      "available_kv_cache_gib": null,
+      "gpu_kv_cache_tokens": null,
+      "maximum_concurrency_4096": null,
+      "oom_evidence": true,
+      "no_kv_cache_blocks_evidence": false
+    },
+    {
+      "variant": "fp8",
+      "outcome": "failed",
+      "checkpoint_file_bytes": 30890053333,
+      "checkpoint_file_gib": 28.768604000099003,
+      "model_loading_gib": 27.64,
+      "available_kv_cache_gib": -0.31,
+      "gpu_kv_cache_tokens": null,
+      "maximum_concurrency_4096": null,
+      "oom_evidence": false,
+      "no_kv_cache_blocks_evidence": true
+    },
+    {
+      "variant": "mxfp6",
+      "outcome": "ready",
+      "checkpoint_file_bytes": 25937779338,
+      "checkpoint_file_gib": 24.156439432874322,
+      "model_loading_gib": 22.78,
+      "available_kv_cache_gib": 4.54,
+      "gpu_kv_cache_tokens": 42780,
+      "maximum_concurrency_4096": 10.44,
+      "oom_evidence": false,
+      "no_kv_cache_blocks_evidence": false
+    },
+    {
+      "variant": "nvfp4",
+      "outcome": "ready",
+      "checkpoint_file_bytes": 20613420509,
+      "checkpoint_file_gib": 19.197743860073388,
+      "model_loading_gib": 17.89,
+      "available_kv_cache_gib": 9.42,
+      "gpu_kv_cache_tokens": 89201,
+      "maximum_concurrency_4096": 21.78,
+      "oom_evidence": false,
+      "no_kv_cache_blocks_evidence": false
+    }
+  ],
+  "date": "2026-08-23",
+  "scope": "same-contract TP1 startup and KV-capacity check",
+  "claim_boundary": "A failure at gpu_memory_utilization=0.90 does not prove failure under every possible memory setting.",
+  "source_artifact_sha256": "f16f120f27c3bfd509fc47a10836aa50e90c1afabf54d7efeaaffa33749a3079"
+}
