@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.2.1 - 2026-08-24
+
+### Added
+
+- added a fixed-concurrency TP2 serving sweep for Qwen3.8-27B across FP8,
+  MXFP6 and standard NVFP4 W4A4, including two service lifecycles per format;
+- added machine-readable concurrency evidence and an absolute-throughput curve.
+
 ### Changed
 
 - replaced the Qwen3.5-35B-A3B combined-weight B4 W1 global split-K reduction
@@ -10,6 +18,15 @@
 - updated the c4 full-service and production-layer artifacts. The new path is
   bitwise identical to the previous MXFP6 Champion at the tested operator
   boundary and improves c4 output throughput by 4.41% over that Champion.
+
+### Documentation
+
+- expanded the Qwen3.8-27B report with 256-record BF16-fidelity results,
+  c1-c32 throughput, checkpoint size, model load and KV-cache capacity;
+- reframed MXFP6 as a measured quality-throughput-memory operating point rather
+  than a universal replacement for FP8 or NVFP4;
+- identified the public BF16 and official FP8 baselines and tightened the
+  reproducibility and claim boundaries.
 
 ## 0.2.0 - 2026-08-22
 

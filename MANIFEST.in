@@ -1,6 +1,6 @@
 include CMakeLists.txt README.md LICENSE CHANGELOG.md CONTRIBUTING.md THIRD_PARTY_NOTICES.md
 include .gitmodules
-recursive-include docs *.md *.png
+recursive-include docs *.md *.png *.svg
 recursive-include benchmarks/results README.md *.json
 include examples/vllm/Dockerfile
 recursive-include examples/vllm *.md *.patch *.py
