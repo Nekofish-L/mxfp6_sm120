@@ -39,7 +39,8 @@
     "wheel_sha256": "7d17c1ef0e99c4bef94a055e355f090e7d4691639584c2f9e0cc5da54209a6c9",
     "extension_sha256": "15b140511cb26b673a50c9c5d6398e09860243fafb8d5e112a8b7d6c04b1fbd8",
     "qwen35_moe_dispatch": "small-batch through B4; B4 uses cluster-local W1 reduction and packed-vector W2 loads; grouped schedule from B5",
-    "internal_vllm_template_commit": "2d45313db68dfde04a946e9fba7fd7029a82e0e8"
+    "internal_vllm_template_commit": "2d45313db68dfde04a946e9fba7fd7029a82e0e8",
+    "internal_vllm_adapter_sha256": "2c9117396bd460c216c3603fecc8ac123a7c8e6d6d940fed5e1e4b1668d5457f"
   },
   "workloads": {
     "qwen3_5_27b": {
