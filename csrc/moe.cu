@@ -1883,7 +1883,8 @@ template <
     int Tokens,
     int Splits = 4 / Tokens,
     bool IncludeShared = true,
-    bool SeparateShared = false>
+    bool SeparateShared = false,
+    bool ClusterReduce = false>
 __global__ __launch_bounds__(kThreads, 1)
 void qwen35_w1_splitk_kernel(
     uint8_t const* activation,
@@ -1909,6 +1910,7 @@ void qwen35_w1_splitk_kernel(
   static_assert(
       Tokens == 1 || Tokens == 2 || Tokens == 4 || Tokens == 8);
   static_assert(Splits == 1 || Splits == 2 || Splits == 4);
+  static_assert(!ClusterReduce || Splits == 2);
   constexpr int kSplits = Splits;
   constexpr int kSplitK = kQwenK / kSplits;
   constexpr int kWorkItems =
@@ -2123,31 +2125,78 @@ void qwen35_w1_splitk_kernel(
     __syncthreads();
   }
 
-  if ((lane & 3) == 0) {
-    int const row0 = warp * 16 + lane / 4;
-    int const row1 = row0 + 8;
-    partial[
-        static_cast<int64_t>(work) *
-            kTileM +
-        row0] = accum0;
-    partial[
-        static_cast<int64_t>(work) *
-            kTileM +
-        row1] = accum2;
-  }
+  float gate0 = 0.0f;
+  float gate1 = 0.0f;
+  float up0 = 0.0f;
+  float up1 = 0.0f;
+  int final_work = work;
+  if constexpr (ClusterReduce) {
+    // B=4 has two K-split CTAs per route/output group. Pair them in a
+    // two-block cluster so the first CTA can consume the peer accumulator
+    // from distributed shared memory instead of waiting at a grid-wide
+    // barrier and round-tripping both halves through global memory.
+    float* local_partial = reinterpret_cast<float*>(shared.a);
+    if ((lane & 3) == 0) {
+      int const row0 = warp * 16 + lane / 4;
+      int const row1 = row0 + 8;
+      local_partial[row0] = accum0;
+      local_partial[row1] = accum2;
+    }
+    auto cluster = cooperative_groups::this_cluster();
+    cluster.sync();
+    if (split == 0 && thread < kPairsPerBlock / 2) {
+      float const* peer_partial =
+          cluster.map_shared_rank(local_partial, 1);
+      int const local_pair = thread * 2;
+      int const up_offset = kPairsPerBlock;
+      gate0 =
+          local_partial[local_pair] + peer_partial[local_pair];
+      gate1 =
+          local_partial[local_pair + 1] +
+          peer_partial[local_pair + 1];
+      up0 =
+          local_partial[up_offset + local_pair] +
+          peer_partial[up_offset + local_pair];
+      up1 =
+          local_partial[up_offset + local_pair + 1] +
+          peer_partial[up_offset + local_pair + 1];
+    }
+    // Keep the peer CTA alive until all remote shared-memory reads finish.
+    cluster.sync();
+    if (thread == 0) {
+      cutlass::arch::launch_dependent_grids();
+    }
+    if (split != 0) {
+      return;
+    }
+    final_work = work / kSplits;
+  } else {
+    if ((lane & 3) == 0) {
+      int const row0 = warp * 16 + lane / 4;
+      int const row1 = row0 + 8;
+      partial[
+          static_cast<int64_t>(work) *
+              kTileM +
+          row0] = accum0;
+      partial[
+          static_cast<int64_t>(work) *
+              kTileM +
+          row1] = accum2;
+    }
 
-  cooperative_groups::this_grid().sync();
-  if (thread == 0) {
-    cutlass::arch::launch_dependent_grids();
+    cooperative_groups::this_grid().sync();
+    if (thread == 0) {
+      cutlass::arch::launch_dependent_grids();
+    }
   }
 
   constexpr int kFinalBlocks =
       kQwenRoutes * kQwenPairBlocks;
-  if (work >= kFinalBlocks) {
+  if (final_work >= kFinalBlocks) {
     return;
   }
-  int const final_route = work / kQwenPairBlocks;
-  int const final_group = work % kQwenPairBlocks;
+  int const final_route = final_work / kQwenPairBlocks;
+  int const final_group = final_work % kQwenPairBlocks;
   int const first_partial_work =
       (final_route * kQwenPairBlocks + final_group) *
       kSplits;
@@ -2159,18 +2208,12 @@ void qwen35_w1_splitk_kernel(
         static_cast<int64_t>(first_partial_work) *
         kTileM;
     int const up_offset = kPairsPerBlock;
-    float gate0;
-    float gate1;
-    float up0;
-    float up1;
-    if constexpr (kSplits == 1) {
+    if constexpr (!ClusterReduce && kSplits == 1) {
       gate0 = partial[partial0 + local_pair];
       gate1 = partial[partial0 + local_pair + 1];
-      up0 = partial[
-          partial0 + up_offset + local_pair];
-      up1 = partial[
-          partial0 + up_offset + local_pair + 1];
-    } else if constexpr (kSplits == 2) {
+      up0 = partial[partial0 + up_offset + local_pair];
+      up1 = partial[partial0 + up_offset + local_pair + 1];
+    } else if constexpr (!ClusterReduce && kSplits == 2) {
       int64_t const partial1 =
           partial0 + kTileM;
       gate0 =
@@ -2187,7 +2230,7 @@ void qwen35_w1_splitk_kernel(
               partial0 + up_offset + local_pair + 1] +
           partial[
               partial1 + up_offset + local_pair + 1];
-    } else {
+    } else if constexpr (!ClusterReduce) {
       int64_t const partial1 =
           partial0 + kTileM;
       int64_t const partial2 =
@@ -8934,6 +8977,9 @@ void qwen35_w1_splitk_silu_mxfp8_out_cuda(
       output_scales.data_ptr<uint8_t>();
   auto stream = c10::cuda::getCurrentCUDAStream(
       activation.get_device());
+  bool const use_b4_cluster_reduce =
+      include_shared && !separate_shared && tokens == 4 &&
+      !use_compact_four_token_grid;
   cudaLaunchConfig_t config{};
   config.gridDim = dim3(grid_blocks);
   config.blockDim = dim3(direct_moe::kThreads);
@@ -8942,14 +8988,31 @@ void qwen35_w1_splitk_silu_mxfp8_out_cuda(
   config.stream = stream.stream();
   cudaLaunchAttribute attributes[2]{};
   attributes[0].id =
-      cudaLaunchAttributeCooperative;
-  attributes[0].val.cooperative = 1;
-  attributes[1].id =
       cudaLaunchAttributeProgrammaticStreamSerialization;
-  attributes[1].val
+  attributes[0].val
       .programmaticStreamSerializationAllowed = 1;
+  if (use_b4_cluster_reduce) {
+    attributes[1].id = cudaLaunchAttributeClusterDimension;
+    attributes[1].val.clusterDim.x = 2;
+    attributes[1].val.clusterDim.y = 1;
+    attributes[1].val.clusterDim.z = 1;
+  } else {
+    attributes[1].id = cudaLaunchAttributeCooperative;
+    attributes[1].val.cooperative = 1;
+  }
   config.attrs = attributes;
   config.numAttrs = 2;
+  if (use_b4_cluster_reduce) {
+    int active_clusters = 0;
+    C10_CUDA_CHECK(cudaOccupancyMaxActiveClusters(
+        &active_clusters,
+        direct_moe::qwen35_w1_splitk_kernel<
+            4, 2, true, false, true>,
+        &config));
+    TORCH_CHECK(
+        active_clusters > 0,
+        "Qwen3.5 B4 cluster-reduce W1 has zero active clusters");
+  }
   if (separate_shared && tokens == 1) {
     C10_CUDA_CHECK(cudaLaunchKernelEx(
         &config,
@@ -9083,7 +9146,8 @@ void qwen35_w1_splitk_silu_mxfp8_out_cuda(
   } else if (include_shared && tokens == 4) {
     C10_CUDA_CHECK(cudaLaunchKernelEx(
         &config,
-        direct_moe::qwen35_w1_splitk_kernel<4, 2>,
+        direct_moe::qwen35_w1_splitk_kernel<
+            4, 2, true, false, true>,
         activation_ptr,
         scales_ptr,
         weight_ptr,
