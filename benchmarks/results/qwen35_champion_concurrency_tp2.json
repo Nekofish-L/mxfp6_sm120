@@ -35,10 +35,10 @@
     "speculative_decoding": false
   },
   "implementation": {
-    "mxfp6_sm120_commit": "53035f78643ec0e04cefb635d5a1ff3cd65ae383",
-    "wheel_sha256": "134b1ba2ad8294e4986afad9639305adecc58922c91492a161f3e982bb19750c",
-    "extension_sha256": "c58a6fec31308a1cdb513b2f3a9c9587b2d3487f8909c825db54879f7734b1a2",
-    "qwen35_moe_dispatch": "small-batch through B4; grouped schedule from B5",
+    "mxfp6_sm120_commit": "c123379e6d02f4d74d3e0b85879a1ebf9eda6064",
+    "wheel_sha256": "7d17c1ef0e99c4bef94a055e355f090e7d4691639584c2f9e0cc5da54209a6c9",
+    "extension_sha256": "15b140511cb26b673a50c9c5d6398e09860243fafb8d5e112a8b7d6c04b1fbd8",
+    "qwen35_moe_dispatch": "small-batch through B4; B4 uses cluster-local W1 reduction and packed-vector W2 loads; grouped schedule from B5",
     "internal_vllm_template_commit": "2d45313db68dfde04a946e9fba7fd7029a82e0e8"
   },
   "workloads": {
@@ -60,9 +60,9 @@
   ],
   "fresh_service_lifecycle_per_source_block": true,
   "acquisition": {
-    "fp8": "reused unchanged A1/A2 baseline lifecycles",
+    "fp8": "c4 reran complete A1/A2 lifecycles for the B4 update; all other FP8 baseline lifecycles are retained unchanged",
     "qwen3_5_27b_mxfp6": "new complete B1/B2 opposite-order lifecycles",
-    "qwen3_5_35b_a3b_mxfp6": "c1/c2/c4 reused because the final dispatch is unchanged; c8 and above use new B1/B2 measurements of the grouped-from-B5 dispatch"
+    "qwen3_5_35b_a3b_mxfp6": "c1/c2 retained because their dispatch is unchanged; c4 reran complete FP8 A1/A2 and Candidate B1/B2 lifecycles; c8 and above retain the grouped-from-B5 measurements"
   },
   "concurrencies": [
     1,
@@ -724,14 +724,14 @@
           "variant": "fp8",
           "concurrency": 4,
           "requests": 64,
-          "output_throughput_tokens_per_s": 696.9010419728176,
-          "mean_tpot_ms": 5.397170657726879,
-          "p99_tpot_ms": 6.416447865908059,
-          "mean_ttft_ms": 204.35988078861556,
-          "p99_ttft_ms": 440.03335682908045,
+          "output_throughput_tokens_per_s": 701.7173639169073,
+          "mean_tpot_ms": 5.328374480875502,
+          "p99_tpot_ms": 6.256878544920612,
+          "mean_ttft_ms": 219.0817298105685,
+          "p99_ttft_ms": 460.5883215763605,
           "prompt_tokens": 203631,
           "completion_tokens": 59193,
-          "duration_s": 84.93745372002013
+          "duration_s": 84.35447523999028
         },
         {
           "label": "A1",
@@ -822,14 +822,14 @@
           "variant": "mxfp6",
           "concurrency": 4,
           "requests": 64,
-          "output_throughput_tokens_per_s": 797.6784267232096,
-          "mean_tpot_ms": 4.741552923148047,
-          "p99_tpot_ms": 5.675222278864067,
-          "mean_ttft_ms": 188.58373131297412,
-          "p99_ttft_ms": 403.7908672122282,
+          "output_throughput_tokens_per_s": 818.1483123471695,
+          "mean_tpot_ms": 4.579142838703204,
+          "p99_tpot_ms": 5.492227494516746,
+          "mean_ttft_ms": 214.5376099342684,
+          "p99_ttft_ms": 458.24635504162853,
           "prompt_tokens": 203631,
           "completion_tokens": 59193,
-          "duration_s": 74.20659506006632
+          "duration_s": 72.34996284497902
         },
         {
           "label": "B1",
@@ -920,14 +920,14 @@
           "variant": "mxfp6",
           "concurrency": 4,
           "requests": 64,
-          "output_throughput_tokens_per_s": 802.4655425334107,
-          "mean_tpot_ms": 4.719597306821467,
-          "p99_tpot_ms": 5.633861717150596,
-          "mean_ttft_ms": 187.17883232602617,
-          "p99_ttft_ms": 398.7580888986119,
+          "output_throughput_tokens_per_s": 816.1589851552466,
+          "mean_tpot_ms": 4.592815398031608,
+          "p99_tpot_ms": 5.532288098511205,
+          "mean_ttft_ms": 214.3126946011762,
+          "p99_ttft_ms": 453.8426438369787,
           "prompt_tokens": 203631,
           "completion_tokens": 59193,
-          "duration_s": 73.76391491293907
+          "duration_s": 72.52631053095683
         },
         {
           "label": "B2",
@@ -1018,14 +1018,14 @@
           "variant": "fp8",
           "concurrency": 4,
           "requests": 64,
-          "output_throughput_tokens_per_s": 701.5803839010426,
-          "mean_tpot_ms": 5.371009403612524,
-          "p99_tpot_ms": 6.281547053603637,
-          "mean_ttft_ms": 193.5932824108022,
-          "p99_ttft_ms": 417.8850831522138,
+          "output_throughput_tokens_per_s": 693.4684429613856,
+          "mean_tpot_ms": 5.383141811295568,
+          "p99_tpot_ms": 6.31128619574525,
+          "mean_ttft_ms": 224.89677653175022,
+          "p99_ttft_ms": 458.02024415112083,
           "prompt_tokens": 203631,
           "completion_tokens": 59193,
-          "duration_s": 84.37094502395485
+          "duration_s": 85.35788556898478
         },
         {
           "label": "A2",
@@ -1153,29 +1153,29 @@
           "prompt_tokens_per_block": 203631,
           "completion_tokens_per_block": 59193,
           "fp8": {
-            "output_throughput_tokens_per_s": 699.2407129369301,
-            "mean_tpot_ms": 5.384090030669702,
-            "p99_tpot_ms": 6.348997459755848,
-            "mean_ttft_ms": 198.97658159970888,
-            "p99_ttft_ms": 428.9592199906471
+            "output_throughput_tokens_per_s": 697.5929034391464,
+            "mean_tpot_ms": 5.355758146085535,
+            "p99_tpot_ms": 6.284082370332931,
+            "mean_ttft_ms": 221.98925317115936,
+            "p99_ttft_ms": 459.3042828637407
           },
           "mxfp6": {
-            "output_throughput_tokens_per_s": 800.0719846283101,
-            "mean_tpot_ms": 4.730575114984758,
-            "p99_tpot_ms": 5.654541998007332,
-            "mean_ttft_ms": 187.88128181950015,
-            "p99_ttft_ms": 401.27447805542005
+            "output_throughput_tokens_per_s": 817.153648751208,
+            "mean_tpot_ms": 4.585979118367407,
+            "p99_tpot_ms": 5.512257796513976,
+            "mean_ttft_ms": 214.4251522677223,
+            "p99_ttft_ms": 456.04449943930365
           },
           "changes_percent": {
-            "output_throughput_gain": 14.420108816014388,
-            "mean_tpot_reduction": 12.137889819120584,
-            "p99_tpot_reduction": 10.938033384805001,
-            "mean_ttft_change": -5.576183735294893,
-            "p99_ttft_change": -6.453933298328618
+            "output_throughput_gain": 17.139042659784074,
+            "mean_tpot_reduction": 14.372923622041277,
+            "p99_tpot_reduction": 12.282216055326211,
+            "mean_ttft_change": -3.4074176093582986,
+            "p99_ttft_change": -0.7097219743113281
           },
           "repeat_spread_percent_of_mean": {
-            "fp8_output_throughput": 0.6692033003300183,
-            "mxfp6_output_throughput": 0.5983356375645512
+            "fp8_output_throughput": 1.182435342116324,
+            "mxfp6_output_throughput": 0.243444880707954
           }
         },
         {

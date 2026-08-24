@@ -83,7 +83,7 @@ quantized execution path changed.
 | Model | Measured concurrency | Output throughput gain | Mean TPOT reduction |
 |---|---|---:|---:|
 | Qwen3.5-27B | 1, 2, 4, 8, 16, 24, 32 | **+17.43% to +21.36%** | 14.13% to 16.73% |
-| Qwen3.5-35B-A3B | 1, 2, 4, 8, 16, 24, 32 | **+14.42% to +32.92%** | 12.14% to 24.65% |
+| Qwen3.5-35B-A3B | 1, 2, 4, 8, 16, 24, 32 | **+17.14% to +32.92%** | 14.37% to 24.65% |
 
 ![Full-service FP8 and MXFP6 throughput curves](docs/assets/full-service-throughput.svg)
 
@@ -140,7 +140,7 @@ warmups, 1000 replays and 9 paired repeats.
 |---:|---:|---:|---:|
 | 1 | 29.3 us | 16.4 us | 1.787x |
 | 2 | 32.8 us | 20.5 us | 1.601x |
-| 4 | 32.8 us | 26.4 us | 1.241x |
+| 4 | 32.8 us | 25.0 us | 1.313x |
 | 8 | 54.5 us | 38.6 us | 1.411x |
 | 16 | 123.7 us | 90.3 us | 1.370x |
 | 24 | 162.4 us | 127.1 us | 1.278x |
@@ -148,10 +148,18 @@ warmups, 1000 replays and 9 paired repeats.
 | 64 | 238.9 us | 188.3 us | 1.269x |
 | 96 | 264.6 us | 207.0 us | 1.278x |
 
+The B4 production path keeps split-K=2 and reduces each CTA pair through
+cluster distributed shared memory instead of a global partial buffer and a
+grid-wide barrier. Together with packed-vector W2 loads, this raised c4 output
+throughput by 4.41% over the previous MXFP6 Champion. The fresh FP8/MXFP6 c4
+comparison is +17.14%. Candidate and previous-Champion B4 outputs were bitwise
+identical on both TP ranks.
+
 The MoE comparisons had relative RMS error 0.0903 to 0.1152, cosine similarity
-of at least 0.9936, and identical routed expert IDs. The
-[MoE layer artifact](benchmarks/results/qwen35_moe_layer_current_main.json)
-contains every paired sample and route statistic.
+of at least 0.9936, and identical routed expert IDs. The general
+[MoE layer artifact](benchmarks/results/qwen35_moe_layer_current_main.json) and
+[B4 optimization artifact](benchmarks/results/qwen35_moe_b4_cluster_tp2.json)
+retain the paired measurements and their execution boundaries.
 
 ## Execution model
 
@@ -179,11 +187,12 @@ schedules, normal large-M tiles and Stream-K. Static overrides cover the five
 measured Qwen3.5-27B TP2 projection shapes. Other valid shapes use the native
 fallback policy or an autotune cache.
 
-The Qwen3.5-35B-A3B TP2 integration uses the small-batch path through token
-batch 4 and the grouped path from batch 5. Small batches use allocation-free
-routing, split-K W1 and fused W2 routed/shared reduction; the grouped path uses
-indirect routing, TMA W1 and grouped W2. Caller-owned workspaces keep both
-production paths graph safe.
+The measured Qwen3.5-35B-A3B TP2 Champion uses the small-batch path through
+token batch 4 and the grouped path from batch 5. Small batches use
+allocation-free routing, split-K W1 and fused W2 routed/shared reduction. Its
+combined-weight B4 path uses a two-block cluster reduction and packed-vector W2
+loads. The grouped path uses indirect routing, TMA W1 and grouped W2.
+Caller-owned workspaces keep both production paths graph safe.
 
 ## Validated scope
 

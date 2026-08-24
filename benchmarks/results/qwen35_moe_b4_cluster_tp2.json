@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-24",
+  "claim_layer": "Qwen3.5-35B-A3B TP2 full-service concurrency-4",
+  "artifact_class": "environment-bound integration snapshot",
+  "public_reproducibility": false,
+  "hardware": {
+    "gpus": 2,
+    "device": "NVIDIA GeForce RTX 5090",
+    "compute_capability": "12.0",
+    "topology": "PIX",
+    "tensor_parallel_size": 2
+  },
+  "runtime": {
+    "vllm": "0.25.1-internally-optimized",
+    "torch": "2.11.0+cu130",
+    "cuda": "13.0",
+    "flashinfer": "0.6.18 with Qwen3.5 TP2 GDN registry and local #4634",
+    "cuda_graph_capture_sizes": [1, 2, 4, 8, 16, 24, 32],
+    "max_num_batched_tokens": 4096,
+    "async_scheduling": true
+  },
+  "candidate": {
+    "mxfp6_sm120_commit": "c123379e6d02f4d74d3e0b85879a1ebf9eda6064",
+    "wheel_sha256": "7d17c1ef0e99c4bef94a055e355f090e7d4691639584c2f9e0cc5da54209a6c9",
+    "extension_sha256": "15b140511cb26b673a50c9c5d6398e09860243fafb8d5e112a8b7d6c04b1fbd8",
+    "mechanism": "two-CTA cluster-local W1 split-K reduction plus packed-vector W2 loads at physical B4",
+    "scope": "combined-weight Qwen3.5-35B-A3B B4 path; B1, B2, B8, separate-shared and compact paths are unchanged"
+  },
+  "workload": {
+    "kind": "frozen real multimodal records",
+    "concurrency": 4,
+    "requests_per_lifecycle": 64,
+    "prompt_tokens_per_lifecycle": 203631,
+    "completion_tokens_per_lifecycle": 59193,
+    "sampling_and_output_lengths": "frozen per request"
+  },
+  "candidate_vs_previous_champion": {
+    "order": ["A1", "B1", "B2", "A2"],
+    "previous_champion_output_tokens_per_s": [778.955833911, 783.365562547],
+    "candidate_output_tokens_per_s": [815.580818131, 815.661741493],
+    "mean_output_throughput_gain_percent": 4.4114587,
+    "mean_tpot_reduction_percent": 4.3643249,
+    "p99_tpot_reduction_percent": 4.0033882
+  },
+  "candidate_vs_official_fp8": {
+    "order": ["A1", "B1", "B2", "A2"],
+    "fp8": {
+      "output_tokens_per_s": [701.7173639169073, 693.4684429613856],
+      "mean_output_tokens_per_s": 697.5929034391464,
+      "mean_tpot_ms": 5.355758146085535,
+      "p99_tpot_ms": 6.284082370332931
+    },
+    "mxfp6": {
+      "output_tokens_per_s": [818.1483123471695, 816.1589851552466],
+      "mean_output_tokens_per_s": 817.153648751208,
+      "mean_tpot_ms": 4.585979118367407,
+      "p99_tpot_ms": 5.512257796513976
+    },
+    "output_throughput_gain_percent": 17.1390427,
+    "mean_tpot_reduction_percent": 14.3729236,
+    "p99_tpot_reduction_percent": 12.2822161
+  },
+  "complete_moe_layer_b4": {
+    "execution_form": "TP2 production combined-weight path in one CUDA Graph",
+    "warmup_replays": 40,
+    "measured_replays": 1000,
+    "paired_repeats": 9,
+    "fp8_median_us": 32.7686369,
+    "mxfp6_median_us": 24.9635857,
+    "speedup": 1.3126575,
+    "relative_rms": 0.0911996,
+    "cosine": 0.9958426,
+    "route_ids_match_fp8_checkpoint": true,
+    "mxfp6_samples_us": [
+      24.8342715,
+      24.9635857,
+      24.9884799,
+      24.8592645,
+      25.6708171,
+      25.5970880,
+      24.9490868,
+      24.9289908,
+      25.6620478
+    ]
+  },
+  "correctness_and_regression": {
+    "candidate_vs_previous_champion_fixed_input": "bitwise exact on both TP ranks",
+    "candidate_vs_fp8_operator_metrics": "unchanged from the previous MXFP6 path",
+    "service_contract": "all eight measured lifecycles completed 64 requests, 203631 prompt tokens and 59193 completion tokens with zero failures",
+    "coverage": [
+      "complete CUDA extension test suite",
+      "B1/B2/B4/B8 complete MoE layer",
+      "CUDA Graph replay",
+      "non-default CUDA stream",
+      "persistent workspace"
+    ]
+  }
+}

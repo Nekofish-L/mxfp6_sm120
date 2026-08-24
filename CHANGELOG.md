@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Changed
+
+- replaced the Qwen3.5-35B-A3B combined-weight B4 W1 global split-K reduction
+  with a two-block cluster-local reduction; the measured internal integration
+  combines it with the existing packed W2 path;
+- updated the c4 full-service and production-layer artifacts. The new path is
+  bitwise identical to the previous MXFP6 Champion at the tested operator
+  boundary and improves c4 output throughput by 4.41% over that Champion.
+
 ## 0.2.0 - 2026-08-22
 
 ### Added

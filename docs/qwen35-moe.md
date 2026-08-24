@@ -13,6 +13,12 @@ shared-expert reduction. Larger batches use indirect routing, a TMA W1 path
 over the checkpoint's interleaved gate/up projection and a sparse grouped W2
 path.
 
+For the measured combined-weight B4 path, two split-K CTAs form a thread-block
+cluster. The lead CTA reduces both partials through distributed shared memory,
+avoiding the global partial-buffer round trip and grid-wide barrier. B4 W2 uses
+packed-vector loads. Other small-batch, separate-shared and compact fallback
+paths keep their existing schedules.
+
 The implementation preserves CUDA Graph capture requirements by using
 caller-owned persistent workspaces. Dependent small-batch grids synchronize
 before their first producer-dependent global-memory access.
@@ -75,7 +81,8 @@ torchrun --master-addr 127.0.0.1 --nproc-per-node=2 \
   --fp8-model "$PWD/models/Qwen3.5-35B-A3B-FP8" \
   --mx-model "$PWD/models/Qwen3.5-35B-A3B-MXFP6" \
   --batch-sizes 1 2 4 8 16 24 32 64 96 \
-  --mx-mode auto --route-stats \
+  --mx-mode auto --no-small-separate-shared \
+  --b4-packed-vector-loads --route-stats \
   --warmup 40 --iterations 1000 --repeats 9
 ```
 
@@ -86,3 +93,5 @@ all-reduce in one CUDA Graph using real layer-0 checkpoint weights.
 The current batch table, numerical comparisons and serving metrics are in
 [Benchmark methodology](benchmarks.md). The machine-readable result is
 [`qwen35_moe_layer_current_main.json`](../benchmarks/results/qwen35_moe_layer_current_main.json).
+The B4 production-layer and full-service evidence is in
+[`qwen35_moe_b4_cluster_tp2.json`](../benchmarks/results/qwen35_moe_b4_cluster_tp2.json).

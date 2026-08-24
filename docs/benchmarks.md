@@ -36,7 +36,7 @@ FP8 and MXFP6 ran in the same frozen environment:
 | Scheduler | 4096 maximum batched tokens, asynchronous scheduling |
 | Collective | FlashInfer TRT-LLM AllReduce/RMSNorm fusion |
 | Disabled | Prefix caching and speculative decoding |
-| mxfp6-sm120 | `53035f78643ec0e04cefb635d5a1ff3cd65ae383` |
+| mxfp6-sm120 | `c123379e6d02f4d74d3e0b85879a1ebf9eda6064` |
 
 Service logs confirmed the intended full CUDA Graph captures, fused GDN path,
 AllReduce/RMSNorm backend and quantized kernels. MXFP6 runs additionally logged
@@ -55,17 +55,17 @@ per-request seeds and requested output lengths were fixed. Concurrency 1 through
 
 ### Acquisition and aggregation
 
-The original comparison used four fresh service lifecycles:
+The comparison uses four fresh service lifecycles:
 
 1. FP8 A1, concurrency ascending;
 2. MXFP6 B1, concurrency descending;
 3. MXFP6 B2, concurrency ascending;
 4. FP8 A2, concurrency descending.
 
-Each point had a concurrency-matched warmup. The current update retained the
-unchanged FP8 samples, reran both complete 27B MXFP6 lifecycles, and reran the
-affected 35B-A3B points from c8 upward. The unchanged 35B-A3B c1/c2/c4 samples
-were retained. Every reported point remains the mean of two opposite-order
+Each point had a concurrency-matched warmup. The current update reran both FP8
+and MXFP6 c4 lifecycles for the 35B-A3B B4 cluster optimization. The unchanged
+35B-A3B c1/c2 and grouped-from-B5 c8-c32 points were retained, as were all 27B
+points. Every reported point remains the mean of two opposite-order
 service-lifecycle samples; no best-run selection is used. All points completed
 their request and token contracts with zero failures.
 
@@ -96,7 +96,7 @@ with token batch `M=c`.
 |---:|---:|---:|---:|---:|---:|---:|---:|
 | 1 | 270.94 | 329.13 | +21.48% | 17.48% | 17.21% | -59.59% | 3.89% / 0.46% |
 | 2 | 415.02 | 526.67 | +26.90% | 21.92% | 19.91% | -10.65% | 0.86% / 0.68% |
-| 4 | 699.24 | 800.07 | +14.42% | 12.14% | 10.94% | -6.45% | 0.67% / 0.60% |
+| 4 | 697.59 | 817.15 | +17.14% | 14.37% | 12.28% | -0.71% | 1.18% / 0.24% |
 | 8 | 1010.63 | 1262.86 | +24.96% | 20.68% | 17.76% | -13.48% | 1.21% / 0.19% |
 | 16 | 1365.96 | 1766.50 | +29.32% | 23.47% | 22.33% | -4.28% | 1.34% / 0.37% |
 | 24 | 1660.71 | 2182.02 | +31.39% | 23.64% | 18.21% | -5.36% | 2.10% / 0.04% |
@@ -180,7 +180,7 @@ weights. Each result is the median of nine paired repeats after 40 warmups and
 |---:|---:|---:|---:|---:|---:|
 | 1 | 29.3 us | 16.4 us | 1.787x | 0.1117 | 0.9937 |
 | 2 | 32.8 us | 20.5 us | 1.601x | 0.1152 | 0.9936 |
-| 4 | 32.8 us | 26.4 us | 1.241x | 0.0912 | 0.9958 |
+| 4 | 32.8 us | 25.0 us | 1.313x | 0.0912 | 0.9958 |
 | 8 | 54.5 us | 38.6 us | 1.411x | 0.0946 | 0.9955 |
 | 16 | 123.7 us | 90.3 us | 1.370x | 0.0903 | 0.9959 |
 | 24 | 162.4 us | 127.1 us | 1.278x | 0.0980 | 0.9952 |
@@ -200,9 +200,15 @@ torchrun --master-addr 127.0.0.1 --nproc-per-node=2 \
   --fp8-model /models/Qwen3.5-35B-A3B-FP8 \
   --mx-model /models/Qwen3.5-35B-A3B-MXFP6 \
   --batch-sizes 1 2 4 8 16 24 32 64 96 \
-  --mx-mode auto --route-stats \
+  --mx-mode auto --no-small-separate-shared \
+  --b4-packed-vector-loads --route-stats \
   --warmup 40 --iterations 1000 --repeats 9
 ```
+
+The command selects the combined-weight small-batch execution form used by the
+measured internal Champion. The checked-in public vLLM adapter retains its
+version-locked weight-loading contract; its public serving numbers are reported
+separately below.
 
 ## Quality evidence
 
@@ -235,6 +241,7 @@ and workload contracts from the Champion sweep and should not be mixed with it.
 | Artifact | Scope |
 |---|---|
 | [`qwen35_champion_concurrency_tp2.json`](../benchmarks/results/qwen35_champion_concurrency_tp2.json) | Latest Champion full-service c1 through c32 sweep |
+| [`qwen35_moe_b4_cluster_tp2.json`](../benchmarks/results/qwen35_moe_b4_cluster_tp2.json) | B4 cluster optimization, correctness and fresh c4 service comparison |
 | [`qwen35_dense_gemm_current_main.json`](../benchmarks/results/qwen35_dense_gemm_current_main.json) | Current-main 70-shape Dense GEMM matrix |
 | [`qwen35_moe_layer_current_main.json`](../benchmarks/results/qwen35_moe_layer_current_main.json) | Current-main complete TP2 MoE layer |
 | [`qwen35_public_vllm_tp2.json`](../benchmarks/results/qwen35_public_vllm_tp2.json) | Public vLLM v0.25.1 service comparison |
