@@ -44,19 +44,19 @@ models:
 
 ### Qwen3.8-27B quality, serving and capacity snapshot
 
-A frozen RTX 5090 comparison now covers official FP8, MXFP6 and standard
-NVFP4 W4A4. Across 256 teacher-forced records, sample-mean token-logprob MAE
-against BF16 was 0.05719 for FP8, 0.09078 for MXFP6 and 0.17661 for NVFP4.
-MXFP6 therefore reduced MAE by 48.6% relative to NVFP4, while FP8 remained
-closest to BF16.
+A frozen RTX 5090 comparison covers official FP8, MXFP6 and standard NVFP4
+W4A4. Across 256 teacher-forced records, sample-mean token-logprob MAE against
+BF16 was 0.05719 for FP8, 0.09078 for MXFP6 and 0.17661 for NVFP4.
 
-At three TP2 serving workloads, MXFP6 produced 18.23% to 22.33% more output
-tokens/s than FP8. MXFP6 throughput was 14.59% to 16.46% below NVFP4. On a
-shared TP1 startup contract with `gpu_memory_utilization=0.90`, MXFP6 retained
-4.54 GiB for KV cache while FP8 retained no KV block; NVFP4 retained 9.42 GiB.
+In a fixed TP2 c1–c32 sweep, MXFP6 was 18.3%–22.4% faster than FP8 and
+13.5%–16.7% slower than NVFP4. Relative to the measured FP8→NVFP4 endpoints,
+MXFP6 occupied 28.1% of the BF16-fidelity gap while recovering 43.4%–53.9% of
+the throughput gain, 52.2% of the per-GPU model-load saving and 50.6% of the
+added TP2 KV capacity. It is a measured operating point between the endpoints,
+not a universal winner.
 
 The [Qwen3.8-27B report](docs/qwen38-27b.md) states the workload and claim
-boundaries and links the machine-readable quality, serving, capacity and
+boundaries and links the machine-readable quality, concurrency, capacity and
 environment artifacts. These are environment-bound integration results, not a
 universal quality or performance ranking.
 

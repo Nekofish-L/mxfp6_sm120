@@ -109,6 +109,67 @@ def plot_throughput(serving, output_dir: Path, preview_dir: Path | None):
     save(fig, output_dir, preview_dir, "qwen38-serving-throughput")
 
 
+def plot_concurrency(concurrency, output_dir: Path, preview_dir: Path | None):
+    variants = ["fp8", "mxfp6", "nvfp4"]
+    concurrencies = [str(value) for value in concurrency["concurrencies"]]
+    x = list(range(len(concurrencies)))
+    markers = {"fp8": "s", "mxfp6": "o", "nvfp4": "D"}
+    widths = {"fp8": 1.9, "mxfp6": 2.8, "nvfp4": 2.1}
+
+    fig, ax = plt.subplots(figsize=(8.8, 4.25), layout="constrained")
+    fig.patch.set_facecolor(BACKGROUND)
+    style_axis(ax, "y")
+    ax.spines["left"].set_visible(True)
+    ax.spines["left"].set_color("#CBD3DF")
+
+    for variant in variants:
+        points = concurrency["variants"][variant]["points"]
+        values = [points[value]["mean_output_tokens_per_s"] for value in concurrencies]
+        lows = [points[value]["range_output_tokens_per_s"][0] for value in concurrencies]
+        highs = [points[value]["range_output_tokens_per_s"][1] for value in concurrencies]
+        ax.fill_between(x, lows, highs, color=COLORS[variant], alpha=0.09, linewidth=0, zorder=1)
+        ax.plot(
+            x,
+            values,
+            color=COLORS[variant],
+            linewidth=widths[variant],
+            marker=markers[variant],
+            markersize=8.5 if variant == "mxfp6" else 7.2,
+            markeredgecolor=BACKGROUND,
+            markeredgewidth=1.5,
+            label=LABELS[variant],
+            zorder=3,
+        )
+
+    ax.set_xticks(x, [f"c{value}" for value in concurrencies])
+    ax.set_xlim(-0.18, len(x) - 0.82)
+    ax.set_ylim(0, 1700)
+    ax.set_yticks([0, 400, 800, 1200, 1600])
+    ax.set_xlabel("Maximum concurrency  ·  ISL 1024 / OSL 256  ·  request rate ∞", color=INK, fontsize=10, labelpad=9)
+    ax.set_ylabel("Output tokens/s", color=INK, fontsize=10, labelpad=10)
+    ax.legend(
+        loc="upper left",
+        bbox_to_anchor=(0.0, 1.02),
+        ncol=3,
+        frameon=False,
+        fontsize=9.5,
+        handlelength=2.2,
+        handletextpad=0.6,
+        columnspacing=1.8,
+    )
+    ax.text(
+        0.99,
+        0.05,
+        "two service lifecycles per format · bands show run range",
+        transform=ax.transAxes,
+        ha="right",
+        va="bottom",
+        color=MUTED,
+        fontsize=8.8,
+    )
+    save(fig, output_dir, preview_dir, "qwen38-serving-concurrency")
+
+
 def plot_tradeoff(quality, serving, output_dir: Path, preview_dir: Path | None):
     variants = ["fp8", "mxfp6", "nvfp4"]
     scenario_names = ["interactive_c1", "online_c16", "long_c32"]
@@ -212,9 +273,11 @@ def main():
     })
     quality = load(args.results_dir / "qwen38_27b_quality_fidelity.json")
     serving = load(args.results_dir / "qwen38_27b_serving_tp2.json")
+    concurrency = load(args.results_dir / "qwen38_27b_concurrency_tp2.json")
     capacity = load(args.results_dir / "qwen38_27b_capacity_tp1.json")
     plot_quality(quality, args.output_dir, args.preview_dir)
     plot_throughput(serving, args.output_dir, args.preview_dir)
+    plot_concurrency(concurrency, args.output_dir, args.preview_dir)
     plot_tradeoff(quality, serving, args.output_dir, args.preview_dir)
     plot_capacity(capacity, args.output_dir, args.preview_dir)
 

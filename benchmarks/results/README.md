@@ -5,6 +5,7 @@
 | Artifact | Measurement boundary | Main result |
 |---|---|---:|
 | `qwen38_27b_quality_fidelity.json` | Qwen3.8-27B, 256 records, BF16 teacher-forced token-logprob fidelity | MXFP6 MAE 48.6% below NVFP4; FP8 lowest |
+| `qwen38_27b_concurrency_tp2.json` | Qwen3.8-27B TP2, fixed ISL 1024 / OSL 256, c1 through c32 | MXFP6 +18.26% to +22.43% vs FP8; NVFP4 fastest |
 | `qwen38_27b_serving_tp2.json` | Qwen3.8-27B TP2, three workloads, FP8/MXFP6/NVFP4 | MXFP6 +18.23% to +22.33% vs FP8; NVFP4 fastest |
 | `qwen38_27b_capacity_tp1.json` | Qwen3.8-27B TP1 startup at a shared 90% memory budget | MXFP6 and NVFP4 ready; FP8 had no KV block |
 | `qwen35_champion_concurrency_tp2.json` | Qwen3.5-27B and 35B-A3B TP2 full service, c1 through c32 | +17.14% to +32.92% output tok/s |
@@ -14,8 +15,10 @@
 
 These files are environment-bound integration snapshots, not public
 reproducers. The Qwen3.8 environment artifact is
-`qwen38_27b_environment.json`; its serving artifact retains two fresh
-forward/reverse-order blocks per workload. The Qwen3.5 service artifact
+`qwen38_27b_environment.json`; its concurrency artifact retains two fresh
+forward/reverse-order lifecycles per format, and its workload-matrix artifact
+retains two fresh forward/reverse-order blocks per workload. The Qwen3.5
+service artifact
 compares official FP8 and MXFP6 on one frozen Champion runtime and contains two
 opposite-order samples per point, all absolute latencies, token totals and
 repeat spread. The B4 artifact records the new code identity, full-service
