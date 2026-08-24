@@ -24,6 +24,7 @@
     "mxfp6_sm120_commit": "c123379e6d02f4d74d3e0b85879a1ebf9eda6064",
     "wheel_sha256": "7d17c1ef0e99c4bef94a055e355f090e7d4691639584c2f9e0cc5da54209a6c9",
     "extension_sha256": "15b140511cb26b673a50c9c5d6398e09860243fafb8d5e112a8b7d6c04b1fbd8",
+    "internal_vllm_adapter_sha256": "2c9117396bd460c216c3603fecc8ac123a7c8e6d6d940fed5e1e4b1668d5457f",
     "mechanism": "two-CTA cluster-local W1 split-K reduction plus packed-vector W2 loads at physical B4",
     "scope": "combined-weight Qwen3.5-35B-A3B B4 path; B1, B2, B8, separate-shared and compact paths are unchanged"
   },
