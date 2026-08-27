@@ -22,6 +22,7 @@ def test_image_inputs_are_public_and_pinned():
     assert "VLLM_ALLREDUCE_USE_FLASHINFER=1" in dockerfile
     assert "VLLM_ENABLE_QWEN_GDN_FUSED_DECODE=1" in dockerfile
     assert "VLLM_FLASHINFER_ALLREDUCE_BACKEND=trtllm" in dockerfile
+    assert "vllm-pr-50862-gdn-prefill-sm120.patch" in dockerfile
     assert "vllm-pr-53645-fused-gdn.patch" in dockerfile
     assert "mxfp6_sm120_moe.py" in dockerfile
     assert "mxfp6_sm120_utils.py" in dockerfile
@@ -40,6 +41,9 @@ def test_example_has_one_build_path_and_direct_vllm_serve_commands():
     assert "--async-scheduling" in readme
     assert "--max-num-batched-tokens 4096" in readme
     assert readme.count("--no-enable-prefix-caching") == 2
+    assert readme.count("mxfp6-vllm-cache:/root/.cache") == 2
+    assert "hybrid NVFP4 lm_head" in readme
+    assert "not part of this MXFP6 template" in readme
 
 
 def test_public_example_contains_no_internal_resource_reference():
@@ -90,6 +94,16 @@ def test_vllm_patch_is_limited_to_required_integration_points():
     assert "fbd402ef87ad4f0a79a8d18ad17ccc70e1c10a3b" in gdn_patch
     assert "qwen_gdn_attention_core_fi" in gdn_patch
     assert "VLLM_ENABLE_QWEN_GDN_FUSED_DECODE" in gdn_patch
+
+    prefill_patch = (
+        EXAMPLE / "patches" / "vllm-pr-50862-gdn-prefill-sm120.patch"
+    ).read_text()
+    assert "f5d77dc04e2f61e21c5e6b3d48d2cc1b92d24616" in prefill_patch
+    assert "or current_platform.is_device_capability_family(120)" in prefill_patch
+    assert (
+        "supports_cutedsl = current_platform.is_device_capability_family(100)"
+        in prefill_patch
+    )
 
 
 def test_adapter_fails_closed_on_the_tested_dense_and_moe_boundaries():

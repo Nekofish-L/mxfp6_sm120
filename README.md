@@ -108,7 +108,9 @@ This Champion comparison uses an internally optimized vLLM 0.25.1 runtime,
 PyTorch 2.11.0+cu130, CUDA 13.0, two PIX-connected RTX 5090 GPUs and TP2. The
 checked-in [public vLLM v0.28.0 reproducer](examples/vllm/README.md) builds the
 same Dense and routed-MoE paths from public sources with one Docker command and
-runs either checkpoint with a direct `vllm serve` command.
+runs either checkpoint with a direct `vllm serve` command. It does not include
+the separate hybrid NVFP4 lm_head optimization used by the full internal
+35B-A3B Champion.
 
 ### Dense GEMM and MoE layer
 

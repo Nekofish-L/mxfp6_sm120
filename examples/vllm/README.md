@@ -14,7 +14,10 @@ upstream changes used by the measured configuration:
 - [FlashInfer #4634](https://github.com/flashinfer-ai/flashinfer/pull/4634),
   which permits local TRT-LLM IPC allocation without GPUDirect RDMA;
 - [FlashInfer #4698](https://github.com/flashinfer-ai/flashinfer/pull/4698),
-  which registers the validated Qwen3.5 TP2 fused-GDN geometries.
+  which registers the validated Qwen3.5 TP2 fused-GDN geometries;
+- [vLLM #50862](https://github.com/vllm-project/vllm/pull/50862), commit
+  `f5d77dc04e2f61e21c5e6b3d48d2cc1b92d24616`, which enables the existing
+  FlashInfer GDN prefill path on SM120;
 - [vLLM #53645](https://github.com/vllm-project/vllm/pull/53645), commit
   `fbd402ef87ad4f0a79a8d18ad17ccc70e1c10a3b`, which connects supported plain
   decode steps to FlashInfer's fused GDN operation.
@@ -59,6 +62,7 @@ silently using a different execution path.
 ```bash
 docker run --rm --gpus all --ipc=host --network host \
   -e CUDA_VISIBLE_DEVICES=0,1 -v "$PWD/models:/models:ro" \
+  -v mxfp6-vllm-cache:/root/.cache \
   mxfp6-vllm:0.28.0 /models/Qwen3.5-27B-MXFP6 \
   --served-model-name Qwen3.5-27B-MXFP6 --tensor-parallel-size 2 \
   --max-model-len 16384 --max-num-seqs 64 --max-num-batched-tokens 4096 \
@@ -72,6 +76,7 @@ docker run --rm --gpus all --ipc=host --network host \
 ```bash
 docker run --rm --gpus all --ipc=host --network host \
   -e CUDA_VISIBLE_DEVICES=0,1 -v "$PWD/models:/models:ro" \
+  -v mxfp6-vllm-cache:/root/.cache \
   mxfp6-vllm:0.28.0 /models/Qwen3.5-35B-A3B-MXFP6 \
   --served-model-name Qwen3.5-35B-A3B-MXFP6 --tensor-parallel-size 2 \
   --max-model-len 16384 --max-num-seqs 64 --max-num-batched-tokens 4096 \
@@ -86,24 +91,32 @@ FlashInfer TRT-LLM AllReduce/RMSNorm on local consumer Blackwell, and the
 current Dense/MoE MXFP6 dispatch.
 
 Wait for `GET /health` to return HTTP 200 before sending requests. A successful
-startup log should show `Mxfp6Sm120LinearKernel`, `Using FlashInfer fused GDN
-decode step when supported`, `Using native mxfp6-sm120 grouped MoE backend`
-for 35B-A3B, and a FlashInfer AllReduce workspace using the `trtllm` backend.
+startup log should show `Mxfp6Sm120LinearKernel`, `Using FlashInfer GDN prefill
+kernel`, `Using FlashInfer fused GDN decode step when supported`, `Using native
+mxfp6-sm120 grouped MoE backend` for 35B-A3B, and a FlashInfer AllReduce
+workspace using the `trtllm` backend.
 Treat a fallback to MXFP6 emulation or a failed request as a failed
 reproduction. vLLM uses its `FULL_AND_PIECEWISE` handling for GDN and captures
 both graph sets at the listed sizes.
 
+The first start compiles the SM120 Torch and FlashInfer extensions and can take
+several minutes. The named cache volume makes later starts reuse those artifacts.
+
 ## Performance comparisons
 
-The public image was checked on a dual-RTX-5090 TP2 host against the same frozen
-MXFP6 request contracts used by the project. Qwen3.5-27B reached 355.02 tok/s at
-c4 and 1342.33 tok/s at c32, within 0.08% and 3.80% of the internal Champion
-reference. Qwen3.5-35B-A3B reached 788.11 tok/s at c4, within 3.55% of its
-reference; the public vLLM path did not reproduce the additional internal
-high-concurrency optimizations at c32.
+The public runtime was checked on a dual-RTX-5090 TP2 host against the same
+frozen MXFP6 request contracts used by the project. Before the SM120 GDN
+prefill backport, Qwen3.5-27B reached 355.02 tok/s at c4 and 1342.33 tok/s at
+c32; Qwen3.5-35B-A3B reached 788.11 tok/s at c4. With the backport enabled,
+35B-A3B reached 2011.82 tok/s at c32, within 1.53% of the comparable internal
+runtime without hybrid lm_head quantization.
+
+The full internal 35B-A3B Champion also uses a separate hybrid NVFP4 lm_head
+optimization. That optimization is not part of this MXFP6 template and its
+additional gain is not attributed to MXFP6.
 
 For format comparisons, run FP8 and MXFP6 in separate service lifecycles on the
 same GPU pair and keep every setting and request token contract fixed. The
 project-level [performance report](../../docs/benchmarks.md) records
 the full internally optimized concurrency sweeps; this image is the minimal
-public execution path, not a byte-identical build of that runtime.
+public MXFP6 execution path, not a byte-identical build of that runtime.

@@ -238,19 +238,22 @@ vLLM v0.28.0. A single-lifecycle validation on the same dual-RTX-5090 host used
 the current MXFP6 checkpoints, TP2, `max_num_batched_tokens=4096`, prefix
 caching disabled and CUDA Graph sizes `[1,2,4,8,16,24,32]`:
 
-| Model | Concurrency | Public v0.28 tok/s | Internal Champion reference | Delta |
+| Model | Concurrency | Public v0.28 tok/s | Comparable internal reference | Delta |
 |---|---:|---:|---:|---:|
 | Qwen3.5-27B | 4 | 355.02 | 355.31 | -0.08% |
 | Qwen3.5-27B | 32 | 1342.33 | 1395.28 | -3.80% |
 | Qwen3.5-35B-A3B | 4 | 788.11 | 817.15 | -3.55% |
-| Qwen3.5-35B-A3B | 32 | 1764.99 | 2335.39 | -24.42% |
+| Qwen3.5-35B-A3B | 32 | 2011.82 | 2043.08 (internal, hybrid lm_head disabled) | -1.53% |
 
-The public image therefore reproduces the two native execution paths and the
-27B/c4 reference performance closely. It does not reproduce the additional
-internal 35B-A3B high-concurrency optimizations. These values are an integration
+The public image therefore reproduces both native execution paths and tracks
+the comparable internal MXFP6 runtime within 3.80% at the reported points. The
+full 35B-A3B Champion result of 2335.39 tok/s additionally includes hybrid
+NVFP4 lm_head quantization; that separate optimization is excluded from the
+public template and is not attributed to MXFP6. These values are an integration
 validation, not a replacement for the paired concurrency sweep above. The
 [validation artifact](../benchmarks/results/vllm_v028_public_reproducer_validation.json)
-records the exact token contracts and pinned runtime.
+records the exact token contracts and whether the SM120 GDN prefill backport
+was active for each point.
 
 ## Artifact index
 

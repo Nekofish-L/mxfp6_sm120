@@ -61,6 +61,7 @@ COPY examples/vllm/adapter/mxfp6_sm120_moe.py /tmp/
 COPY examples/vllm/adapter/mxfp6_sm120_utils.py /tmp/
 COPY examples/vllm/adapter/mxfp6_tp2_vllm.py /tmp/
 COPY examples/vllm/patches/vllm-v0.28.0-mxfp6.patch /tmp/
+COPY examples/vllm/patches/vllm-pr-50862-gdn-prefill-sm120.patch /tmp/
 COPY examples/vllm/patches/vllm-pr-53645-fused-gdn.patch /tmp/
 
 RUN python3 -m pip uninstall -y flashinfer-cubin flashinfer-jit-cache \
@@ -75,6 +76,8 @@ RUN python3 -m pip uninstall -y flashinfer-cubin flashinfer-jit-cache \
     && patch --batch --forward --strip=1 --fuzz=0 \
         < /tmp/vllm-v0.28.0-mxfp6.patch \
     && patch --batch --forward --strip=1 --fuzz=0 \
+        < /tmp/vllm-pr-50862-gdn-prefill-sm120.patch \
+    && patch --batch --forward --strip=1 --fuzz=0 \
         < /tmp/vllm-pr-53645-fused-gdn.patch \
     && python3 -m py_compile \
         "${SP_DIR}/mxfp6_sm120_moe.py" \
@@ -88,6 +91,8 @@ RUN python3 -m pip uninstall -y flashinfer-cubin flashinfer-jit-cache \
         "${SP_DIR}/vllm/model_executor/layers/quantization/quark/quark_moe.py" \
         "${SP_DIR}/vllm/model_executor/layers/quantization/quark/schemes/quark_ocp_mx.py" \
     && grep -Fq 'qwen_gdn_attention_core_fi' \
+        "${SP_DIR}/vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py" \
+    && grep -Fq 'or current_platform.is_device_capability_family(120)' \
         "${SP_DIR}/vllm/model_executor/layers/mamba/gdn/qwen_gdn_linear_attn.py" \
     && python3 -c 'import inspect, json; from importlib.metadata import version; from importlib.resources import files; from flashinfer.comm.mnnvl import SymmDeviceMemory; assert version("vllm") == "0.28.0"; assert version("flashinfer-python") == "0.6.18"; assert "gpu_direct_rdma_capable" in inspect.signature(SymmDeviceMemory).parameters; registry = json.loads(files("flashinfer.gdn_kernels.experimental").joinpath("gdn_fused_decode_registry.json").read_text()); rows = {(r["b"], r["hidden"], r["n_ba"], r["qkv_dim"], r["h_q"], r["hv"]) for r in registry["workloads"]}; assert (16, 5120, 48, 5120, 8, 24) in rows; assert (32, 2048, 32, 4096, 8, 16) in rows' \
     && rm -f /tmp/*.whl /tmp/*.patch /tmp/mxfp6_sm120_*.py \
