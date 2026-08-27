@@ -2,7 +2,7 @@
 
 The repository includes specialized SM120 execution paths for the Qwen3.5
 Mixture-of-Experts topology. The wheel exposes standalone PyTorch operators and
-layer benchmarks. A separate, version-locked vLLM v0.25.1 reproducer supports
+layer benchmarks. A separate, version-locked vLLM v0.28.0 reproducer supports
 the tested Qwen3.5-35B-A3B profile.
 
 ## Execution paths
@@ -66,7 +66,7 @@ cross-model MoE ABI.
 optionally imports vLLM for the FP8 runtime baseline and its custom TP
 all-reduce.
 
-Serving evidence includes a public two-model vLLM v0.25.1 reproducer and the
+Serving evidence includes a public two-model vLLM v0.28.0 reproducer and the
 internal Champion c1 through c32 sweep. The wheel alone does not load an MXFP6
 Hugging Face checkpoint. See [Runtime integration](runtime-integration.md).
 

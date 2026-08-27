@@ -1,176 +1,109 @@
-# Public vLLM reproduction
+# vLLM reproduction
 
-This directory reproduces the two Qwen3.5 configurations measured by this
-project without the internally maintained vLLM environment:
+This image runs the two MXFP6 checkpoints validated by this project on two
+RTX 5090 GPUs:
 
-- `Qwen/Qwen3.5-27B` with native dense SM120 W6A8 kernels;
-- `Qwen/Qwen3.5-35B-A3B` with native dense and routed-MoE SM120 W6A8 kernels.
+- Qwen3.5-27B Dense;
+- Qwen3.5-35B-A3B routed MoE.
 
-The runtime image pins vLLM `v0.25.1` and records the exact mxfp6_sm120
-checkout used for each build. Conversion uses the pinned public llm-compressor
-commit below. No internal image or source tree is required.
+It starts from the official vLLM `v0.28.0` image and builds every added
+component from public source. The image contains the current mxfp6-sm120
+checkout, the small vLLM adapter in this directory, and the following pinned
+upstream changes used by the measured configuration:
 
-This is an exact two-model reproduction, not a general MXFP6 checkpoint ABI or
-an assertion that unmodified vLLM already supports this package.
+- [FlashInfer #4634](https://github.com/flashinfer-ai/flashinfer/pull/4634),
+  which permits local TRT-LLM IPC allocation without GPUDirect RDMA;
+- [FlashInfer #4698](https://github.com/flashinfer-ai/flashinfer/pull/4698),
+  which registers the validated Qwen3.5 TP2 fused-GDN geometries.
+- [vLLM #53645](https://github.com/vllm-project/vllm/pull/53645), commit
+  `fbd402ef87ad4f0a79a8d18ad17ccc70e1c10a3b`, which connects supported plain
+  decode steps to FlashInfer's fused GDN operation.
 
-| Model and workload | FP8 | MXFP6 | Gain |
-|---|---:|---:|---:|
-| Qwen3.5-27B, 3000 input / 1000 output, c32 | 1229.90 tok/s | 1341.97 tok/s | **+9.11%** |
-| Qwen3.5-35B-A3B, public `random-mm`, c4 | 678.37 tok/s | 793.33 tok/s | **+16.95%** |
+The exact vLLM image digest and FlashInfer commits are pinned in the
+[Dockerfile](Dockerfile). Checkpoints are mounted at runtime and are not copied
+into the image.
 
-The 35B-A3B P99 TTFT regressed by 21.24%. Full metrics are in the
-[benchmark artifact](../../benchmarks/results/qwen35_public_vllm_tp2.json).
+The adapter selects the native Dense kernel and the validated Qwen3.5-35B-A3B
+TP2 MoE schedules directly from Quark checkpoint metadata. Unsupported GPU,
+quantization, TP or expert geometry fails closed.
 
-## 1. Build the public image
+## Build
 
-```bash
-git clone https://github.com/Nekofish-L/mxfp6_sm120.git
-cd mxfp6_sm120
-git submodule update --init third_party/cutlass
-docker build --build-arg REPRODUCER_REF="$(git rev-parse HEAD)" \
-  -f examples/vllm/Dockerfile -t mxfp6-community:public-v1 .
-```
-
-Inspect the complete input plan:
+From a normal clone of this repository, run one command:
 
 ```bash
-docker run --rm mxfp6-community:public-v1 \
-  mxfp6-reproduce plan --profile qwen3.5-27b
-docker run --rm mxfp6-community:public-v1 \
-  mxfp6-reproduce plan --profile qwen3.5-35b-a3b
+docker build -f examples/vllm/Dockerfile -t mxfp6-vllm:0.28.0 .
 ```
 
-## 2. Download and convert
+The Docker build fetches the pinned CUTLASS source itself; initializing the
+repository submodule is not required.
 
-Download the exact source and official FP8 revisions:
+## Checkpoints
+
+The commands below expect these tested Quark/OCP-MX layouts under `models/`:
+
+```text
+models/Qwen3.5-27B-MXFP6
+models/Qwen3.5-35B-A3B-MXFP6
+```
+
+The public conversion recipes are maintained in
+[`troycheng/llm-compressor`](https://github.com/troycheng/llm-compressor/tree/37242a6a1bf6869857084d2ac7ccb22d1af7168d/examples/quantization_w6a8_mxfp6).
+The 27B recipe converts the tested Dense projections; the 35B-A3B recipe
+converts the tested routed-expert bundles. The adapter rejects incompatible
+TP size, expert geometry, checkpoint layout, or GPU architecture instead of
+silently using a different execution path.
+
+## Serve Qwen3.5-27B
 
 ```bash
-mkdir -p models
-docker run --rm -v "$PWD/models:/models" mxfp6-community:public-v1 \
-  hf download Qwen/Qwen3.5-27B \
-  --revision fc05daec18b0a78c049392ed2e771dde82bdf654 \
-  --local-dir /models/Qwen3.5-27B
-docker run --rm -v "$PWD/models:/models" mxfp6-community:public-v1 \
-  hf download Qwen/Qwen3.5-27B-FP8 \
-  --revision 97f5941bf617e31c5e237364a8602ce3f03a551a \
-  --local-dir /models/Qwen3.5-27B-FP8
-docker run --rm -v "$PWD/models:/models" mxfp6-community:public-v1 \
-  hf download Qwen/Qwen3.5-35B-A3B \
-  --revision 59d61f3ce65a6d9863b86d2e96597125219dc754 \
-  --local-dir /models/Qwen3.5-35B-A3B
-docker run --rm -v "$PWD/models:/models" mxfp6-community:public-v1 \
-  hf download Qwen/Qwen3.5-35B-A3B-FP8 \
-  --revision 9d1823d2dee688a6b25e77009dc727688c44936e \
-  --local-dir /models/Qwen3.5-35B-A3B-FP8
+docker run --rm --gpus all --ipc=host --network host \
+  -e CUDA_VISIBLE_DEVICES=0,1 -v "$PWD/models:/models:ro" \
+  mxfp6-vllm:0.28.0 /models/Qwen3.5-27B-MXFP6 \
+  --served-model-name Qwen3.5-27B-MXFP6 --tensor-parallel-size 2 \
+  --max-model-len 16384 --max-num-seqs 64 --max-num-batched-tokens 4096 \
+  --no-enable-prefix-caching --attention-backend FLASHINFER --async-scheduling \
+  --reasoning-parser qwen3 \
+  --compilation-config '{"cudagraph_mode":"FULL","cudagraph_capture_sizes":[1,2,4,8,16,24,32],"pass_config":{"fuse_allreduce_rms":true}}'
 ```
 
-Install the pinned public converter and run its two model-specific recipes:
+## Serve Qwen3.5-35B-A3B
 
 ```bash
-git clone https://github.com/troycheng/llm-compressor.git
-git -C llm-compressor checkout 37242a6a1bf6869857084d2ac7ccb22d1af7168d
-python3 -m venv llm-compressor/.venv
-BUILD_TYPE=release llm-compressor/.venv/bin/pip install -e llm-compressor
-
-llm-compressor/.venv/bin/python \
-  llm-compressor/examples/quantization_w6a8_mxfp6/qwen35_27b_example.py \
-  --model "$PWD/models/Qwen3.5-27B" \
-  --output "$PWD/models/Qwen3.5-27B-MXFP6"
-
-llm-compressor/.venv/bin/python \
-  llm-compressor/examples/quantization_w6a8_mxfp6/qwen35_35b_example.py \
-  --model "$PWD/models/Qwen3.5-35B-A3B" \
-  --output "$PWD/models/Qwen3.5-35B-A3B-MXFP6"
+docker run --rm --gpus all --ipc=host --network host \
+  -e CUDA_VISIBLE_DEVICES=0,1 -v "$PWD/models:/models:ro" \
+  mxfp6-vllm:0.28.0 /models/Qwen3.5-35B-A3B-MXFP6 \
+  --served-model-name Qwen3.5-35B-A3B-MXFP6 --tensor-parallel-size 2 \
+  --max-model-len 16384 --max-num-seqs 64 --max-num-batched-tokens 4096 \
+  --no-enable-prefix-caching --attention-backend FLASHINFER --async-scheduling \
+  --reasoning-parser qwen3 \
+  --compilation-config '{"cudagraph_mode":"FULL","cudagraph_capture_sizes":[1,2,4,8,16,24,32],"pass_config":{"fuse_allreduce_rms":true}}'
 ```
 
-The recipes reproduce the model-specific Quark layouts used by the published
-measurements. The 27B recipe quantizes the same dense projections as the tested
-checkpoint. The 35B-A3B recipe splits and quantizes the routed-expert bundles
-while preserving the tested exclusions.
+Both commands preserve the measured TP2 execution profile: the listed CUDA
+Graph buckets through batch 32, fused GDN where a validated registry row exists,
+FlashInfer TRT-LLM AllReduce/RMSNorm on local consumer Blackwell, and the
+current Dense/MoE MXFP6 dispatch.
 
-## 3. Start either format with the same runtime
+Wait for `GET /health` to return HTTP 200 before sending requests. A successful
+startup log should show `Mxfp6Sm120LinearKernel`, `Using FlashInfer fused GDN
+decode step when supported`, `Using native mxfp6-sm120 grouped MoE backend`
+for 35B-A3B, and a FlashInfer AllReduce workspace using the `trtllm` backend.
+Treat a fallback to MXFP6 emulation or a failed request as a failed
+reproduction. vLLM uses its `FULL_AND_PIECEWISE` handling for GDN and captures
+both graph sets at the listed sizes.
 
-The examples below use one PIX-connected GPU pair per TP2 service. Replace the
-host model directory and GPU indices as needed.
+## Performance comparisons
 
-```bash
-# Dense MXFP6
-docker run --rm --gpus all --network host \
-  -v "$PWD/models:/models:ro" mxfp6-community:public-v1 \
-  mxfp6-reproduce serve --profile qwen3.5-27b --format mxfp6 \
-  --model-path /models/Qwen3.5-27B-MXFP6 --gpus 0,1 --port 8251
+The public image was checked on a dual-RTX-5090 TP2 host against the same frozen
+MXFP6 request contracts used by the project. Qwen3.5-27B reached 355.02 tok/s at
+c4 and 1342.33 tok/s at c32, within 0.08% and 3.80% of the internal Champion
+reference. Qwen3.5-35B-A3B reached 788.11 tok/s at c4, within 3.55% of its
+reference; the public vLLM path did not reproduce the additional internal
+high-concurrency optimizations at c32.
 
-# Dense official FP8 baseline
-docker run --rm --gpus all --network host \
-  -v "$PWD/models:/models:ro" mxfp6-community:public-v1 \
-  mxfp6-reproduce serve --profile qwen3.5-27b --format fp8 \
-  --model-path /models/Qwen3.5-27B-FP8 --gpus 0,1 --port 8251
-
-# MoE MXFP6
-docker run --rm --gpus all --network host \
-  -v "$PWD/models:/models:ro" mxfp6-community:public-v1 \
-  mxfp6-reproduce serve --profile qwen3.5-35b-a3b --format mxfp6 \
-  --model-path /models/Qwen3.5-35B-A3B-MXFP6 --gpus 0,1 --port 8251
-
-# MoE official FP8 baseline
-docker run --rm --gpus all --network host \
-  -v "$PWD/models:/models:ro" mxfp6-community:public-v1 \
-  mxfp6-reproduce serve --profile qwen3.5-35b-a3b --format fp8 \
-  --model-path /models/Qwen3.5-35B-A3B-FP8 --gpus 0,1 --port 8251
-```
-
-Wait for `GET /health` to return HTTP 200 before sending requests. Both model
-paths use CUDA Graph capture and TP2 in the public reproducer.
-
-## 4. Public benchmark contracts
-
-For publishable comparisons, run fresh service lifecycles in
-FP8/MXFP6/MXFP6/FP8 order. Keep the runtime image, GPU pair, scheduler settings
-and request contract identical between formats.
-
-Create a result directory, then run the pinned client from the same image. The
-27B contract is:
-
-```bash
-mkdir -p results
-docker run --rm --network host -v "$PWD/models:/models:ro" \
-  -v "$PWD/results:/results" -w /results mxfp6-community:public-v1 \
-  vllm bench serve --backend openai \
-  --base-url http://127.0.0.1:8251 --endpoint /v1/completions \
-  --model Qwen3.5-27B-MXFP6 --tokenizer /models/Qwen3.5-27B-FP8 \
-  --dataset-name random --random-input-len 3000 --random-output-len 1000 \
-  --num-prompts 320 --request-rate 20 --max-concurrency 32 \
-  --num-warmups 4 --ignore-eos --temperature 0 --seed 20260814 \
-  --percentile-metrics ttft,tpot,itl --metric-percentiles 99 \
-  --save-result --save-detailed
-```
-
-The public 35B-A3B contract is deterministic `random-mm`; it is separate from
-the frozen real multimodal workload used by the Champion sweep:
-
-```bash
-docker run --rm --network host -v "$PWD/models:/models:ro" \
-  -v "$PWD/results:/results" -w /results mxfp6-community:public-v1 \
-  vllm bench serve --backend openai-chat \
-  --base-url http://127.0.0.1:8251 --endpoint /v1/chat/completions \
-  --model Qwen3.5-35B-A3B-MXFP6 \
-  --tokenizer /models/Qwen3.5-35B-A3B-FP8 \
-  --dataset-name random-mm --enable-multimodal-chat \
-  --random-input-len 128 --random-output-len 512 \
-  --random-mm-base-items-per-request 1 \
-  --random-mm-bucket-config '{(256, 256, 1): 1.0}' \
-  --num-prompts 64 --request-rate inf --max-concurrency 4 \
-  --num-warmups 4 --ignore-eos --temperature 0 --seed 20260814 \
-  --percentile-metrics ttft,tpot,itl --metric-percentiles 99 \
-  --save-result --save-detailed
-```
-
-Always change `--model` to the served FP8 name for FP8 blocks. Retain the raw
-JSON, complete server log, image digest, model revision, GPU topology and
-preflight utilization for every block.
-
-## Validation
-
-Both converted checkpoints matched the tested safetensors shards, loaded under
-TP2, captured CUDA Graphs and completed generation on RTX 5090. See the
-[conversion artifact](../../benchmarks/results/qwen35_public_conversion_validation.json).
+For format comparisons, run FP8 and MXFP6 in separate service lifecycles on the
+same GPU pair and keep every setting and request token contract fixed. The
+project-level [performance report](../../docs/benchmarks.md) records
+the full internally optimized concurrency sweeps; this image is the minimal
+public execution path, not a byte-identical build of that runtime.

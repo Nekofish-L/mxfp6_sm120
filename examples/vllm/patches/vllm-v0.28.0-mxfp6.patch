@@ -1,0 +1,258 @@
+diff --git a/vllm/compilation/passes/fusion/allreduce_rms_fusion.py b/vllm/compilation/passes/fusion/allreduce_rms_fusion.py
+index fdfc5b8..d56db50 100644
+--- a/vllm/compilation/passes/fusion/allreduce_rms_fusion.py
++++ b/vllm/compilation/passes/fusion/allreduce_rms_fusion.py
+@@ -124,6 +124,9 @@ FI_ALLREDUCE_FUSION_MAX_SIZE_MB: dict[int, dict[int, float]] = {
+         4: 64,  # 64MB
+         8: 2,  # 2MB
+     },
++    120: {
++        2: 64,  # 64MB
++    },
+ }
+ 
+ # Max size of the input tensor per world size per device capability
+@@ -150,6 +153,9 @@ _FI_ALLREDUCE_ONE_SHOT_MAX_SIZES_MB: dict[int, dict[int, float]] = {
+         4: 4,  # 4MB
+         8: 2,  # 2MB
+     },
++    120: {
++        2: 32,  # 32MB
++    },
+ }
+ 
+ MiB = 1024 * 1024
+diff --git a/vllm/model_executor/kernels/linear/__init__.py b/vllm/model_executor/kernels/linear/__init__.py
+index 3413d4a..09550b1 100644
+--- a/vllm/model_executor/kernels/linear/__init__.py
++++ b/vllm/model_executor/kernels/linear/__init__.py
+@@ -102,6 +102,7 @@ from vllm.model_executor.kernels.linear.mxfp6 import (
+ from vllm.model_executor.kernels.linear.mxfp6.emulation import (
+     EmulationMxfp6LinearKernel,
+ )
++from mxfp6_tp2_vllm import Mxfp6Sm120LinearKernel
+ from vllm.model_executor.kernels.linear.mxfp8 import (
+     Mxfp8LinearKernel,
+     Mxfp8LinearLayerConfig,
+@@ -543,6 +544,7 @@ _POSSIBLE_NVFP4_KERNELS: dict[PlatformEnum, list[type[NvFp4LinearKernel]]] = {
+ 
+ _POSSIBLE_MXFP6_KERNELS: dict[PlatformEnum, list[type[MxFp6LinearKernel]]] = {
+     PlatformEnum.CUDA: [
++        Mxfp6Sm120LinearKernel,
+         EmulationMxfp6LinearKernel,
+     ],
+     PlatformEnum.ROCM: [
+diff --git a/vllm/model_executor/layers/quantization/quark/quark_moe.py b/vllm/model_executor/layers/quantization/quark/quark_moe.py
+--- a/vllm/model_executor/layers/quantization/quark/quark_moe.py
++++ b/vllm/model_executor/layers/quantization/quark/quark_moe.py
+@@ -55,6 +55,11 @@
+     make_nvfp4_moe_quant_config,
+     select_nvfp4_moe_backend,
+ )
++from mxfp6_sm120_utils import (
++    is_mxfp6_sm120_moe_available,
++    pack_mxfp6_sm120_k64_weight,
++    pack_mxfp6_sm120_scales,
++)
+ from vllm.model_executor.layers.quantization.utils.ocp_mx_utils import (
+     OCP_MX_BLOCK_SIZE,
+     OCP_MX_Scheme,
+@@ -1090,7 +1095,27 @@
+             self.static_input_scales = not self.input_quant.get("is_dynamic")
+         else:
+             self.static_input_scales = False
++
++        self.use_mxfp6_sm120_moe = (
++            self.ocp_mx_scheme == "w_mxfp6_e3m2_a_fp8"
++            and not self.static_input_scales
++            and is_mxfp6_sm120_moe_available()
++        )
++        if self.use_mxfp6_sm120_moe:
++            from mxfp6_sm120_moe import Mxfp6Sm120Experts
+ 
++            self.experts_cls = Mxfp6Sm120Experts
++            self.model_type = getattr(
++                get_current_vllm_config().model_config.hf_config,
++                "model_type",
++                None,
++            )
++            logger.info_once(
++                "Using native mxfp6-sm120 grouped MoE backend for %s",
++                self.ocp_mx_scheme,
++            )
++            return
++
+         # Select backend based on OCP MX scheme
+         if self.ocp_mx_scheme == "w_mxfp4":
+             # W4A16: weight-only MXFP4
+@@ -1151,6 +1176,11 @@
+             act_dtype=act_dtype,
+             moe_parallel_config=moe_parallel_config,
+         )
++        if self.use_mxfp6_sm120_moe:
++            return (
++                (hidden_size + 127) // 128 * 128,
++                (intermediate_size_per_partition + 31) // 32 * 32,
++            )
+         # Round per-partition sizes up to each backend's requirement. Emulation is
+         # handled inside the helper too (OCP MX block alignment), so no special-case.
+         if self.mxfp4_backend is not None:
+@@ -1282,6 +1312,40 @@
+ 
+     def _setup_kernel(self, layer: RoutedExperts):
+         """Setup kernel using oracle functions for MXFP4 schemes (W4A16, W4A8)."""
++        if self.use_mxfp6_sm120_moe:
++            from mxfp6_sm120_moe import (
++                make_mxfp6_sm120_moe_kernel,
++                try_enable_qwen35_moe_small_batch,
++            )
++
++            num_experts = layer.w13_weight.shape[0]
++            if layer.w2_weight.shape[2] == 48 and not getattr(
++                layer, "_mxfp6_sm120_k64_weight_ready", False
++            ):
++                replace_parameter(
++                    layer,
++                    "w2_weight",
++                    pack_mxfp6_sm120_k64_weight(layer.w2_weight),
++                )
++                layer._mxfp6_sm120_k64_weight_ready = True
++            w13_scales = pack_mxfp6_sm120_scales(
++                layer.w13_weight_scale.flatten(0, 1).contiguous()
++            ).view(num_experts, -1)
++            w2_scales = pack_mxfp6_sm120_scales(
++                layer.w2_weight_scale.flatten(0, 1).contiguous()
++            ).view(num_experts, -1)
++            replace_parameter(layer, "w13_weight_scale", w13_scales)
++            replace_parameter(layer, "w2_weight_scale", w2_scales)
++            try_enable_qwen35_moe_small_batch(layer)
++            self.moe_quant_config = self.get_fused_moe_quant_config(layer)
++            assert self.moe_quant_config is not None
++            self.moe_kernel = make_mxfp6_sm120_moe_kernel(
++                self.moe_quant_config,
++                self.moe,
++                layer._expert_routing_tables(),
++            )
++            return
++
+         w13_bias = getattr(layer, "w13_bias", None)
+         w2_bias = getattr(layer, "w2_bias", None)
+ 
+@@ -1338,6 +1402,17 @@
+     def get_fused_moe_quant_config(
+         self, layer: RoutedExperts
+     ) -> FusedMoEQuantConfig | None:
++        if self.use_mxfp6_sm120_moe:
++            return FusedMoEQuantConfig.make(
++                quant_dtype=None,
++                weight_dtype="mxfp6_e3m2",
++                w1_scale=layer.w13_weight_scale,
++                w2_scale=layer.w2_weight_scale,
++                w1_bias=layer.w13_bias,
++                w2_bias=layer.w2_bias,
++                gemm1_clamp_limit=getattr(layer, "swiglu_limit", None),
++            )
++
+         # For oracle-based backends (W4A16, W4A8), use make_mxfp4_moe_quant_config
+         if self.mxfp4_backend not in (Mxfp4MoeBackend.NONE, Mxfp4MoeBackend.EMULATION):
+             # Determine scale source based on backend type
+diff --git a/vllm/model_executor/layers/quantization/quark/schemes/quark_ocp_mx.py b/vllm/model_executor/layers/quantization/quark/schemes/quark_ocp_mx.py
+index 8b6edd6..c1c1267 100644
+--- a/vllm/model_executor/layers/quantization/quark/schemes/quark_ocp_mx.py
++++ b/vllm/model_executor/layers/quantization/quark/schemes/quark_ocp_mx.py
+@@ -25,6 +25,7 @@ from vllm.model_executor.layers.quantization.utils.quant_utils import (
+     kMxfp6E2M3Static,
+     kMxfp6E3M2Dynamic,
+     kMxfp6E3M2Static,
++    kMxfp8Dynamic,
+ )
+ from vllm.model_executor.parameter import (
+     GroupQuantScaleParameter,
+@@ -46,6 +47,7 @@ _WEIGHT_QUANT_KEY_MAP: dict[str, QuantKey] = {
+ 
+ _ACTIVATION_QUANT_KEY_MAP: dict[str, QuantKey] = {
+     "mxfp4": kMxfp4Dynamic,
++    "mxfp8_e4m3": kMxfp8Dynamic,
+     "mxfp6_e3m2": kMxfp6E3M2Dynamic,
+     "mxfp6_e2m3": kMxfp6E2M3Dynamic,
+ }
+diff --git a/vllm/model_executor/warmup/kernel_warmup.py b/vllm/model_executor/warmup/kernel_warmup.py
+index cd16c63..afb7b0e 100644
+--- a/vllm/model_executor/warmup/kernel_warmup.py
++++ b/vllm/model_executor/warmup/kernel_warmup.py
+@@ -160,6 +160,14 @@ def kernel_warmup(worker: "Worker", *, process_local_only: bool = False):
+ 
+     b12x_warmup(worker, cudagraph_capture_sizes)
+ 
++    from mxfp6_tp2_vllm import warmup_mxfp6_sm120
++
++    warmup_mxfp6_sm120(
++        worker.get_model(),
++        [1, worker.scheduler_config.max_num_batched_tokens, *cudagraph_capture_sizes],
++        worker.model_config.dtype,
++    )
++
+     minimax_m3_msa_warmup(worker)
+ 
+     enable_flashinfer_autotune = (
+diff --git a/vllm/v1/worker/gpu/cudagraph_utils.py b/vllm/v1/worker/gpu/cudagraph_utils.py
+index 8e24a0e..dc7af54 100644
+--- a/vllm/v1/worker/gpu/cudagraph_utils.py
++++ b/vllm/v1/worker/gpu/cudagraph_utils.py
+@@ -308,6 +308,7 @@ class CudaGraphManager:
+         self,
+         create_forward_fn: CreateForwardFn,
+         progress_bar_desc: str = "Capturing CUDA graphs",
++        capture_stream_warmup: Callable[[], None] | None = None,
+     ) -> None:
+         """Capture CUDA graphs.
+ 
+@@ -319,6 +320,9 @@ class CudaGraphManager:
+                 metadata during warmup.
+         """
+         with graph_capture(device=self.device):
++            if capture_stream_warmup is not None:
++                capture_stream_warmup()
++
+             # Capture in order: PIECEWISE first, then FULL. PIECEWISE has larger
+             # activations so FULL activations should fit in already allocated
+             # buffers in the graph pool.
+@@ -362,7 +366,11 @@ class CudaGraphManager:
+                             set_graph_pool_id(self.pool)
+                         else:
+                             set_graph_pool_id(current_platform.graph_pool_handle())
+-                        with torch.cuda.graph(graph, self.pool):
++                        with torch.cuda.graph(
++                            graph,
++                            self.pool,
++                            stream=torch.cuda.current_stream(),
++                        ):
+                             forward_fn(CUDAGraphMode.NONE)
+                             # Join offloader's copy stream after forward to avoid
+                             # unjoined stream error. The last layer's start_prefetch
+@@ -585,7 +593,24 @@ class ModelCudaGraphManager(CudaGraphManager):
+ 
+             return forward_fn
+ 
+-        super().capture(create_forward_fn, progress_bar_desc)
++        capture_sizes = [
++            desc.num_tokens for descs in self._capture_descs.values() for desc in descs
++        ]
++
++        def warmup_capture_stream() -> None:
++            from mxfp6_tp2_vllm import warmup_mxfp6_sm120_stream
++
++            warmup_mxfp6_sm120_stream(
++                model,
++                capture_sizes,
++                self.vllm_config.model_config.dtype,
++            )
++
++        super().capture(
++            create_forward_fn,
++            progress_bar_desc,
++            capture_stream_warmup=warmup_capture_stream,
++        )
+ 
+     def run_fullgraph(
+         self, desc: BatchExecutionDescriptor
