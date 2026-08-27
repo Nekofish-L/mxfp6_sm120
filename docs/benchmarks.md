@@ -222,28 +222,45 @@ This is reference fidelity, not task accuracy.
 The 27B serving sweep did not run a task-accuracy suite. Performance data should
 not be read as a quality claim beyond the operator checks above.
 
-## Public reproduction
+## Public reproduction history
 
-The checked-in vLLM v0.25.1 image and adapter reproduce both model paths without
-the internal Champion environment. Its four-lifecycle results were:
+The earlier vLLM v0.25.1 image established that both model paths could run
+without the internal Champion environment. Its archived four-lifecycle results
+were:
 
 | Model and public workload | FP8 tok/s | MXFP6 tok/s | Gain |
 |---|---:|---:|---:|
 | Qwen3.5-27B, 3000 input / 1000 output, c32 | 1229.90 | 1341.97 | +9.11% |
 | Qwen3.5-35B-A3B, public `random-mm`, c4 | 678.37 | 793.33 | +16.95% |
 
-See [`examples/vllm`](../examples/vllm/README.md) for the image, checkpoint
-conversion and benchmark commands. These public results use different runtime
-and workload contracts from the Champion sweep and should not be mixed with it.
+The current [`examples/vllm`](../examples/vllm/README.md) image is based on
+vLLM v0.28.0. A single-lifecycle validation on the same dual-RTX-5090 host used
+the current MXFP6 checkpoints, TP2, `max_num_batched_tokens=4096`, prefix
+caching disabled and CUDA Graph sizes `[1,2,4,8,16,24,32]`:
+
+| Model | Concurrency | Public v0.28 tok/s | Internal Champion reference | Delta |
+|---|---:|---:|---:|---:|
+| Qwen3.5-27B | 4 | 355.02 | 355.31 | -0.08% |
+| Qwen3.5-27B | 32 | 1342.33 | 1395.28 | -3.80% |
+| Qwen3.5-35B-A3B | 4 | 788.11 | 817.15 | -3.55% |
+| Qwen3.5-35B-A3B | 32 | 1764.99 | 2335.39 | -24.42% |
+
+The public image therefore reproduces the two native execution paths and the
+27B/c4 reference performance closely. It does not reproduce the additional
+internal 35B-A3B high-concurrency optimizations. These values are an integration
+validation, not a replacement for the paired concurrency sweep above. The
+[validation artifact](../benchmarks/results/vllm_v028_public_reproducer_validation.json)
+records the exact token contracts and pinned runtime.
 
 ## Artifact index
 
 | Artifact | Scope |
 |---|---|
 | [`qwen35_champion_concurrency_tp2.json`](../benchmarks/results/qwen35_champion_concurrency_tp2.json) | Latest Champion full-service c1 through c32 sweep |
+| [`vllm_v028_public_reproducer_validation.json`](../benchmarks/results/vllm_v028_public_reproducer_validation.json) | Public vLLM v0.28 two-model c4/c32 integration validation |
 | [`qwen35_moe_b4_cluster_tp2.json`](../benchmarks/results/qwen35_moe_b4_cluster_tp2.json) | B4 cluster optimization, correctness and fresh c4 service comparison |
 | [`qwen35_dense_gemm_current_main.json`](../benchmarks/results/qwen35_dense_gemm_current_main.json) | Current-main 70-shape Dense GEMM matrix |
 | [`qwen35_moe_layer_current_main.json`](../benchmarks/results/qwen35_moe_layer_current_main.json) | Current-main complete TP2 MoE layer |
-| [`qwen35_public_vllm_tp2.json`](../benchmarks/results/qwen35_public_vllm_tp2.json) | Public vLLM v0.25.1 service comparison |
+| [`qwen35_public_vllm_tp2.json`](../benchmarks/results/qwen35_public_vllm_tp2.json) | Historical public vLLM v0.25.1 service comparison |
 | [`qwen35_moe_service_tp2.json`](../benchmarks/results/qwen35_moe_service_tp2.json) | Earlier internal 35B-A3B service and fidelity evidence |
 | [`qwen35_27b_service_tp2.json`](../benchmarks/results/qwen35_27b_service_tp2.json) | Earlier internal 27B service evidence |

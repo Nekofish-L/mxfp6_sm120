@@ -106,9 +106,9 @@ layer benchmarks.
 
 This Champion comparison uses an internally optimized vLLM 0.25.1 runtime,
 PyTorch 2.11.0+cu130, CUDA 13.0, two PIX-connected RTX 5090 GPUs and TP2. The
-checked-in [public vLLM v0.25.1 reproducer](examples/vllm/README.md) remains
-available for independent setup and measured +9.11% on Qwen3.5-27B and +16.95%
-on Qwen3.5-35B-A3B in its own workloads.
+checked-in [public vLLM v0.28.0 reproducer](examples/vllm/README.md) builds the
+same Dense and routed-MoE paths from public sources with one Docker command and
+runs either checkpoint with a direct `vllm serve` command.
 
 ### Dense GEMM and MoE layer
 
@@ -269,10 +269,12 @@ currently uses software emulation. The package maps naturally to vLLM's
 the complete routed-MoE experts path. Unsupported configurations retain the
 existing emulation fallback.
 
-`examples/vllm` contains the version-locked two-model adapter used by the public
-reproducer. It demonstrates checkpoint loading and native execution on vLLM
-v0.25.1; it is not the proposed current-main integration. Upstream work is
-tracked in [vLLM issue #52347](https://github.com/vllm-project/vllm/issues/52347).
+[`examples/vllm`](examples/vllm/README.md) contains a version-locked vLLM
+v0.28.0 image for the two validated models. It builds the package and the
+required FlashInfer fixes from pinned public sources, loads the tested Quark
+checkpoints and fails closed when the SM120, TP2 or model-layout contract does
+not match. Upstream work is tracked in
+[vLLM issue #52347](https://github.com/vllm-project/vllm/issues/52347).
 
 ## Documentation
 

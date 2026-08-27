@@ -31,7 +31,7 @@ uses an internally optimized vLLM 0.25.1 Champion and covers Qwen3.5-27B and
 Qwen3.5-35B-A3B at concurrency 1 through 32. Each artifact records its model,
 runtime and measurement boundary.
 
-The public reproducer uses a separate, version-locked vLLM v0.25.1 image and a
+The public reproducer uses a separate, version-locked vLLM v0.28.0 image and a
 checked-in two-model adapter. It is the independently runnable setup. The
 Champion result is the broader performance reference. Neither environment
 makes the standalone wheel a general vLLM or SGLang backend.
@@ -41,7 +41,7 @@ makes the standalone wheel a general vLLM or SGLang backend.
 | Consumer | Available path | Boundary |
 |---|---|---|
 | PyTorch package | Dense and Qwen3.5 MoE operators | No model checkpoint loader |
-| vLLM v0.25.1 | Public two-model TP2 reproducer under [`examples/vllm`](../examples/vllm/README.md) | Version-locked adapter for the tested profiles |
+| vLLM v0.28.0 | Public two-model TP2 reproducer under [`examples/vllm`](../examples/vllm/README.md) | Version-locked adapter for the tested profiles |
 | Internal Champion | Two-model TP2 concurrency sweep | Recorded performance environment, not a distributable runtime |
 | SGLang | Not integrated | No checkpoint or execution adapter |
 

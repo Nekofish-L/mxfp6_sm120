@@ -8,33 +8,31 @@ dependency and can be built and tested as a standalone PyTorch extension.
 vLLM recognizes Quark/OCP MXFP6 checkpoints. Its current CUDA MXFP6 backend
 uses software emulation when no native implementation is registered.
 
-vLLM commit `e9d1398d9edfd90fcc1cf783805240e3effec013` (reviewed 2026-08-22)
-exposes the two integration surfaces needed by this package:
+vLLM v0.28.0 exposes the two integration surfaces used by this package:
 
 | Model path | vLLM interface | mxfp6-sm120 implementation |
 |---|---|---|
 | Dense | `MxFp6LinearKernel` | Weight processing, capability checks and native W6A8 GEMM |
 | Routed MoE | `FusedMoEExpertsModular` | Routing, W1, activation, W2, shared expert and reduction |
 
-The Dense kernel registry already supports an optional out-of-tree
-implementation and retains `EmulationMxfp6LinearKernel` as fallback. The MoE
-integration must select the native experts implementation only for a recognized
-Quark MXFP6 layout, supported Qwen3.5 geometry and SM120 device. Other cases
-continue through vLLM's existing path.
+The Dense kernel registry retains `EmulationMxfp6LinearKernel` as fallback. The
+example registers the native kernel ahead of it and selects the routed-MoE
+runner only for the validated Quark MXFP6 layout, Qwen3.5 geometry and SM120
+TP2 configuration.
 
-The repository's [`examples/vllm`](../examples/vllm/README.md) directory is a
-version-locked vLLM v0.25.1 reproducer. It loads and serves Qwen3.5-27B and
-Qwen3.5-35B-A3B, including TP2 and CUDA Graph execution. The adapter proves the
-two model mappings but is not intended for current-main submission.
+The repository's [`examples/vllm`](../examples/vllm/README.md) directory builds
+a version-locked vLLM v0.28.0 image from public sources. One image serves both
+Qwen3.5-27B and Qwen3.5-35B-A3B with TP2, native MXFP6 execution, validated GDN
+rows, FlashInfer local AllReduce/RMSNorm and CUDA Graph capture through batch
+32.
 
 The current performance and correctness evidence is in
 [Benchmark methodology](benchmarks.md). Discussion with vLLM maintainers is
 tracked in [issue #52347](https://github.com/vllm-project/vllm/issues/52347).
 
-### Contribution scope
+### Upstream boundary
 
-A current-main integration needs to preserve one backend across both model
-paths while keeping the changes reviewable:
+The remaining runtime delta is deliberately narrow:
 
 1. register the SM120 Dense implementation through `MxFp6LinearKernel`;
 2. connect the same Quark MXFP6 format to the native routed-MoE experts path;
@@ -42,9 +40,8 @@ paths while keeping the changes reviewable:
 4. test checkpoint loading, TP2, CUDA Graph capture and unsupported cases;
 5. document installation and the tested model and hardware boundary.
 
-Under this boundary, CUDA sources and GPU-specific tests remain with the
-optional package and the vLLM change is limited to registration, dispatch and
-fallback coverage.
+CUDA sources and GPU-specific tests remain with the optional package; vLLM owns
+only registration, dispatch and fallback coverage.
 
 ## SGLang
 
@@ -58,8 +55,8 @@ The framework glue remains runtime specific.
 
 ## References
 
-- [vLLM MXFP6 kernel interface](https://github.com/vllm-project/vllm/blob/e9d1398d9edfd90fcc1cf783805240e3effec013/vllm/model_executor/kernels/linear/mxfp6/base.py)
-- [vLLM MXFP6 kernel selection tests](https://github.com/vllm-project/vllm/blob/e9d1398d9edfd90fcc1cf783805240e3effec013/tests/kernels/quantization/test_mxfp6_kernel_selection.py)
-- [vLLM modular MoE design](https://github.com/vllm-project/vllm/blob/e9d1398d9edfd90fcc1cf783805240e3effec013/docs/design/fused_moe_modular_kernel.md)
-- [vLLM Quark OCP MX scheme](https://github.com/vllm-project/vllm/blob/e9d1398d9edfd90fcc1cf783805240e3effec013/vllm/model_executor/layers/quantization/quark/schemes/quark_ocp_mx.py)
+- [vLLM MXFP6 kernel interface](https://github.com/vllm-project/vllm/blob/v0.28.0/vllm/model_executor/kernels/linear/mxfp6/base.py)
+- [vLLM MXFP6 kernel selection tests](https://github.com/vllm-project/vllm/blob/v0.28.0/tests/kernels/quantization/test_mxfp6_kernel_selection.py)
+- [vLLM modular MoE design](https://github.com/vllm-project/vllm/blob/v0.28.0/docs/design/fused_moe_modular_kernel.md)
+- [vLLM Quark OCP MX scheme](https://github.com/vllm-project/vllm/blob/v0.28.0/vllm/model_executor/layers/quantization/quark/schemes/quark_ocp_mx.py)
 - [SGLang quantization base](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/layers/quantization/base_config.py)
