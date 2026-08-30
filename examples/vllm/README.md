@@ -43,7 +43,14 @@ repository submodule is not required.
 
 ## Checkpoints
 
-The commands below expect these tested Quark/OCP-MX layouts under `models/`:
+Set the host directory containing the converted checkpoints. The default below
+uses `models/` in the repository checkout:
+
+```bash
+export MXFP6_MODELS_DIR="$PWD/models"
+```
+
+The commands below expect these tested Quark/OCP-MX layouts under that directory:
 
 ```text
 models/Qwen3.5-27B-MXFP6
@@ -53,15 +60,20 @@ models/Qwen3.5-35B-A3B-MXFP6
 The public conversion recipes are maintained in
 [`troycheng/llm-compressor`](https://github.com/troycheng/llm-compressor/tree/37242a6a1bf6869857084d2ac7ccb22d1af7168d/examples/quantization_w6a8_mxfp6).
 The 27B recipe converts the tested Dense projections; the 35B-A3B recipe
-converts the tested routed-expert bundles. The adapter rejects incompatible
-TP size, expert geometry, checkpoint layout, or GPU architecture instead of
-silently using a different execution path.
+converts the tested routed-expert bundles. Follow the complete
+[checkpoint quantization guide](../../docs/quantize-checkpoints.md) to install
+the pinned converter, create either checkpoint and validate its metadata before
+starting vLLM. The guide also documents the current model scope: Qwen3.8-27B
+does not yet have a public conversion recipe.
+
+The adapter rejects incompatible TP size, expert geometry, checkpoint layout,
+or GPU architecture instead of silently using a different execution path.
 
 ## Serve Qwen3.5-27B
 
 ```bash
-docker run --rm --gpus all --ipc=host --network host \
-  -e CUDA_VISIBLE_DEVICES=0,1 -v "$PWD/models:/models:ro" \
+docker run --rm --name mxfp6-q27 --gpus all --ipc=host --network host \
+  -e CUDA_VISIBLE_DEVICES=0,1 -v "$MXFP6_MODELS_DIR:/models:ro" \
   -v mxfp6-vllm-cache:/root/.cache \
   mxfp6-vllm:0.28.0 /models/Qwen3.5-27B-MXFP6 \
   --served-model-name Qwen3.5-27B-MXFP6 --tensor-parallel-size 2 \
@@ -74,8 +86,8 @@ docker run --rm --gpus all --ipc=host --network host \
 ## Serve Qwen3.5-35B-A3B
 
 ```bash
-docker run --rm --gpus all --ipc=host --network host \
-  -e CUDA_VISIBLE_DEVICES=0,1 -v "$PWD/models:/models:ro" \
+docker run --rm --name mxfp6-q35 --gpus all --ipc=host --network host \
+  -e CUDA_VISIBLE_DEVICES=0,1 -v "$MXFP6_MODELS_DIR:/models:ro" \
   -v mxfp6-vllm-cache:/root/.cache \
   mxfp6-vllm:0.28.0 /models/Qwen3.5-35B-A3B-MXFP6 \
   --served-model-name Qwen3.5-35B-A3B-MXFP6 --tensor-parallel-size 2 \

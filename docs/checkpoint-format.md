@@ -41,7 +41,9 @@ Qwen3.5-35B-A3B are accepted by the
 [version-locked vLLM reproducer](../examples/vllm/README.md). Companion public
 llm-compressor recipes reproduce those tested layouts. This support is exact
 and model-scoped; it does not promote the physical tensors to a stable general
-checkpoint ABI.
+checkpoint ABI. See [Quantize the validated Qwen checkpoints](quantize-checkpoints.md)
+for the pinned converter, complete commands, CPU metadata validation and native
+runtime checks.
 
 ## Acceptance bar for checkpoint format v1
 

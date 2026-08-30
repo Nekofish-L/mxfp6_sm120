@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+
+- added model-scoped community conversion instructions for the validated
+  Qwen3.5-27B and Qwen3.5-35B-A3B MXFP6 checkpoints;
+- added a CPU-only checkpoint validator for the Quark configuration, complete
+  tensor name/dtype/shape contract, packed weight/scale pairing, safetensors
+  payload integrity and optional SHA-256 manifests.
+
 ## 0.2.1 - 2026-08-24
 
 ### Added
