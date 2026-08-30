@@ -286,6 +286,7 @@ not match. Upstream work is tracked in
 | [Benchmark methodology](docs/benchmarks.md) | Full serving, Dense and MoE contracts and results |
 | [Dense GEMM](docs/dense-gemm.md) | Formats, operators, shapes and workspaces |
 | [Qwen3.5 MoE](docs/qwen35-moe.md) | Routed-MoE execution and graph-safe API |
+| [Checkpoint quantization](docs/quantize-checkpoints.md) | Create and validate the two public Qwen3.5 MXFP6 checkpoints |
 | [Checkpoint format](docs/checkpoint-format.md) | Current Quark layouts and persistent-format status |
 | [Runtime integration](docs/runtime-integration.md) | vLLM and SGLang integration boundaries |
 | [Autotuning](docs/autotuning.md) | Dispatch policy and cache generation |
