@@ -1,6 +1,8 @@
 #include "mxfp6_gemm/quantization.hpp"
 
+#include <algorithm>
 #include <cstdint>
+#include <torch/library.h>
 #include <limits>
 #include <tuple>
 
@@ -68,7 +70,7 @@ __device__ __forceinline__ uint16_t quantize_pair(float first,
 }
 
 template <class Source, int OutputBits, bool PackedScaleLayout,
-          class ScaleLayout>
+          class ScaleLayout, bool SiluAndMul = false>
 __global__ void quantize_mx_kernel(Source const* input,
                                    uint8_t* output,
                                    uint8_t* scales,
@@ -112,7 +114,21 @@ __global__ void quantize_mx_kernel(Source const* input,
   if (valid) {
 #pragma unroll
     for (int index = 0; index < kElementsPerThread; ++index) {
-      values[index] = static_cast<float>(input[value_offset + index]);
+      if constexpr (SiluAndMul) {
+        int64_t const k = static_cast<int64_t>(groups_per_row) * kScaleVectorSize;
+        int64_t const row = group / groups_per_row;
+        int64_t const column = value_offset + index - row * k;
+        float const gate = static_cast<float>(input[row * 2 * k + column]);
+        float const up = static_cast<float>(input[row * 2 * k + k + column]);
+        float const activated = static_cast<float>(static_cast<Source>(
+            gate / (1.0f + expf(-gate))));
+        // The separate activation's up + beta (beta=+0) canonicalizes -0.
+        // Make that boundary explicit rather than depending on fast-math.
+        float const shifted_up = up == 0.0f ? 0.0f : up;
+        values[index] = static_cast<float>(static_cast<Source>(activated * shifted_up));
+      } else {
+        values[index] = static_cast<float>(input[value_offset + index]);
+      }
     }
   }
 
@@ -213,13 +229,14 @@ __global__ void quantize_mx_kernel(Source const* input,
   }
 }
 
-template <int OutputBits, bool PackedScaleLayout = true>
+template <int OutputBits, bool PackedScaleLayout = true, bool SiluAndMul = false>
 std::tuple<at::Tensor, at::Tensor> quantize_mx(
     at::Tensor const& input) {
   check_quant_input(input);
   c10::cuda::CUDAGuard guard(input.device());
   int64_t const m = input.size(0);
-  int64_t const k = input.size(1);
+  int64_t const k = input.size(1) / (SiluAndMul ? 2 : 1);
+  TORCH_CHECK(k > 0 && k % kScaleVectorSize == 0, "output K must be divisible by 32");
   int64_t const values = m * k;
   int64_t const groups_per_row = k / kScaleVectorSize;
   int64_t const packed_groups_per_row = round_up(groups_per_row, 4);
@@ -247,13 +264,13 @@ std::tuple<at::Tensor, at::Tensor> quantize_mx(
               "quantization launch grid is too large");
 
   if (input.scalar_type() == at::kHalf) {
-    quantize_mx_kernel<at::Half, OutputBits, PackedScaleLayout><<<
+    quantize_mx_kernel<at::Half, OutputBits, PackedScaleLayout, decltype(scale_layout), SiluAndMul><<<
         static_cast<int>(block_count), kThreads, 0, stream.stream()>>>(
         input.data_ptr<at::Half>(), output.data_ptr<uint8_t>(),
         scales.data_ptr<uint8_t>(), nullptr,
         static_cast<int>(groups_per_row), total_groups, scale_layout, PackedScaleLayout);
   } else {
-    quantize_mx_kernel<at::BFloat16, OutputBits, PackedScaleLayout><<<
+    quantize_mx_kernel<at::BFloat16, OutputBits, PackedScaleLayout, decltype(scale_layout), SiluAndMul><<<
         static_cast<int>(block_count), kThreads, 0, stream.stream()>>>(
         input.data_ptr<at::BFloat16>(), output.data_ptr<uint8_t>(),
         scales.data_ptr<uint8_t>(), nullptr,
@@ -430,3 +447,18 @@ std::tuple<at::Tensor, at::Tensor> quantize_mxfp6_cuda(
 }
 
 }  // namespace mxfp6_gemm::torch_ext
+
+namespace mxfp6_gemm::torch_ext {
+std::tuple<at::Tensor, at::Tensor> silu_and_mul_mxfp8_cuda(at::Tensor const& input) {
+  TORCH_CHECK(input.dim() == 2 && input.size(1) % 64 == 0,
+              "SwiGLU input must be [M,2K] with K divisible by 32");
+  return quantize_mx<8, true, true>(input);
+}
+}  // namespace mxfp6_gemm::torch_ext
+
+TORCH_LIBRARY_FRAGMENT(mxfp6, m) {
+  m.def("silu_and_mul_mxfp8(Tensor input) -> (Tensor values, Tensor scales)");
+}
+TORCH_LIBRARY_IMPL(mxfp6, CUDA, m) {
+  m.impl("silu_and_mul_mxfp8", &mxfp6_gemm::torch_ext::silu_and_mul_mxfp8_cuda);
+}
