@@ -75,13 +75,36 @@ __global__ void quantize_mx_kernel(Source const* input,
                                    uint8_t* logical_scales,
                                    int groups_per_row,
                                    int64_t total_groups,
-                                   ScaleLayout scale_layout) {
+                                   ScaleLayout scale_layout,
+                                   bool initialize_padding = false) {
   static_assert(OutputBits == 6 || OutputBits == 8);
   int const thread_in_group = threadIdx.x % kThreadsPerGroup;
   int const group_in_block = threadIdx.x / kThreadsPerGroup;
   int64_t const group =
       static_cast<int64_t>(blockIdx.x) * kGroupsPerBlock + group_in_block;
   bool const valid = group < total_groups;
+
+  // Only padding is initialized here. Logical scale bytes are written below
+  // by their owning quantization group, so the two writes never overlap and
+  // need no grid synchronization. Replay overwrites every byte, including
+  // padding, even when the allocator returns poisoned/stale storage.
+  if constexpr (PackedScaleLayout) {
+    if (initialize_padding) {
+      int64_t const rows = total_groups / groups_per_row;
+      int64_t const padded_rows = (rows + 127) / 128 * 128;
+      int64_t const packed_groups = (groups_per_row + 3) / 4 * 4;
+      for (int64_t index = static_cast<int64_t>(blockIdx.x) * blockDim.x + threadIdx.x;
+           index < padded_rows * packed_groups;
+           index += static_cast<int64_t>(gridDim.x) * blockDim.x) {
+        int const row = static_cast<int>(index / packed_groups);
+        int const k_group = static_cast<int>(index % packed_groups);
+        if (row >= rows || k_group >= groups_per_row) {
+          scales[scale_layout(cute::make_coord(row, k_group * kScaleVectorSize, 0))] =
+              kUe8m0One;
+        }
+      }
+    }
+  }
 
   float values[kElementsPerThread]{};
   int64_t const value_offset =
@@ -212,16 +235,14 @@ std::tuple<at::Tensor, at::Tensor> quantize_mx(
       : at::empty({m, groups_per_row}, byte_options);
 
   auto stream = c10::cuda::getCurrentCUDAStream(input.get_device());
-  if constexpr (PackedScaleLayout) {
-    C10_CUDA_CHECK(cudaMemsetAsync(
-        scales.data_ptr<uint8_t>(), kUe8m0One,
-        static_cast<size_t>(scales.numel()), stream.stream()));
-  }
 
   using ScaleConfig = cutlass::detail::Sm1xxBlockScaledConfig<32>;
   auto const scale_layout = ScaleConfig::tile_atom_to_shape_SFA(
       cute::make_shape(static_cast<int>(m), 1, static_cast<int>(k), 1));
-  int64_t const block_count = ceil_div(total_groups, kGroupsPerBlock);
+  int64_t const block_count = PackedScaleLayout
+      ? std::max(ceil_div(total_groups, kGroupsPerBlock),
+                 ceil_div(padded_rows * packed_groups_per_row, kThreads))
+      : ceil_div(total_groups, kGroupsPerBlock);
   TORCH_CHECK(block_count <= std::numeric_limits<int>::max(),
               "quantization launch grid is too large");
 
@@ -230,13 +251,13 @@ std::tuple<at::Tensor, at::Tensor> quantize_mx(
         static_cast<int>(block_count), kThreads, 0, stream.stream()>>>(
         input.data_ptr<at::Half>(), output.data_ptr<uint8_t>(),
         scales.data_ptr<uint8_t>(), nullptr,
-        static_cast<int>(groups_per_row), total_groups, scale_layout);
+        static_cast<int>(groups_per_row), total_groups, scale_layout, PackedScaleLayout);
   } else {
     quantize_mx_kernel<at::BFloat16, OutputBits, PackedScaleLayout><<<
         static_cast<int>(block_count), kThreads, 0, stream.stream()>>>(
         input.data_ptr<at::BFloat16>(), output.data_ptr<uint8_t>(),
         scales.data_ptr<uint8_t>(), nullptr,
-        static_cast<int>(groups_per_row), total_groups, scale_layout);
+        static_cast<int>(groups_per_row), total_groups, scale_layout, PackedScaleLayout);
   }
   C10_CUDA_KERNEL_LAUNCH_CHECK();
   return {output, scales};
