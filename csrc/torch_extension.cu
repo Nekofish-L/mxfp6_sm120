@@ -1874,7 +1874,8 @@ at::Tensor gemm_from_float_cuda_impl(at::Tensor const& input,
                                      int64_t config_id,
                                      int64_t swizzle,
                                      int64_t raster_order,
-                                     at::ScalarType output_dtype) {
+                                     at::ScalarType output_dtype,
+                                     bool silu_and_mul = false) {
 #if !defined(CUTLASS_ARCH_MMA_SM120_SUPPORTED)
   TORCH_CHECK(false, "mxfp6_torch must be compiled for sm_120a");
 #else
@@ -1882,7 +1883,9 @@ at::Tensor gemm_from_float_cuda_impl(at::Tensor const& input,
   TORCH_CHECK(input.is_cuda(), "input must be a CUDA tensor");
   TORCH_CHECK(input.dim() == 2, "input must have shape [M,K]");
   int64_t const m = input.size(0);
-  int64_t const k = input.size(1);
+  int64_t const k = input.size(1) / (silu_and_mul ? 2 : 1);
+  TORCH_CHECK(!silu_and_mul || input.size(1) % 256 == 0,
+              "SwiGLU input must have 2K columns with K divisible by 128");
   TORCH_CHECK(m > 0, "M must be positive; got ", m);
   TORCH_CHECK(n > 0 && n % 8 == 0,
               "N must be a positive multiple of 8; got ", n);
@@ -1911,7 +1914,9 @@ at::Tensor gemm_from_float_cuda_impl(at::Tensor const& input,
               "mxfp6::gemm_from_float requires SM120; current device is SM",
               properties.major, properties.minor);
 
-  auto quantized = mxfp6_gemm::torch_ext::quantize_mxfp8_cuda(input);
+  auto quantized = silu_and_mul
+      ? mxfp6_gemm::torch_ext::silu_and_mul_mxfp8_cuda(input)
+      : mxfp6_gemm::torch_ext::quantize_mxfp8_cuda(input);
   if (config_id >= 0) {
     return launch_w6a8_config(
         std::get<0>(quantized), b, std::get<1>(quantized), sfb,
@@ -1922,6 +1927,16 @@ at::Tensor gemm_from_float_cuda_impl(at::Tensor const& input,
       std::get<0>(quantized), b, std::get<1>(quantized), sfb,
       m, n, k, alpha, device_index, properties.multiProcessorCount, true);
 #endif
+}
+
+at::Tensor gemm_from_swiglu_cuda(at::Tensor const& input,
+                                at::Tensor const& b,
+                                at::Tensor const& sfb,
+                                int64_t n,
+                                double alpha,
+                                std::optional<at::ScalarType> output_dtype) {
+  return gemm_from_float_cuda_impl(
+      input, b, sfb, n, alpha, -1, 1, 0, resolve_output_dtype(output_dtype), true);
 }
 
 at::Tensor gemm_from_float_cuda(at::Tensor const& input,
@@ -2127,6 +2142,8 @@ TORCH_LIBRARY(mxfp6, m) {
   m.def("gemm_w6a8_config(Tensor a, Tensor b, Tensor sfa, Tensor sfb, "
         "int m, int n, int k, float alpha, int config_id, int swizzle, "
         "int raster_order, ScalarType? out_dtype=None) -> Tensor");
+  m.def("gemm_from_swiglu(Tensor input, Tensor b, Tensor sfb, "
+        "int n, float alpha=1.0, ScalarType? out_dtype=None) -> Tensor");
   m.def("gemm_from_float(Tensor input, Tensor b, Tensor sfb, "
         "int n, float alpha=1.0, ScalarType? out_dtype=None) -> Tensor");
   m.def("gemm_from_float_config(Tensor input, Tensor b, Tensor sfb, "
@@ -2161,6 +2178,7 @@ TORCH_LIBRARY_IMPL(mxfp6, CUDA, m) {
   m.impl("gemm_w6a8", &gemm_w6a8_cuda);
   m.impl("gemm_w6a8_config", &gemm_w6a8_config_cuda);
   m.impl("gemm_from_float", &gemm_from_float_cuda);
+  m.impl("gemm_from_swiglu", &gemm_from_swiglu_cuda);
   m.impl("gemm_from_float_config", &gemm_from_float_config_cuda);
   m.impl("set_w6a8_config", &set_w6a8_config_cuda);
   m.impl("w6a8_config_abi", &w6a8_config_abi_cuda);
