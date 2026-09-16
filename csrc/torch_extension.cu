@@ -1777,7 +1777,8 @@ at::Tensor gemm_w6a8_cuda_impl(at::Tensor const& a,
                                int64_t config_id,
                                int64_t swizzle,
                                int64_t raster_order,
-                               at::ScalarType output_dtype) {
+                               at::ScalarType output_dtype,
+                               bool use_pdl = false) {
 #if !defined(CUTLASS_ARCH_MMA_SM120_SUPPORTED)
   TORCH_CHECK(false, "mxfp6_torch must be compiled for sm_120a");
 #else
@@ -1822,11 +1823,11 @@ at::Tensor gemm_w6a8_cuda_impl(at::Tensor const& a,
     return launch_w6a8_config(
         a, b, sfa, sfb, m, n, k, alpha, device_index,
         properties.multiProcessorCount, config_id, swizzle, raster_order,
-        false);
+        use_pdl);
   }
   return launch_w6a8_policy(
       a, b, sfa, sfb, m, n, k, alpha, device_index,
-      properties.multiProcessorCount, false);
+      properties.multiProcessorCount, use_pdl);
 #endif
 }
 
@@ -1842,6 +1843,20 @@ at::Tensor gemm_w6a8_cuda(at::Tensor const& a,
   return gemm_w6a8_cuda_impl(
       a, b, sfa, sfb, m, n, k, alpha, -1, 1, 0,
       resolve_output_dtype(output_dtype));
+}
+
+// Prequantized producer entry; identical dispatch/workspace and PDL policy
+// to gemm_from_float. The preceding producer must signal grid readiness or
+// finish normally before the consumer's dependency wait can complete.
+at::Tensor gemm_w6a8_pdl_cuda(at::Tensor const& a,
+                             at::Tensor const& b,
+                             at::Tensor const& sfa,
+                             at::Tensor const& sfb,
+                             int64_t m, int64_t n, int64_t k,
+                             double alpha,
+                             std::optional<at::ScalarType> output_dtype) {
+  return gemm_w6a8_cuda_impl(a, b, sfa, sfb, m, n, k, alpha, -1, 1, 0,
+                            resolve_output_dtype(output_dtype), true);
 }
 
 at::Tensor gemm_w6a8_config_cuda(at::Tensor const& a,
@@ -2142,6 +2157,8 @@ TORCH_LIBRARY(mxfp6, m) {
   m.def("gemm_w6a8_config(Tensor a, Tensor b, Tensor sfa, Tensor sfb, "
         "int m, int n, int k, float alpha, int config_id, int swizzle, "
         "int raster_order, ScalarType? out_dtype=None) -> Tensor");
+  m.def("gemm_w6a8_pdl(Tensor a, Tensor b, Tensor sfa, Tensor sfb, "
+        "int m, int n, int k, float alpha=1.0, ScalarType? out_dtype=None) -> Tensor");
   m.def("gemm_from_swiglu(Tensor input, Tensor b, Tensor sfb, "
         "int n, float alpha=1.0, ScalarType? out_dtype=None) -> Tensor");
   m.def("gemm_from_float(Tensor input, Tensor b, Tensor sfb, "
@@ -2178,6 +2195,7 @@ TORCH_LIBRARY_IMPL(mxfp6, CUDA, m) {
   m.impl("gemm_w6a8", &gemm_w6a8_cuda);
   m.impl("gemm_w6a8_config", &gemm_w6a8_config_cuda);
   m.impl("gemm_from_float", &gemm_from_float_cuda);
+  m.impl("gemm_w6a8_pdl", &gemm_w6a8_pdl_cuda);
   m.impl("gemm_from_swiglu", &gemm_from_swiglu_cuda);
   m.impl("gemm_from_float_config", &gemm_from_float_config_cuda);
   m.impl("set_w6a8_config", &set_w6a8_config_cuda);

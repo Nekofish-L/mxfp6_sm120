@@ -2349,3 +2349,13 @@ def gemm_from_swiglu(
     _require_sm120(a.device)
     load_library()
     return torch.ops.mxfp6.gemm_from_swiglu(a,b.values,b.scales,b.rows,alpha,out_dtype)
+
+
+def gemm_from_gdn(core, gate, norm_weight, weight, weight_scale, eps=1.e-6):
+    """Native TP2 GDN gated norm/MXFP8 producer and PDL output projection."""
+    from .gdn import gated_norm_mxfp8
+
+    load_library()
+    q, scales = gated_norm_mxfp8(core, gate, norm_weight, eps)
+    return torch.ops.mxfp6.gemm_w6a8_pdl(q, weight, scales, weight_scale,
+        core.shape[0], weight.shape[0], 3072, 1.0, core.dtype)
