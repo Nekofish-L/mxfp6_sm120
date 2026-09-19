@@ -25,5 +25,5 @@ is not a serving result. Mach's full-model TP2 test (five repeats, 2048 input,
 1025 output at B4/16/32) improves throughput 2.32%/3.31%/3.48%; B1's 1.13%
 change is inconclusive relative to its variance. Physical M4/M32 teacher-forced
 fidelity remains exactly equal on 256 queries / 10,479 target tokens.
-See the adjacent Mach repository's `docs/tp2-optimization-results.md` for the
-full workload contract and per-rank traces. HTTP serving validation is separate.
+See the [Mach development results](https://github.com/troycheng/vllm-mach/blob/7e841db8dc07b1d8329d10ef14ea0cbe45a3f074/docs/tp2-optimization-results.md)
+for the full workload contract and per-rank traces. HTTP serving validation is separate.
