@@ -6,6 +6,9 @@
 
 namespace mxfp6_gemm::torch_ext {
 
+std::tuple<at::Tensor, at::Tensor> silu_and_mul_mxfp8_cuda(
+    at::Tensor const& input);
+
 // Dynamically quantize a contiguous FP16/BF16 [M,K] matrix with one
 // power-of-two UE8M0 scale per 32 K values. Scales are emitted directly in the
 // physical SM120 CUTLASS layout, including the required M padding.
