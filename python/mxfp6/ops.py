@@ -2311,3 +2311,51 @@ def is_available() -> bool:
         return torch.cuda.get_device_capability() == (12, 0)
     except (ImportError, OSError, RuntimeError):
         return False
+
+
+def silu_and_mul_mxfp8(input: torch.Tensor) -> MXFP8Tensor:
+    """Quantize BF16/FP16 SwiGLU with rounded SiLU/product and up + positive zero.
+
+    Unlike the MoE packed-out producer, this dense interface also initializes
+    every padding scale on each call and matches the separate activation's
+    signed-zero boundary. Input is contiguous [M,2K], gate followed by up.
+    """
+    _require_sm120(input.device)
+    load_library()
+    values, scales = torch.ops.mxfp6.silu_and_mul_mxfp8(input)
+    return MXFP8Tensor(values=values, scales=scales, rows=input.shape[0], k=input.shape[1]//2)
+
+
+def gemm_from_swiglu(
+    a: torch.Tensor,
+    b: PackedMXFP6Tensor,
+    alpha: float = 1.0,
+    *,
+    out_dtype: torch.dtype = torch.float16,
+) -> torch.Tensor:
+    """Fused rounded SwiGLU/MXFP8 producer followed by PDL-enabled W6A8.
+
+    Uses the existing installed static dispatch/overrides and workspace plan.
+    Warm the matching [M,K] down-projection before graph capture. This entry
+    point does not run a second activation quantizer or perform a collective.
+    """
+    out_dtype = _validate_output_dtype(out_dtype)
+    rows, twice_k = _validate_float_activation(a)
+    if not isinstance(b, PackedMXFP6Tensor):
+        raise TypeError("b must be a PackedMXFP6Tensor instance")
+    if twice_k != 2*b.k or a.device != b.device:
+        raise ValueError("SwiGLU input must match weight device and have 2K columns")
+    _validate_problem(rows, b.rows, b.k)
+    _require_sm120(a.device)
+    load_library()
+    return torch.ops.mxfp6.gemm_from_swiglu(a,b.values,b.scales,b.rows,alpha,out_dtype)
+
+
+def gemm_from_gdn(core, gate, norm_weight, weight, weight_scale, eps=1.e-6):
+    """Native TP2 GDN gated norm/MXFP8 producer and PDL output projection."""
+    from .gdn import gated_norm_mxfp8
+
+    load_library()
+    q, scales = gated_norm_mxfp8(core, gate, norm_weight, eps)
+    return torch.ops.mxfp6.gemm_w6a8_pdl(q, weight, scales, weight_scale,
+        core.shape[0], weight.shape[0], 3072, 1.0, core.dtype)
