@@ -26,7 +26,8 @@ Validation on SM120 with PyTorch 2.13/CUDA 13:
   trial variation. These development runs include prefill and are not
   HTTP serving results.
 
-Detailed evidence and figures are maintained in the adjacent Mach repository,
-`docs/tp2-optimization-results.md` and `docs/data/tp2-p1b.json`.
+Detailed evidence and figures are maintained in the Mach
+[development results](https://github.com/troycheng/vllm-mach/blob/7e841db8dc07b1d8329d10ef14ea0cbe45a3f074/docs/tp2-optimization-results.md)
+and [P1-B data](https://github.com/troycheng/vllm-mach/blob/7e841db8dc07b1d8329d10ef14ea0cbe45a3f074/docs/data/tp2-p1b.json).
 An earlier separate `gemm_w6a8` integration disabled PDL and regressed B32;
 that integration was rejected. The accepted entry retains PDL.

@@ -230,6 +230,24 @@ PyTorch, CMake 3.24 or newer and a C++17 compiler. See
 [compatibility](docs/compatibility.md) for the measured toolchain and ABI
 policy.
 
+### Dense TP2 producer operations
+
+Current source builds include packed-scale padding initialization in the
+quantizer, rounded [SwiGLU/MXFP8 preparation](docs/tp2-swiglu.md), and exact
+GDN gated-RMSNorm/MXFP8 preparation feeding the existing PDL W6A8 projection.
+`gemm_from_swiglu` and `gemm_from_gdn` preserve their documented rounding,
+weight and workspace contracts. The GDN producer targets BF16
+`[M,24,128]` on SM120 at M1/2/4/8/16/24/32; it pins the vLLM 0.29 norm
+reduction layout.
+
+These APIs are newer than the original v0.2.1 release even though source
+builds still report package version 0.2.1. Rebuild from the commit required
+by the integration and use `--force-reinstall` when replacing an older wheel.
+The [Mach integration](https://github.com/troycheng/vllm-mach/blob/main/docs/dense-producer-fusion.md)
+records the model-level eligibility, dependency revision, and paired results.
+The [attention-gate producer](docs/attention-gate.md) is available only as an
+explicit API; this update does not select it for model inference.
+
 ## Python API
 
 Quantize a weight once and reuse its packed representation:

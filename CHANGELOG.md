@@ -4,11 +4,27 @@
 
 ### Added
 
+- added `silu_and_mul_mxfp8` and `gemm_from_swiglu`, preserving the source
+  dtype's SiLU/product rounding and signed-zero boundary;
+- added `gemm_w6a8_pdl` and the exact SM120 TP2 GDN producer
+  `gated_norm_mxfp8` / `gemm_from_gdn`, preserving the vLLM 0.29 norm
+  reduction layout and BF16 boundary;
+- added an explicit opt-in TP2 attention sigmoid-gate producer; it is not
+  selected by the current Mach integration;
+- added independent padding/quantization oracles and changing-input graph
+  replay coverage for the producer operations;
 - added model-scoped community conversion instructions for the validated
   Qwen3.5-27B and Qwen3.5-35B-A3B MXFP6 checkpoints;
 - added a CPU-only checkpoint validator for the Quark configuration, complete
   tensor name/dtype/shape contract, packed weight/scale pairing, safetensors
   payload integrity and optional SHA-256 manifests.
+
+### Changed
+
+- initialize allocating packed-quantizer scale padding inside the producer,
+  with disjoint ownership of logical scale bytes and padding;
+- document the source-build requirement for producer APIs newer than the
+  original 0.2.1 wheel and link the corresponding Mach integration evidence.
 
 ## 0.2.1 - 2026-08-24
 
