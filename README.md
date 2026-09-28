@@ -40,6 +40,13 @@ models:
 | Routed MoE | Routing, W1, SiLU-and-mul, intermediate quantization, W2, shared-expert combine and routed/shared reduction |
 | Runtime | Persistent workspaces, prewarmed dispatch and CUDA Graph replay |
 
+## MXFP8 W8A8
+
+A separate native W8A8 implementation accepts E4M3 operands and E8M0/32
+scales, with FP32 accumulation and BF16 output. See [the MXFP8 guide](docs/mxfp8.md)
+for the API and the hot-launch, cold-weight-cache benchmark. Performance
+acceptance is recorded per shape, including failures.
+
 ## Performance
 
 ### Qwen3.8-27B quality, serving and capacity snapshot

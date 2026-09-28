@@ -67,3 +67,6 @@ wheelhouse/
 *.swp
 *~
 .DS_Store
+
+# MXFP8 generated measurements remain local; runtime dispatch lives in python/mxfp6.
+/benchmarks/results/mxfp8_*/

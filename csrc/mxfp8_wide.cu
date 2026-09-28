@@ -1,0 +1,39 @@
+#include <ATen/ATen.h>
+#include <ATen/cuda/CUDAContext.h>
+#include <c10/cuda/CUDAGuard.h>
+#include <torch/library.h>
+#include "cutlass/util/packed_stride.hpp"
+#include "mxfp6_gemm/kernel_normal.hpp"
+#include "mxfp8_gemm/launch.hpp"
+
+namespace mxfp8_wide {
+using FP8 = cutlass::mx_float8_t<cutlass::float_e4m3_t>;
+using Coop = cutlass::gemm::KernelTmaWarpSpecializedMxf8f6f4Sm120;
+using Ping = cutlass::gemm::KernelTmaWarpSpecializedPingpongMxf8f6f4Sm120;
+using Static = cutlass::gemm::StaticPersistentScheduler;
+using StreamK = cutlass::gemm::StreamKScheduler;
+template<int M,int N,int K,class Schedule=Coop,class Scheduler=Static>
+using Normal=mxfp6_gemm::normal::KernelConfig<cute::Int<M>,cute::Int<N>,cute::Int<K>,Schedule,Scheduler,void,FP8,FP8,cutlass::bfloat16_t>;
+using mxfp8_common::launch;
+
+int64_t mm_out(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at::Tensor const& sb,
+              at::Tensor const& out,int64_t tactic,int64_t splits,int64_t swizzle,
+              std::optional<at::Tensor> persistent,bool query,int64_t sms) {
+  mxfp8_common::validate(a,b,sa,sb,out);
+  mxfp8_common::validate_scheduler(splits,swizzle);
+  c10::cuda::CUDAGuard guard(a.device());
+#define RUN(ID,...) case ID:return launch<__VA_ARGS__,false>(a,b,sa,sb,out,splits,swizzle,persistent,query,sms)
+  switch(tactic) {
+    RUN(37,Normal<64,256,128,Ping>);
+    RUN(38,Normal<256,64,128>);
+    RUN(39,Normal<256,32,128,Coop,StreamK>);
+    RUN(40,Normal<256,64,128,Coop,StreamK>);
+    RUN(41,Normal<128,32,128>);
+    RUN(42,Normal<128,32,128,Coop,StreamK>);
+    default:TORCH_CHECK(false,"Unknown wide tactic");
+  }
+#undef RUN
+}
+}
+TORCH_LIBRARY_FRAGMENT(mxfp8_sm120,m) { m.def("wide_out(Tensor a, Tensor b, Tensor sa, Tensor sb, Tensor(a!) out, int tactic, int splits=1, int swizzle=1, Tensor? workspace=None, bool query=False, int sms=0) -> int"); }
+TORCH_LIBRARY_IMPL(mxfp8_sm120,CUDA,m) { m.impl("wide_out",mxfp8_wide::mm_out); }

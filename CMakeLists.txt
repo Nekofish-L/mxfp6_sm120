@@ -147,3 +147,20 @@ if(BUILD_TESTING AND MXFP6_BUILD_STANDALONE)
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_ops.py"
             --library=$<TARGET_FILE:mxfp6_torch>)
 endif()
+
+# Independent W8A8 extension; shares the patched SM120 template infrastructure.
+add_library(mxfp8_torch SHARED csrc/mxfp8.cu csrc/mxfp8_gemv.cu csrc/mxfp8_wide.cu csrc/mxfp8_direct.cu csrc/mxfp8_extra.cu)
+target_include_directories(mxfp8_torch PRIVATE
+  "${CMAKE_CURRENT_SOURCE_DIR}/csrc/include"
+  "${CUTLASS_DIR}/include"
+  "${CUTLASS_DIR}/tools/util/include")
+target_link_libraries(mxfp8_torch PRIVATE ${TORCH_LIBRARIES})
+target_compile_options(mxfp8_torch PRIVATE
+  $<$<COMPILE_LANGUAGE:CUDA>:-arch=sm_120a;--expt-relaxed-constexpr;-O3;
+    -Xcudafe=--diag_suppress=20012;-Xcudafe=--diag_suppress=20013;
+    -Xcudafe=--diag_suppress=20015>)
+set_target_properties(mxfp8_torch PROPERTIES
+  CUDA_ARCHITECTURES OFF CUDA_SEPARABLE_COMPILATION OFF
+  PREFIX "" OUTPUT_NAME "mxfp8_torch"
+  BUILD_WITH_INSTALL_RPATH ON INSTALL_RPATH "$ORIGIN")
+install(TARGETS mxfp8_torch LIBRARY DESTINATION mxfp6)
