@@ -51,6 +51,7 @@ class CMakeBuild(build_ext):
                 str(build_dir),
                 "--target",
                 "mxfp6_torch",
+                "mxfp8_torch",
                 "--parallel",
                 jobs,
             ],

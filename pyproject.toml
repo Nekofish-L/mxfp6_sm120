@@ -8,7 +8,7 @@ version = "0.2.1"
 description = "Native SM120 W6A8 GEMM with packed MXFP6 weights for PyTorch"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = ["torch"]
+dependencies = ["torch", "triton"]
 license = "BSD-3-Clause"
 authors = [{name = "MXFP6 SM120 contributors"}]
 classifiers = [
@@ -29,4 +29,4 @@ package-dir = {"" = "python"}
 where = ["python"]
 
 [tool.setuptools.package-data]
-mxfp6 = ["*.so", "*.txt", "metadata.json"]
+mxfp6 = ["*.so", "*.txt", "metadata.json", "mxfp8_dispatch.json"]

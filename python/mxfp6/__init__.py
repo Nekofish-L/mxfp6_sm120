@@ -1,5 +1,6 @@
 """Native W6A8 GEMM with packed MXFP6 weights for NVIDIA SM120 GPUs."""
 
+from .mxfp8 import mm as gemm_mxfp8, prepare as prepare_mxfp8
 from ._loader import load_library
 from .autotune import (
     W6A8Config,
@@ -81,6 +82,8 @@ from .qwen35 import (
 __version__ = "0.2.1"
 
 __all__ = [
+    "gemm_mxfp8",
+    "prepare_mxfp8",
     "MXFP8Tensor",
     "PackedMXFP6Tensor",
     "Qwen35GroupedWorkspace",
