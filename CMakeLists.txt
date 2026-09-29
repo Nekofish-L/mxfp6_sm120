@@ -27,9 +27,18 @@ file(READ
 file(READ
   "${CUTLASS_DIR}/include/cutlass/gemm/kernel/sm100_tile_scheduler_stream_k.hpp"
   MXFP6_CUTLASS_SM120_STREAMK_SCHEDULER)
+file(READ
+  "${CUTLASS_DIR}/include/cutlass/gemm/collective/sm120_blockscaled_mma_tma.hpp"
+  MXFP8_CUTLASS_MAINLOOP)
+file(READ
+  "${CUTLASS_DIR}/include/cutlass/epilogue/collective/sm90_epilogue_tma_warpspecialized.hpp"
+  MXFP8_CUTLASS_EPILOGUE)
 if(NOT MXFP6_CUTLASS_SM120_BLOCKSCALED_BUILDER MATCHES "sSFATileShape_M" OR
    NOT MXFP6_CUTLASS_SM120_BLOCKWISE_BUILDER MATCHES "SmemCopyOpB" OR
-   NOT MXFP6_CUTLASS_SM120_STREAMK_SCHEDULER MATCHES "get_workspace_layout")
+   NOT MXFP6_CUTLASS_SM120_STREAMK_SCHEDULER MATCHES "get_workspace_layout" OR
+   NOT MXFP8_CUTLASS_MAINLOOP MATCHES "Specialization requires at least one stage" OR
+   NOT MXFP8_CUTLASS_MAINLOOP MATCHES "TMA Params use runtime extent types" OR
+   NOT MXFP8_CUTLASS_EPILOGUE MATCHES "TMA Params use runtime extent types")
   message(FATAL_ERROR
     "The required SM120 runtime CUTLASS patches are not applied. Run: "
     "bash scripts/apply_cutlass_patches.sh --runtime-only")
@@ -149,8 +158,47 @@ if(BUILD_TESTING AND MXFP6_BUILD_STANDALONE)
 endif()
 
 # Independent W8A8 extension; shares the patched SM120 template infrastructure.
-add_library(mxfp8_torch SHARED csrc/mxfp8.cu csrc/mxfp8_gemv.cu csrc/mxfp8_wide.cu csrc/mxfp8_direct.cu csrc/mxfp8_extra.cu)
+set(MXFP8_GENERATED_INCLUDE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+set(MXFP8_POLICY_HEADER "${MXFP8_GENERATED_INCLUDE}/mxfp8_gemm/dispatch_policy.hpp")
+add_custom_command(
+  OUTPUT "${MXFP8_POLICY_HEADER}"
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_mxfp8_dispatch.py"
+          "${CMAKE_CURRENT_SOURCE_DIR}/python/mxfp6/mxfp8_dispatch.json" "${MXFP8_POLICY_HEADER}"
+  DEPENDS scripts/generate_mxfp8_dispatch.py python/mxfp6/mxfp8_dispatch.json
+  VERBATIM)
+add_library(mxfp8_torch SHARED
+  "${MXFP8_POLICY_HEADER}"
+  csrc/mxfp8_extension.cu
+  csrc/mxfp8.cu
+  csrc/mxfp8_gemv.cu
+  csrc/mxfp8_wide.cu
+  csrc/mxfp8_direct.cu
+  csrc/mxfp8_extra.cu
+  csrc/mxfp8_dynamic.cu
+  csrc/mxfp8_cute.cu
+  csrc/mxfp8_vector_store.cu
+  csrc/mxfp8_specialized.cu
+  csrc/mxfp8_static_shape.cu
+  csrc/mxfp8_cache_hint.cu
+  csrc/mxfp8_occupancy.cu
+  csrc/mxfp8_tma4.cu
+  csrc/mxfp8_irregular.cu
+  csrc/mxfp8_tma256.cu
+  csrc/mxfp8_eightwarp.cu
+  csrc/mxfp8_tma_fewwarp.cu
+  csrc/mxfp8_tma_eightwarp.cu
+  csrc/mxfp8_release.cu
+  csrc/mxfp8_release_normal.cu
+  csrc/mxfp8_release_core.cu
+  csrc/mxfp8_register_pipeline8.cu
+  csrc/mxfp8_tma_oddwarp.cu
+  csrc/mxfp8_tma_oddrotate.cu
+  csrc/mxfp8_pair_ldsm.cu
+  csrc/mxfp8_release_direct.cu
+  csrc/mxfp8_tma_scales.cu
+)
 target_include_directories(mxfp8_torch PRIVATE
+  "${MXFP8_GENERATED_INCLUDE}"
   "${CMAKE_CURRENT_SOURCE_DIR}/csrc/include"
   "${CUTLASS_DIR}/include"
   "${CUTLASS_DIR}/tools/util/include")

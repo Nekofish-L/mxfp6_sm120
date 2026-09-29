@@ -65,7 +65,7 @@ index 2835751..1a5435c 100755
 +  // Wider CTA tiles are represented by multiple accumulator matrices; they
 +  // must not grow the MMA atom layout beyond the 128-row hardware tile.
 +  using NarrowNAtomLayoutM = decltype(
-+      cute::min(size<0>(TileShape_MNK{}), _128{}) / _16{});
++      cute::min(size<0>(TileShape_MNK{}), Int<IsCooperative ? 128 : 64>{}) / _16{});
    using AtomLayoutMNK = cute::conditional_t<IsCooperative,
        cute::conditional_t<(size<1>(TileShape_MNK{}) >= 16), Layout<Shape<_4,_2,_1>>,
 -                          Layout<Shape<_8,_1,_1>>>,

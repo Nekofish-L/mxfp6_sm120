@@ -1,206 +1,223 @@
-# MXFP8 W8A8 on SM120
+# SM120 MXFP8 GEMM
 
-`mxfp6.gemm_mxfp8` computes `A[M,K] @ B[N,K].T` from E4M3 operands and
-one E8M0 scale per 32 values, with FP32 accumulation and BF16 output.
-Scales use the padded 128x4 swizzled layout accepted by this repository's
-W6A8 path and produced by FlashInfer's MXFP8 quantizer.
+`mxfp6.mxfp8.gemm` computes `A[M,K] @ B[N,K].T` with E4M3 operands,
+E8M0 scales per 32 values, FP32 accumulation and BF16 output. All default
+paths use CUTLASS/CuTe. The MXFP8 Triton implementation and tactic IDs
+100–105 have been removed.
 
-The kernel portfolio reuses the existing CUTLASS SM120 configuration classes
-and runtime patches. It includes transposed small-batch GEMMs, different tile
-sizes and pipeline stages, persistent scheduling, Stream-K with private
-workspace, and direct output stores. Small-batch CUDA GEMV candidates decode
-FP8 values directly. Runtime execution does not call Humming, FlashInfer GEMM,
-or vLLM. Quantization is outside the GEMM.
+## Shape scheduling
 
-The measured shape table targets RTX 5090 (170 SMs). It chooses a configuration;
-it does not guarantee every shape passes the requested speedup. The acceptance
-report retains failures. Other SM120 devices may require retuning, especially
-configurations with an explicit SM count.
+C++ selects **M/N/K intervals**, without an exact-shape lookup or
+runtime autotuning. The build generates the native decision tree from
+[mxfp8_dispatch.json](../python/mxfp6/mxfp8_dispatch.json).
+Rebuild the extension after changing this file; Python does not read the
+policy or route individual kernel families at runtime.
 
-## Wide-N / short-K update
+The first matching N/K region is selected:
 
-The default dispatch now replaces **47 of the 144** shapes in the six requested
-N/K groups. On GPUs 4/5, the promoted shapes have a **1.082x** geometric mean
-speedup over the old configuration; across all 144 shapes the mean is **1.026x**.
-Using freshly measured same-GPU baselines, the original acceptance count changes
-from **80/144 to 90/144**. The full performance requirement remains unmet.
-No configuration was promoted for `(N,K)=(18432,2560)`.
+| Region | N | K |
+|---|---:|---:|
+| Narrow, short K | ≤4096 | ≤3072 |
+| Narrow, medium K | ≤4096 | 3072–7168, lower bound excluded |
+| Narrow, long K | ≤4096 | >7168 |
+| Wide, short K | 4096–9216, lower bound excluded | ≤3072 |
+| Wider, short K | 9216–14336, lower bound excluded | ≤3072 |
+| Widest, short K | >14336 | ≤3072 |
 
-The [optimization report](../benchmarks/results/mxfp8_short_k/REPORT.md) lists
-all shapes, before/after times, and fresh FlashInfer/block-FP8/Humming baselines.
-[CSV](../benchmarks/results/mxfp8_short_k/comparison.csv) and raw interleaved
-samples are included. Promotion uses both search and validation gates; the
-report describes those gates explicitly. Do not combine these counts with the
-older GPU-6/7 measurements below.
+Each region has nine M intervals with inclusive upper bounds:
+**8, 16, 32, 64, 128, 256, 512, 1024, 2048**. Thus an unseen batch such as
+M=17 uses the same interval as M=20–32.
 
-The [rolling FlashInfer/block-FP8 comparison](../benchmarks/results/mxfp8_decode_validation/BASELINES.md)
-always merges the latest deployed measurements per shape and labels their
-source/GPU. `summarize_mxfp8_short_k.py --write-dispatch` refreshes this file
-automatically; `summarize_mxfp8.py` retains registered updates through
-`baseline_updates.json`, so regenerating it does not restore stale measurements.
+Additional splits limit regressions in the broad intervals:
 
-The selected approach uses independent 4-warp CTAs, K tiles of 128/256, native
-block-scaled MMA, and direct BF16 output. Larger K tiles reduce the number of
-pipeline iterations; small batches may use transposed MMA tiles. The public
-input layout and precision are unchanged. The experiments also tested smaller
-CUTLASS tiles and higher CTA grid limits; only measured winners are dispatched.
+- Narrow/medium K: split at K=5120 for M≤8, 64<M≤128 and 128<M≤256.
+- Narrow/medium K, 64<M≤128: also split at M=112. For M≤112 and
+  K>5120, three K splits improve work balance.
+- Wide/short K, 64<M≤256: split at N=6656.
+- Wider/short K, 64<M≤256: split at N=11264; for 64<M≤128 and
+  N>11264, also split at M=112.
+- Widest/short K, 128<M≤256: split at M=224.
 
-Reproduce the search and frozen-candidate validation with
-`benchmarks/optimize_mxfp8_short_k.py --phase search|validate`, using `--shard 0`
-on GPU 4 and `--shard 1` on GPU 5. Validation takes `--plan` pointing to
-`benchmarks/results/mxfp8_short_k/plan.json`. Use a new `--out` directory to
-preserve the recorded results. The original dispatch snapshot is retained in
-`benchmarks/results/mxfp8_decode_validation/dispatch.json`.
+There are **65 configuration intervals**. Each selects
+`(tactic, splits, swizzle, sms)`. All use `sms=0`, so the scheduler uses the
+device's available SM count. Configurations specialized to an exact K
+are excluded from the interval policy.
 
-## Initial validation, before the short-K update
+Small-M, short-K regions mostly use direct-output CUTLASS or CuTe tiles;
+long-K, narrow-N regions use Stream-K to supply enough parallel work.
+Larger M uses larger tiles and fewer splits. Selection accounts for the
+combined measurements of the shapes in a region, rather than copying a
+single shape's winner.
 
-The initial frozen dispatch table passed **93/240 shapes**: **80/188 normal** and
-**13/52 outliers**. **147 shapes fail**, so the requested performance goal
-has not been achieved. These are independent validation measurements after
-configuration selection, not the best observed tuning timings.
+Outside the calibrated regions:
 
-See the [passing/failing shape lists and all timings](../benchmarks/results/mxfp8_decode_validation/REPORT.md)
-and [CSV](../benchmarks/results/mxfp8_decode_validation/comparison.csv).
-The validation directory includes raw samples, a dispatch snapshot, source
-hashes, and baseline metadata. Baselines were measured in the preceding
-same-GPU run and reused for this validation. The CMake-built extension passed
-all 19 correctness tests, including changed inputs during graph replay and
-concurrent execution with separate workspaces.
+- M>2048 uses the general tactic 79.
+- N>4096 and K>3072 uses Stream-K tactics 12–16 according to M, with 2/4
+  splits for small M and long K, otherwise one split.
 
-## Build
+The rules accept unseen dimensions within the input contract. Performance
+outside the measured range remains untuned; interval coverage alone does
+not establish optimal performance on every shape or other GPU models.
+
+## Input contract and use
+
+Requires SM120, CUDA and PyTorch. M must be positive; N and K must be
+positive multiples of 128. Inputs and scales must be contiguous on one
+CUDA device with 16-byte-aligned storage. Scale storage uses the padded
+CUTLASS 128×4 swizzle. Weights are quantized once; activations may be FP16/BF16 or a shared
+`MXFP8Tensor`. The public entrypoints follow MXFP6:
+
+```python
+import torch
+import mxfp6
+import mxfp6.mxfp8 as mxfp8
+
+# x: [M, K], weight: [N, K], both CUDA FP16/BF16
+w6 = mxfp6.quantize_mxfp6(weight)
+w8 = mxfp8.quantize_mxfp8(weight)
+y6 = mxfp6.gemm(x, w6, out_dtype=torch.bfloat16)
+y8 = mxfp8.gemm(x, w8, out_dtype=torch.bfloat16)
+
+# Shared activation type and quantizer; skip activation conversion in GEMM.
+qa = mxfp8.quantize_mxfp8(x)
+y8 = mxfp8.gemm(qa, w8)
+```
+
+Both modules expose `gemm`, `gemm_from_float`, `gemm_packed`, `warmup`,
+`load_library` and the same workspace planning functions. The quantized
+entrypoints are `gemm_w6a8` and `gemm_w8a8`. MXFP8 currently supports
+`alpha=1` and BF16 output only; other values raise an error. MXFP6 retains
+its FP16 default and supports FP16/BF16 output. Pass `out_dtype` explicitly
+when sharing calling code.
+
+Both follow Python wrapper → native C++ dispatch → kernel. Floating
+activations use the same native MXFP8 quantizer. MXFP6 retains its PDL
+quantization/GEMM launch; MXFP8 launches quantization and GEMM in stream
+order. All workspace layout selection and allocation happen in C++.
+
+The backends share the workspace implementation and Python helper, with
+independent pools. Plan all expected shapes, freeze capacity, then warm
+each stream before graph capture:
+
+```python
+backend = mxfp8  # mxfp6 uses the same workflow with w6
+backend.begin_workspace_planning()
+backend.warmup(qa, w8, out_dtype=torch.bfloat16)
+backend.finalize_workspace_planning()
+backend.warmup(qa, w8, out_dtype=torch.bfloat16)
+```
+
+For multiple shapes, warm each before finalizing. Each stream gets its own
+workspace lane; frozen capacity cannot be resized. A larger unplanned
+layout falls back to temporary workspace in eager execution and raises
+during capture. `workspace_stats()` and `workspace_barriers_zero()` expose
+pool state for diagnostics.
+
+Alternatively, `mxfp8.prepare(qa, w8)` returns a callable with private
+output/workspace allocated by C++. Warm it on a side stream before graph
+capture, and retain it for the graph's lifetime. Inputs and scales may
+change in place between replays. Concurrent prepared calls need separate
+prepared objects. `W8A8Config` supports explicit diagnostic overrides;
+`select_config(m, n, k)` inspects the native policy. Invalid IDs raise an
+error. The old `gemm_mxfp8`, `prepare_mxfp8` and raw `mm` APIs were removed.
+
+## Build and configuration limits
 
 ```bash
 bash scripts/apply_cutlass_patches.sh --runtime-only
-# Source-tree use compiles a separate extension on first load.
-CUDA_VISIBLE_DEVICES=6 PYTHONPATH=python python3 -c \
-  'from mxfp6.mxfp8 import load_library; load_library()'
-
-# Alternatively, build the CMake target into build/mxfp8_torch.so.
-cmake -S . -B build -DPython3_EXECUTABLE="$(command -v python3)" \
-  -DMXFP6_BUILD_STANDALONE=OFF -DBUILD_TESTING=OFF
-cmake --build build --target mxfp8_torch -j3
+cmake -S . -B build -DMXFP6_BUILD_STANDALONE=OFF -DBUILD_TESTING=OFF
+cmake --build build --target mxfp6_torch mxfp8_torch -j3
 ```
 
-The wheel build also includes `mxfp8_torch.so`. Kernel execution requires
-PyTorch, Triton (for tactics 100–105), and SM120; benchmark-only dependencies include FlashInfer,
-Humming kernels, and vLLM.
+Build both extensions to use the shared quantizer. Extensions load
+automatically on first use from the installed package or build directory;
+`MXFP6_LIBRARY_PATH` and `MXFP8_LIBRARY_PATH` select explicit binaries.
 
-## Use
+See the [CUTLASS patch notes](../patches/cutlass/README.md). The patches
+address software restrictions: narrow-N warp layouts, single-stage
+mainloops, static-shape TMA descriptors and reusable Stream-K barriers.
+A tile exceeding available shared memory remains a hardware resource
+limit. N/K alignment above is the current implementation contract.
 
-```python
-import flashinfer
-from mxfp6 import gemm_mxfp8, prepare_mxfp8
+MXFP6 tile/stage/scheduler choices can supply candidates for MXFP8, but
+must be re-instantiated for E4M3 and remeasured. Packed E3M2 weights,
+MXFP6 binaries and tactic IDs cannot be reused directly. Rankings from
+warm-cache MXFP6 measurements also need cold-cache validation here.
 
-a, sa = flashinfer.mxfp8_quantize(activation, is_sf_swizzled_layout=True)
-b, sb = flashinfer.mxfp8_quantize(weight, is_sf_swizzled_layout=True)
-y = gemm_mxfp8(a, b, sa, sb)
+## Benchmark and validation
 
-# Repeated calls / graph capture: retain output and private workspace.
-run = prepare_mxfp8(a, b, sa, sb)
-y = run()
-```
-
-Like the MXFP6 API, both functions load their extension automatically on first
-use. No explicit `load_library()` call is required. That function remains an
-optional preloading hook. For CUDA graphs, call `prepare_mxfp8` before capture;
-it also compiles a selected Triton kernel for the exact shape. Warm the prepared
-call on a side stream before capture, following normal PyTorch graph usage.
-
-The existing repository quantizer can also supply operands:
-
-```python
-from mxfp6 import quantize_mxfp8
-qa = quantize_mxfp8(activation)
-qb = quantize_mxfp8(weight)
-run = prepare_mxfp8(qa.dequantized_values(), qb.dequantized_values(),
-                   qa.scales, qb.scales)
-```
-
-Despite its name, `dequantized_values()` only views the FP8 payload bytes;
-it does not apply scales or convert to BF16.
-
-Inputs must be contiguous, 16-byte aligned, and on one SM120 device.
-M is positive; N and K are positive multiples of 128. Weight storage is
-`[N,K]`. Optional `out` is contiguous BF16 `[M,N]` and must not alias inputs.
-The operation uses the current PyTorch CUDA stream.
-
-`gemm_mxfp8` allocates/initializes Stream-K workspace if none is supplied.
-`prepare_mxfp8` allocates private workspace once and uses self-resetting
-barriers. Each concurrent invocation needs separate output/workspace.
-Input contents may change between graph replays; no output values are cached.
-Explicit configuration options are `tactic`, `splits`, `swizzle`, and `sms`
-(0 means all physical SMs). `splits` applies to Stream-K.
-
-## Acceptance method: hot launch + cold weight cache
-
-The benchmark directly imports `gemm_bench.py::bench_kineto`.
-It passes a **pre-captured single-GEMM graph's `replay`** as the test function:
-
-1. Quantize inputs and prepare output/workspace before capture.
-2. Warm the kernel and capture one invocation.
-3. Verify the graph contains exactly one GPU GEMM kernel.
-4. Before each replay, use the reference script's **8 GB L2 eviction**.
-5. Record only the GEMM kernel's profiler duration. Eviction and host launch
-   gaps are excluded. Default sampling is 30 active measurements per trial,
-   with three trials; report the median of trial means.
-
-This reproduces the requested hot-launch/cold-weight condition for a GEMM.
-It does not measure a full LLM's end-to-end decode latency.
-
-The original manifest supplies 240 shapes and 52 fixed outliers. For each
-shape, Humming (default heuristics), FlashInfer (exact-M autotune), and vLLM
-block FP8 are **remeasured on the same GPU using the same procedure**.
-Normal points require speedup **>1.05x Humming**; outliers require
-**>1.1x the faster of FlashInfer/vLLM**. Original hot-weight timings are not
-used as the acceptance baseline.
+The benchmark compares current MXFP8, FlashInfer MXFP8 CUTLASS and vLLM
+block FP8 on identical source tensors. It times one GEMM per CUDA graph,
+with an 8 GB L2 eviction before replay. Eviction, quantization and host
+launch overhead are excluded. Default sampling is three interleaved
+trials of 30 measurements, reported as the median of trial means.
 
 ```bash
-CUDA_VISIBLE_DEVICES=6 PYTHONPATH=python python3 benchmarks/benchmark_mxfp8.py \
-  --tune --tune-sms --shards 2 --shard 0 --out benchmarks/results/mxfp8_decode
-CUDA_VISIBLE_DEVICES=7 PYTHONPATH=python python3 benchmarks/benchmark_mxfp8.py \
-  --tune --tune-sms --shards 2 --shard 1 --out benchmarks/results/mxfp8_decode
-python3 benchmarks/summarize_mxfp8.py benchmarks/results/mxfp8_decode \
-  --write-dispatch python/mxfp6/mxfp8_dispatch.json
-CUDA_VISIBLE_DEVICES=7 PYTHONPATH=python python3 -m pytest tests/test_mxfp8.py -q
+CUDA_VISIBLE_DEVICES=4 PYTHONPATH=python python3 benchmarks/benchmark_mxfp8.py \
+  --out benchmarks/results/mxfp8_current --shard 0 --shards 2 --check-graphs
+CUDA_VISIBLE_DEVICES=5 PYTHONPATH=python python3 benchmarks/benchmark_mxfp8.py \
+  --out benchmarks/results/mxfp8_current --shard 1 --shards 2 --check-graphs
+python3 benchmarks/summarize_mxfp8.py benchmarks/results/mxfp8_current
+CUDA_VISIBLE_DEVICES=4 PYTHONPATH=python python3 -m pytest \
+  tests/test_mxfp8.py tests/test_mxfp8_api.py tests/test_mxfp8_benchmark.py tests/test_model_gemm_totals.py -q
 ```
 
-Run the two shards concurrently on their separate GPUs. `--candidate-results`
-can reuse a previous search; `--config` validates a frozen dispatch table
-without searching. `--reuse-baselines` can reuse the measured baselines from
-a previous run with the same GPU, input sequence, and reference script;
-metadata records the reused files and hashes. `--reference-bench` and `--baseline` override external
-source paths. Metadata includes source hashes, GPU identity, and sampling
-parameters. Raw data retain candidate timings, all baseline samples,
-correctness errors, and selected configurations.
+The default workload covers Qwen3.5-2B and Qwen3.5-4B, TP=1, ten N/K
+pairs and 24 batches. `--shapes` accepts a JSON list of `[M,N,K]` for other
+workloads. `--check-graphs` changes both operands and their scales, then
+checks a zero-input replay. Model totals weight the measured projection
+latencies by actual layer/call counts; they are estimates of quantized
+GEMM cost, not full-model inference latency.
 
-To independently validate the shipped table and freshly measure all baselines,
-run both shards with a new output directory (without `--tune`):
+## Approximate performance
 
-```bash
-CUDA_VISIBLE_DEVICES=6 PYTHONPATH=python python3 benchmarks/benchmark_mxfp8.py \
-  --config python/mxfp6/mxfp8_dispatch.json --shards 2 --shard 0 \
-  --out benchmarks/results/mxfp8_recheck
-CUDA_VISIBLE_DEVICES=7 PYTHONPATH=python python3 benchmarks/benchmark_mxfp8.py \
-  --config python/mxfp6/mxfp8_dispatch.json --shards 2 --shard 1 \
-  --out benchmarks/results/mxfp8_recheck
-python3 benchmarks/summarize_mxfp8.py benchmarks/results/mxfp8_recheck
-```
+RTX 5090 / SM120, physical GPUs 4, 5; 240 shapes. Single-GEMM CUDA graph, 8 GB L2 eviction before replay; only GPU kernel time is counted. Quantization, host overhead and eviction are excluded.
 
-## Candidate families
+FlashInfer uses MXFP8 `mm_mxfp8(..., backend="cutlass")` and exact-batch autotuning. vLLM uses block FP8 `cutlass_scaled_mm`. MXFP8 inputs share E4M3 values and E8M0/32 scales; vLLM quantizes the same source tensors with 1×128 activation / 128×128 weight scales.
 
-- 0–11, 17–29, 31–32: static CUTLASS kernels with different orientations,
-  tiles, and pipeline stages.
-- 12–16, 39–40, 42, 51, 57: Stream-K with private reusable workspace.
-- 33–36: CUDA GEMV with 1/2/4/8 activation rows per weight load.
-- 37–38, 41: additional wide/narrow tiles.
-- 43–50: SM120 mainloops with a register-to-global BF16 epilogue.
-- 52–56: additional transposed 64/128-column tiles.
-- 58–65: two-stage direct-output kernels, including static grids with up to
-  two CTA slots per physical SM.
-- 66–69: experimental 32-row weight tiles; slower in the short-K checks.
-- 100–105: independent 4-warp Triton CTAs with block-scaled MMA and direct
-  BF16 stores. Selected by the measured shape table; `prepare_mxfp8` compiles
-  the exact shape before graph capture.
+Speedup = baseline latency / current latency. Figures are approximate and describe this GPU and cache policy.
 
-Tactic 30 was removed because its forced stage count exceeded shared memory.
-Unsupported shapes/configurations raise an error.
+| Baseline | Geometric mean speedup | Shapes faster |
+|---|---:|---:|
+| FlashInfer MXFP8 | 1.14× | 206/240 |
+| vLLM block FP8 | 1.26× | 207/240 |
+
+## Model-weighted GEMM estimates
+
+TP=1, all 24 batches from 1 to 2048. The six main quantized projections are weighted by their actual layer/call counts: 96 GEMMs for Qwen3.5-2B and 128 for Qwen3.5-4B. These are sums of microbenchmarks, not full-model inference latency. BF16 projections, lm_head, attention, quantization and communication are excluded.
+
+The oracle chooses the fastest of current MXFP8, FlashInfer MXFP8 and vLLM block FP8 per shape before weighting. A mixed-backend model has not been implemented.
+
+| Model | vs FlashInfer across batches | vs vLLM across batches | Largest gap to per-shape oracle |
+|---|---:|---:|---:|
+| Qwen3.5-2B | 1.01–1.21× | 1.15–1.66× | 0.9% (12 µs, batch 64) |
+| Qwen3.5-4B | 1.02–1.22× | 1.20–1.59× | 1.0% (29 µs, batch 4) |
+
+## Range scheduling versus the former point table
+
+Both configurations are measured on the same GPU for each shape. Positive changes mean more time.
+
+| Model | Weighted latency change across batches | Worst absolute increase |
+|---|---:|---:|
+| Qwen3.5-2B | -3.2% to +1.7% | 41 µs |
+| Qwen3.5-4B | -3.2% to +1.4% | 64 µs |
+
+Changing-input/scale and zero-input graph checks passed for 240/240 measured shapes.
+
+The final policy has 65 M/N/K configuration intervals and no MXFP8 Triton path. All 72 additional unseen shapes passed changing-input/scale and zero-input graph checks. Detailed search and per-shape records were removed as requested.
+
+## Native dispatch and shared workspace validation
+
+The C++ refactor preserves all 65 intervals and all 27 existing MXFP8
+GPU kernel binaries. On GPUs 4/5, cold-cache comparison with the preceding
+implementation measured about **+0.25%** aggregate MXFP8 latency across
+240 shapes and **−0.2%** across nine representative MXFP6 shapes. Retesting
+15 outliers found no repeatable regression; changes were within run noise.
+These figures cover GPU GEMM time, excluding Python/host overhead.
+
+Validation passed 232 API/kernel/benchmark tests, all 240 changing-input,
+scale and zero-input graph checks, and the FlashInfer/vLLM benchmark smoke
+checks. MXFP6 also passed 14 conversion/GEMM/workspace regression groups,
+10,000 random replays and 1,000 dual-stream iterations across 28 boundary
+batch sizes, with zero workspace fallbacks. Both backends' native pools
+remain independent.

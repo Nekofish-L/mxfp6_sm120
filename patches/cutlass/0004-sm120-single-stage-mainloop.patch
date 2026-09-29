@@ -1,0 +1,15 @@
+--- a/include/cutlass/gemm/collective/sm120_blockscaled_mma_tma.hpp
++++ b/include/cutlass/gemm/collective/sm120_blockscaled_mma_tma.hpp
+@@ -228,7 +228,11 @@
+   static_assert(rank(SmemLayoutA{}) == 3, "Smem layout must be rank 3.");
+   static_assert(rank(SmemLayoutB{}) == 3, "Smem layout must be rank 3.");
+ 
+-  static_assert(DispatchPolicy::Stages >= 2, "Specialization requires Stages set to value 2 or more.");
++  // One shared-memory stage is valid: the consumer copies the final K
++  // fragment to registers before releasing the slot, then waits for the
++  // producer to refill it before reading the next tile. The phase bit
++  // distinguishes successive uses even when the ring has a single slot.
++  static_assert(DispatchPolicy::Stages >= 1, "Specialization requires at least one stage.");
+   static_assert(not cute::is_base_of<cute::GMMA::DescriptorIterator, typename TiledMma::FrgTypeA>::value &&
+                 not cute::is_base_of<cute::GMMA::DescriptorIterator, typename TiledMma::FrgTypeB>::value,
+                 "MMA atom must source both A and B operands from rmem for this mainloop.");

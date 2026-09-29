@@ -1,0 +1,88 @@
+--- a/include/cutlass/gemm/collective/sm120_blockscaled_mma_tma.hpp
++++ b/include/cutlass/gemm/collective/sm120_blockscaled_mma_tma.hpp
+@@ -358,7 +358,10 @@
+ 
+     // Optionally append 1s until problem shape is rank-4 (MNKL), in case it is only rank-3 (MNK)
+     auto problem_shape_MNKL = append<4>(problem_shape, 1);
+-    auto [M, N, K, L] = problem_shape_MNKL;
++    // TMA Params use runtime extent types even when ProblemShape is static.
++    // Preserve that descriptor ABI; static values still constant-fold in code.
++    int M = int(get<0>(problem_shape_MNKL)), N = int(get<1>(problem_shape_MNKL));
++    int K = int(get<2>(problem_shape_MNKL)), L = int(get<3>(problem_shape_MNKL));
+ 
+     auto ptr_A = recast_ptr<TmaInternalElementA>(args.ptr_A);
+     auto ptr_B = recast_ptr<TmaInternalElementB>(args.ptr_B);
+@@ -415,7 +418,10 @@
+       ProblemShape const& problem_shape,
+       [[maybe_unused]] Arguments const& args) {
+     auto problem_shape_MNKL = append<4>(problem_shape, 1);
+-    auto [M, N, K, L] = problem_shape_MNKL;
++    // TMA Params use runtime extent types even when ProblemShape is static.
++    // Preserve that descriptor ABI; static values still constant-fold in code.
++    int M = int(get<0>(problem_shape_MNKL)), N = int(get<1>(problem_shape_MNKL));
++    int K = int(get<2>(problem_shape_MNKL)), L = int(get<3>(problem_shape_MNKL));
+ 
+     constexpr int tma_alignment_bits_A = cutlass::detail::get_input_alignment_bits<ElementA, IsF8F6F4>();
+     constexpr int tma_alignment_bits_B = cutlass::detail::get_input_alignment_bits<ElementB, IsF8F6F4>();
+@@ -592,7 +598,10 @@
+   load_init(ProblemShape_MNKL const& problem_shape_MNKL, Params const& params) const {
+     using X = Underscore;
+     // Separate out problem shape for convenience
+-    auto [M, N, K, L] = problem_shape_MNKL;
++    // TMA Params use runtime extent types even when ProblemShape is static.
++    // Preserve that descriptor ABI; static values still constant-fold in code.
++    int M = int(get<0>(problem_shape_MNKL)), N = int(get<1>(problem_shape_MNKL));
++    int K = int(get<2>(problem_shape_MNKL)), L = int(get<3>(problem_shape_MNKL));
+ 
+     // TMA requires special handling of strides to deal with coord codomain mapping
+     // Represent the full tensors -- get these from TMA
+--- a/include/cutlass/epilogue/collective/sm90_epilogue_tma_warpspecialized.hpp
++++ b/include/cutlass/epilogue/collective/sm90_epilogue_tma_warpspecialized.hpp
+@@ -275,7 +275,10 @@
+       [[maybe_unused]] void* workspace) {
+     // Optionally append 1s until problem shape is rank-4 in case its is only rank-3 (MNK)
+     auto problem_shape_MNKL = append<4>(problem_shape, 1);
+-    auto [M, N, K, L] = problem_shape_MNKL;
++    // TMA Params use runtime extent types even when ProblemShape is static.
++    // Preserve that descriptor ABI; static values still constant-fold in code.
++    int M = int(get<0>(problem_shape_MNKL)), N = int(get<1>(problem_shape_MNKL));
++    int K = int(get<2>(problem_shape_MNKL)), L = int(get<3>(problem_shape_MNKL));
+ 
+     uint32_t transaction_bytes = TmaTransactionBytes;
+     typename Params::TMA_C tma_load_c{};
+@@ -325,7 +328,10 @@
+       ProblemShape const& problem_shape,
+       [[maybe_unused]] Arguments const& args) {
+     auto problem_shape_MNKL = append<4>(problem_shape, 1);
+-    auto [M,N,K,L] = problem_shape_MNKL;
++    // TMA Params use runtime extent types even when ProblemShape is static.
++    // Preserve that descriptor ABI; static values still constant-fold in code.
++    int M = int(get<0>(problem_shape_MNKL)), N = int(get<1>(problem_shape_MNKL));
++    int K = int(get<2>(problem_shape_MNKL)), L = int(get<3>(problem_shape_MNKL));
+     auto shape = cute::make_shape(M,N,L);
+ 
+     bool implementable = true;
+@@ -436,7 +442,10 @@
+     using namespace cute;
+ 
+     // Indexing variables
+-    auto [M, N, K, L] = problem_shape_mnkl;
++    // TMA Params use runtime extent types even when ProblemShape is static.
++    // Preserve that descriptor ABI; static values still constant-fold in code.
++    int M = int(get<0>(problem_shape_mnkl)), N = int(get<1>(problem_shape_mnkl));
++    int K = int(get<2>(problem_shape_mnkl)), L = int(get<3>(problem_shape_mnkl));
+     auto [m_coord, n_coord, k_coord, l_coord] = tile_coord_mnkl;
+ 
+     // The tma tensor C under im2col mode only has two modes (M, N) which
+@@ -558,7 +567,10 @@
+     static_assert(rank(TileCoordMNKL{}) == 4, "TileCoordMNKL must be rank 4");
+ 
+     // Indexing variables
+-    auto [M, N, K, L] = problem_shape_mnkl;
++    // TMA Params use runtime extent types even when ProblemShape is static.
++    // Preserve that descriptor ABI; static values still constant-fold in code.
++    int M = int(get<0>(problem_shape_mnkl)), N = int(get<1>(problem_shape_mnkl));
++    int K = int(get<2>(problem_shape_mnkl)), L = int(get<3>(problem_shape_mnkl));
+     auto [m_coord, n_coord, k_coord, l_coord] = tile_coord_mnkl;
+ 
+     // The tma tensor D under im2col mode only has two modes (M, N) which

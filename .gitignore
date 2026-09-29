@@ -32,7 +32,7 @@ wheelhouse/
 *.whl
 
 # CUTLASS profiler and autotuning output. Keep only curated manifests.
-/benchmarks/results/*
+/benchmarks/results/**
 !/benchmarks/results/README.md
 !/benchmarks/results/native_w6a8_dispatch.json
 !/benchmarks/results/persistent_workspace.json
@@ -54,6 +54,7 @@ wheelhouse/
 /autotune_results/
 /autotune_*.csv
 /profiler_*.csv
+/experiments/**
 
 # GPU profiler reports and logs
 *.ncu-rep
