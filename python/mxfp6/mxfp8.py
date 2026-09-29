@@ -1,153 +1,208 @@
-"""Native SM120 MXFP8 W8A8 GEMM with FlashInfer-compatible scale storage."""
-import json
-import os
-import threading
-from pathlib import Path
+"""Native W8A8 API, following the MXFP6 call and workspace conventions."""
 
+from __future__ import annotations
+from typing import NamedTuple
 import torch
 
-_LOADED = False
-_LOAD_LOCK = threading.Lock()
-_DISPATCH = None
-STREAM_K_TACTICS = frozenset([12, 13, 14, 15, 16, 39, 40, 42, 51, 57])
-TRITON_TACTICS = range(100, 106)
-TACTICS = tuple(t for t in range(70) if t != 30) + tuple(TRITON_TACTICS)
+from ._loader import load_mxfp8_library as load_library
+from ._workspace import WorkspaceAPI
+from .ops import (
+    MXFP8Tensor,
+    quantize_activation,
+    quantize_mxfp8,
+    pack_scales,
+    unpack_scales,
+)
 
 
-def load_library():
-    """Load the installed extension, or JIT-build from a patched source tree."""
-    global _LOADED
-    if _LOADED:
-        return
-    with _LOAD_LOCK:
-        if _LOADED:
-            return
-        root = Path(__file__).resolve().parents[2]
-        override = os.getenv('MXFP8_LIBRARY_PATH')
-        candidates = [Path(override).expanduser()] if override else [
-            Path(__file__).parent / 'mxfp8_torch.so', root / 'build/mxfp8_torch.so']
-        if override and not candidates[0].is_file():
-            raise ImportError(f'MXFP8_LIBRARY_PATH does not exist: {candidates[0]}')
-        for library in candidates:
-            if library.is_file():
-                torch.ops.load_library(str(library))
-                _LOADED = True
-                return
-        if not (root / 'csrc/mxfp8.cu').is_file():
-            raise ImportError('mxfp8_torch.so is missing; rebuild/install the wheel.')
-        builder = root / 'third_party/cutlass/include/cutlass/gemm/collective/builders/sm120_blockscaled_mma_builder.inl'
-        scheduler = root / 'third_party/cutlass/include/cutlass/gemm/kernel/sm100_tile_scheduler_stream_k.hpp'
-        if (not builder.is_file() or 'sSFATileShape_M' not in builder.read_text()
-                or not scheduler.is_file() or 'get_workspace_layout' not in scheduler.read_text()):
-            raise ImportError('Apply the required patches: bash scripts/apply_cutlass_patches.sh --runtime-only')
-        from torch.utils.cpp_extension import load
-        load(
-            name='mxfp8_sm120',
-            sources=[str(root / 'csrc' / name) for name in
-                     ['mxfp8.cu', 'mxfp8_gemv.cu', 'mxfp8_wide.cu', 'mxfp8_direct.cu', 'mxfp8_extra.cu']],
-            extra_include_paths=[str(root / p) for p in
-                                 ['csrc/include', 'third_party/cutlass/include',
-                                  'third_party/cutlass/tools/util/include']],
-            extra_cuda_cflags=['-O3', '-arch=sm_120a', '--expt-relaxed-constexpr',
-                               '-Xcudafe=--diag_suppress=20012',
-                               '-Xcudafe=--diag_suppress=20013',
-                               '-Xcudafe=--diag_suppress=20015'],
-            is_python_module=False,
-        )
-        _LOADED = True
+class W8A8Config(NamedTuple):
+    config_id: int
+    splits: int = 1
+    swizzle: int = 1
+    sms: int = 0
 
 
-def select_config(m, n, k):
-    """Select a measured configuration or a conservative untuned fallback."""
-    global _DISPATCH
-    if _DISPATCH is None:
-        path = Path(__file__).with_name('mxfp8_dispatch.json')
-        _DISPATCH = json.loads(path.read_text())['configs'] if path.exists() else {}
-    key = f'{m},{n},{k}'
-    if key in _DISPATCH:
-        return tuple((_DISPATCH[key] + [0])[:4])
-    tactic = 0 if m <= 8 else 2 if m <= 16 else 4 if m <= 32 else 7 if m <= 64 else 9
-    return tactic, 1, 1, 0
-
-
-def _op(tactic):
-    if tactic not in TACTICS:
-        raise ValueError(f'Unknown MXFP8 tactic: {tactic}')
-    if 51 <= tactic <= 57:
-        return torch.ops.mxfp8_sm120.extra_out
-    if tactic >= 43:
-        return torch.ops.mxfp8_sm120.direct_out
-    if tactic >= 37:
-        return torch.ops.mxfp8_sm120.wide_out
-    return torch.ops.mxfp8_sm120.mm_out
-
-
-def mm(a, b, sa, sb, *, tactic=None, splits=1, swizzle=1, out=None, workspace=None, sms=0):
-    """Compute A[M,K] @ B[N,K].T -> BF16 using E4M3 and swizzled E8M0/32.
-
-    Loads the extension automatically on first use, like the MXFP6 API. No
-    input quantization or layout conversion is performed. Before CUDA graph
-    capture, use ``prepare`` to load, compile, and allocate private workspace.
-    """
+def select_config(m: int, n: int, k: int) -> W8A8Config:
+    """Inspect the configuration selected by the compiled C++ interval policy."""
     load_library()
-    if tactic is None:
-        tactic, splits, swizzle, sms = select_config(a.shape[0], b.shape[0], a.shape[1])
-    if out is None:
-        out = torch.empty((a.shape[0], b.shape[0]), device=a.device, dtype=torch.bfloat16)
-    if tactic in TRITON_TACTICS:
-        # Reuse the native validation path without launching a GPU kernel.
-        torch.ops.mxfp8_sm120.mm_out(a, b, sa, sb, out, 0, splits, swizzle, None, True, sms)
-        from ._mxfp8_triton import CONFIGS, run as triton_run
-        with torch.cuda.device(a.device):
-            triton_run(a, b, sa, sb, out, CONFIGS[tactic - 100])
-        return out
-    op = _op(tactic)
-    if 33 <= tactic <= 36:
-        torch.ops.mxfp8_sm120.gemv_out(a, b, sa, sb, out, 1 << (tactic - 33))
-    else:
-        op(a, b, sa, sb, out, tactic, splits, swizzle, workspace, False, sms)
-    return out
+    return W8A8Config(*torch.ops.mxfp8_sm120.select_config(m, n, k))
 
 
-def allocate_workspace(a, b, sa, sb, *, tactic, splits=1, swizzle=1, out=None, sms=0):
-    """Allocate zeroed Stream-K workspace, or return None for other tactics.
-
-    Each concurrent execution needs private workspace. Patched barriers reset
-    after each call; do not share workspace across overlapping executions or
-    different configurations. Allocate before CUDA graph capture.
-    """
+def available_configs(*, stream_k_only=False):
     load_library()
-    if tactic in TRITON_TACTICS:
-        return None
-    op = _op(tactic)
-    if tactic not in STREAM_K_TACTICS:
-        return None
-    if out is None:
-        out = torch.empty((a.shape[0], b.shape[0]), device=a.device, dtype=torch.bfloat16)
-    size = op(a, b, sa, sb, out, tactic, splits, swizzle, None, True, sms)
-    return torch.zeros(size, device=a.device, dtype=torch.uint8)
+    return tuple(torch.ops.mxfp8_sm120.tactics(stream_k_only))
 
 
-def prepare(a, b, sa, sb, *, tactic=None, splits=1, swizzle=1, out=None, sms=0):
-    """Prepare a reusable call with private output and Stream-K workspace.
+def _check_output(alpha, out_dtype):
+    if alpha != 1.0:
+        raise ValueError("MXFP8 kernels currently support alpha=1.0")
+    if out_dtype != torch.bfloat16:
+        raise ValueError("MXFP8 kernels currently produce torch.bfloat16")
 
-    Input contents may change between calls. Concurrent executions must use
-    separate prepared calls and outputs. Call before CUDA graph capture.
-    """
+
+def _operands(a, b):
+    if not isinstance(a, MXFP8Tensor) or not isinstance(b, MXFP8Tensor):
+        raise TypeError("a and b must be MXFP8Tensor instances")
+    if a.k != b.k or a.device != b.device:
+        raise ValueError("a and b must have matching K and CUDA device")
+    return a.dequantized_values(), b.dequantized_values(), a.scales, b.scales
+
+
+def _config(config):
+    if config is None:
+        return (-1, 1, 1, 0)
+    if not isinstance(config, W8A8Config):
+        raise TypeError("config must be a W8A8Config instance")
+    return tuple(config)
+
+
+def gemm_w8a8(
+    a: MXFP8Tensor,
+    b: MXFP8Tensor,
+    alpha=1.0,
+    *,
+    out_dtype=torch.bfloat16,
+    config=None,
+    out=None,
+    workspace=None,
+):
+    """Compute prequantized MXFP8(A) @ MXFP8(B).T through native dispatch."""
+    _check_output(alpha, out_dtype)
+    operands = _operands(a, b)
     load_library()
-    if tactic is None:
-        tactic, splits, swizzle, sms = select_config(a.shape[0], b.shape[0], a.shape[1])
-    if out is None:
-        out = torch.empty((a.shape[0], b.shape[0]), device=a.device, dtype=torch.bfloat16)
-    workspace = allocate_workspace(a, b, sa, sb, tactic=tactic, splits=splits,
-                                   swizzle=swizzle, out=out, sms=sms)
+    return torch.ops.mxfp8_sm120.gemm(*operands, out, workspace, *_config(config))
+
+
+def gemm_from_float(
+    a: torch.Tensor, b: MXFP8Tensor, alpha=1.0, *, out_dtype=torch.bfloat16
+):
+    """Quantize FP16/BF16 A with the shared native quantizer, then run W8A8."""
+    _check_output(alpha, out_dtype)
+    if not isinstance(b, MXFP8Tensor):
+        raise TypeError("b must be an MXFP8Tensor instance")
+    if a.ndim != 2 or a.dtype not in (torch.float16, torch.bfloat16):
+        raise ValueError("a must be an FP16/BF16 matrix")
+    if a.shape[1] != b.k or a.device != b.device:
+        raise ValueError("a and b must have matching K and CUDA device")
+    from ._loader import load_library as load_quantizer
+
+    load_quantizer()
+    load_library()
+    return torch.ops.mxfp8_sm120.gemm_from_float(a, b.dequantized_values(), b.scales)
+
+
+def gemm(
+    a: torch.Tensor | MXFP8Tensor,
+    b: MXFP8Tensor,
+    alpha=1.0,
+    *,
+    out_dtype=torch.bfloat16,
+):
+    """Compute A @ B.T; floating activations are quantized in the native path."""
+    if isinstance(a, torch.Tensor):
+        return gemm_from_float(a, b, alpha, out_dtype=out_dtype)
+    return gemm_w8a8(a, b, alpha, out_dtype=out_dtype)
+
+
+def gemm_packed(
+    a,
+    b,
+    sfa,
+    sfb,
+    m,
+    n,
+    k,
+    alpha=1.0,
+    *,
+    out_dtype=torch.bfloat16,
+    config=None,
+    out=None,
+    workspace=None,
+):
+    """Low-level A @ B.T for byte-aligned E4M3 values and packed scales."""
+    _check_output(alpha, out_dtype)
+    for value in (a, b):
+        if value.dtype not in (torch.uint8, torch.float8_e4m3fn):
+            raise TypeError("MXFP8 values must have uint8 or float8_e4m3fn dtype")
+    load_library()
+    av = a.view(m, k).view(torch.float8_e4m3fn)
+    bv = b.view(n, k).view(torch.float8_e4m3fn)
+    return torch.ops.mxfp8_sm120.gemm(
+        av, bv, sfa, sfb, out, workspace, *_config(config)
+    )
+
+
+def prepare(
+    a: MXFP8Tensor, b: MXFP8Tensor, *, out_dtype=torch.bfloat16, config=None, out=None
+):
+    """Allocate private output/workspace in C++; retain the call for graph replay.
+
+    Inputs and scales may change in place. Concurrent calls need independent
+    prepared objects. This is an alternative to the shared planning API.
+    """
+    _check_output(1.0, out_dtype)
+    operands = _operands(a, b)
+    load_library()
+    output, workspace, selected = torch.ops.mxfp8_sm120.prepare(
+        *operands, out, *_config(config)
+    )
+    selected = W8A8Config(*selected)
 
     def run():
-        return mm(a, b, sa, sb, tactic=tactic, splits=splits, swizzle=swizzle,
-                  out=out, workspace=workspace, sms=sms)
+        return torch.ops.mxfp8_sm120.gemm(*operands, output, workspace, *selected)
 
-    run.config = (tactic, splits, swizzle, sms)
-    if tactic in TRITON_TACTICS:
-        # Compile this exact shape before the caller starts graph capture.
-        run()
+    run.config = selected
     return run
+
+
+def allocate_workspace(a: MXFP8Tensor, b: MXFP8Tensor, *, config=None, out=None):
+    """Allocate private native workspace for explicit low-level launches."""
+    operands = _operands(a, b)
+    load_library()
+    _, workspace, _ = torch.ops.mxfp8_sm120.prepare(*operands, out, *_config(config))
+    return workspace
+
+
+def warmup(a, b, *, out_dtype=torch.bfloat16, iterations=3):
+    """Warm the native path before capture; collect layouts when planning."""
+    if (
+        not isinstance(iterations, int)
+        or isinstance(iterations, bool)
+        or iterations <= 0
+    ):
+        raise ValueError("iterations must be a positive integer")
+    for _ in range(iterations):
+        gemm(a, b, out_dtype=out_dtype)
+    torch.cuda.synchronize(a.device)
+    m, k = a.shape
+    return select_config(m, b.rows, k)
+
+
+_workspace = WorkspaceAPI("mxfp8_sm120", load_library)
+begin_workspace_planning = _workspace.begin_workspace_planning
+finalize_workspace_planning = _workspace.finalize_workspace_planning
+workspace_stats = _workspace.workspace_stats
+workspace_barriers_zero = _workspace.workspace_barriers_zero
+
+__all__ = [
+    "MXFP8Tensor",
+    "W8A8Config",
+    "quantize_mxfp8",
+    "quantize_activation",
+    "pack_scales",
+    "unpack_scales",
+    "gemm",
+    "gemm_w8a8",
+    "gemm_from_float",
+    "gemm_packed",
+    "prepare",
+    "warmup",
+    "select_config",
+    "available_configs",
+    "allocate_workspace",
+    "load_library",
+    "begin_workspace_planning",
+    "finalize_workspace_planning",
+    "workspace_stats",
+    "workspace_barriers_zero",
+]

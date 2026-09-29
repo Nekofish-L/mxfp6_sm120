@@ -1,11 +1,12 @@
 #pragma once
 #include <c10/cuda/CUDACachingAllocator.h>
 #include "mxfp8_gemm/validation.hpp"
+#include "mxfp8_gemm/workspace.hpp"
 namespace mxfp8_common {
 template<class Kernel,bool Swap,int CtaMultiplier=1>
 int64_t launch(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at::Tensor const& sb,
             at::Tensor const& out,int splits,int swizzle,
-            std::optional<at::Tensor> const& persistent, bool query, int sms=0) {
+            std::optional<at::Tensor> const& persistent, bool query, int sms=0, int raster=0) {
   using Gemm=typename Kernel::Gemm;
   using Config=typename Kernel::BlockScaledConfig;
   int m=Swap?b.size(0):a.size(0), n=Swap?a.size(0):b.size(0), k=a.size(1);
@@ -29,6 +30,10 @@ int64_t launch(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at::
   // can fill spare occupancy when a short-K tile uses little shared memory.
   args.hw_info.sm_count=(sms>0?sms:physical_sms)*CtaMultiplier;
   args.scheduler.max_swizzle_size=swizzle;
+  using Raster = decltype(args.scheduler.raster_order);
+  TORCH_CHECK(raster >= 0 && raster <= 2, "Invalid raster order");
+  args.scheduler.raster_order = raster == 1 ? Raster::AlongM :
+                               raster == 2 ? Raster::AlongN : Raster::Heuristic;
   if constexpr(Kernel::IsStreamK) {
     using Mode=cutlass::gemm::kernel::detail::PersistentTileSchedulerSm90StreamKParams::DecompositionMode;
     args.scheduler.splits=splits;
@@ -43,9 +48,14 @@ int64_t launch(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at::
   int64_t bytes = Gemm::get_workspace_size(args);
   if(query) return bytes;
   auto stream=at::cuda::getCurrentCUDAStream(a.get_device());
+  mxfp_common::WorkspaceSelection selected;
+  if (!persistent.has_value()) {
+    selected = mxfp8_runtime::workspace_pool().select_workspace(
+        a.get_device(), stream.stream(), mxfp_common::get_workspace_layout<Kernel>(args));
+  }
   at::Tensor workspace;
-  if(persistent.has_value()) {
-    workspace=*persistent;
+  if(persistent.has_value() || selected.persistent) {
+    workspace=persistent.has_value()?*persistent:selected.owner;
     TORCH_CHECK(workspace.device()==a.device() && workspace.scalar_type()==at::kByte &&
                 workspace.is_contiguous() && workspace.numel()>=bytes,"Invalid MXFP8 workspace");
     using GK=typename Kernel::GemmKernel;
@@ -53,7 +63,7 @@ int64_t launch(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at::
       auto error=cudaFuncSetAttribute(cutlass::device_kernel<GK>,cudaFuncAttributeMaxDynamicSharedMemorySize,GK::SharedStorageSize);
       TORCH_CHECK(error==cudaSuccess,cudaGetErrorString(error));
     }
-    status=gemm.update(args,workspace.data_ptr());
+    status=gemm.update(args,selected.persistent?selected.pointer:workspace.data_ptr());
   } else {
     workspace=at::empty({bytes},a.options().dtype(at::kByte));
     status=gemm.initialize(args,workspace.data_ptr(),stream);

@@ -56,5 +56,3 @@ void gemv_out(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at::T
   TORCH_CHECK(error==cudaSuccess,cudaGetErrorString(error));
 }
 }
-TORCH_LIBRARY_FRAGMENT(mxfp8_sm120,m) {m.def("gemv_out(Tensor a, Tensor b, Tensor sa, Tensor sb, Tensor(a!) out, int rows) -> ()");}
-TORCH_LIBRARY_IMPL(mxfp8_sm120,CUDA,m) {m.impl("gemv_out",mxfp8_sm120::gemv_out);}

@@ -44,8 +44,13 @@ models:
 
 A separate native W8A8 implementation accepts E4M3 operands and E8M0/32
 scales, with FP32 accumulation and BF16 output. See [the MXFP8 guide](docs/mxfp8.md)
-for the API and the hot-launch, cold-weight-cache benchmark. Performance
-acceptance is recorded per shape, including failures.
+for the API, M/N/K interval scheduling and approximate performance against
+FlashInfer and vLLM. The MXFP8 runtime uses CUTLASS/CuTe without a Triton path.
+
+Use `import mxfp6.mxfp8 as mxfp8`, then `mxfp8.gemm(x, w8)` with weights
+from `mxfp8.quantize_mxfp8(weight)`. Both formats share the Python calling
+conventions and C++ workspace implementation; native C++ selects kernels.
+MXFP8 currently supports BF16 output and `alpha=1` only.
 
 ## Performance
 
