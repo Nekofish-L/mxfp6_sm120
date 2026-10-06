@@ -5,6 +5,10 @@ E8M0 scales per 32 values, FP32 accumulation and BF16 output. All default
 paths use CUTLASS/CuTe. The MXFP8 Triton implementation and tactic IDs
 100–105 have been removed.
 
+The separate opt-in [dual activation API](mxfp8-dual.md) supplies high and
+BF16-rounded residual limbs for three fixed shapes. It uses a Triton activation
+quantizer and native GEMM, without changing this module's default dispatch.
+
 ## Shape scheduling
 
 C++ selects **M/N/K intervals**, without an exact-shape lookup or
