@@ -249,4 +249,3 @@ void gemm_out(at::Tensor const& hi,at::Tensor const& weight,
   TORCH_CHECK(err==cudaSuccess,cudaGetErrorString(err));
 }
 }
-

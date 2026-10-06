@@ -279,4 +279,3 @@ std::vector<int64_t> resource_info() {
           int64_t(reserved_shared)};
 }
 }
-
