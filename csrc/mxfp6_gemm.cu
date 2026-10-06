@@ -5,6 +5,8 @@
 #include <iostream>
 #include <string>
 
+// CUTLASS collective templates use this helper while parsing kernel.hpp.
+#include "cutlass/util/packed_stride.hpp"
 #include "mxfp6_gemm/kernel.hpp"
 
 #include "cutlass/detail/sm100_blockscaled_layout.hpp"
@@ -12,7 +14,6 @@
 #include "cutlass/util/device_memory.h"
 #include "cutlass/util/distribution.h"
 #include "cutlass/util/host_tensor.h"
-#include "cutlass/util/packed_stride.hpp"
 #include "cutlass/util/reference/host/gett.hpp"
 #include "cutlass/util/reference/host/tensor_compare.h"
 #include "cutlass/util/reference/host/tensor_fill.h"
