@@ -6,6 +6,7 @@ include examples/vllm/Dockerfile
 recursive-include examples/vllm *.md *.patch *.py
 include scripts/build_wheel.sh scripts/build_profiler.sh scripts/apply_cutlass_patches.sh
 recursive-include csrc *.hpp *.cuh *.cu *.def
+include tests/test_mxfp8_dual.py
 include scripts/generate_mxfp8_dispatch.py
 recursive-include patches *.patch *.md
 recursive-include third_party/cutlass/include *
