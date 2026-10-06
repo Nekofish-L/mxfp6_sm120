@@ -4,6 +4,9 @@
 
 ### Added
 
+- added opt-in fixed-shape dual MXFP8 activation quantization and GEMM for
+  M32/N18432/K2560 and M32/M64/N12288/K2560, with independent FP32
+  accumulators and BF16 residual/output rounding; see `docs/mxfp8-dual.md`;
 - added `silu_and_mul_mxfp8` and `gemm_from_swiglu`, preserving the source
   dtype's SiLU/product rounding and signed-zero boundary;
 - added `gemm_w6a8_pdl` and the exact SM120 TP2 GDN producer

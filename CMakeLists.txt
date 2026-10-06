@@ -169,6 +169,10 @@ add_custom_command(
 add_library(mxfp8_torch SHARED
   "${MXFP8_POLICY_HEADER}"
   csrc/mxfp8_extension.cu
+  csrc/mxfp8_dual_extension.cu
+  csrc/mxfp8_dual_mlp32.cu
+  csrc/mxfp8_dual_qkvz32.cu
+  csrc/mxfp8_dual_qkvz64_pipereg.cu
   csrc/mxfp8.cu
   csrc/mxfp8_gemv.cu
   csrc/mxfp8_wide.cu
