@@ -41,6 +41,7 @@ Champion numbers.
 
 | Artifact | Contents |
 |---|---|
+| `mxfp8_pdl_review.json` | Synthetic MXFP8 quantization/GEMM PDL review: paired hot-cache Graph and eager samples, environment and correctness scope; no serving claim |
 | `qwen35_27b_service_tp2.json` | Earlier internal 27B service comparison |
 | `qwen35_moe_service_tp2.json` | Earlier internal 35B-A3B service and reference-fidelity comparison |
 | `native_w6a8_dispatch.json` | Earlier Dense dispatch matrix |

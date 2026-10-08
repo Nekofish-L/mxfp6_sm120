@@ -10,6 +10,7 @@
 #include "cute/arch/mma_sm120.hpp"
 #include "cute/arch/copy_sm75.hpp"
 #include "mxfp8_gemm/validation.hpp"
+#include "mxfp8_gemm/pdl.cuh"
 
 namespace mxfp8_occupancy {
 using Mma = cute::SM120::BLOCKSCALED::SM120_16x8x32_TN_VS<
@@ -61,7 +62,7 @@ template<int BM,int BN,int BK,int Stages,bool Swap,int FixedK=0,int WarpM=2,bool
 __global__ __launch_bounds__(128) void gemm(
     const uint8_t* __restrict__ a,const uint8_t* __restrict__ b,
     const uint8_t* __restrict__ sa,const uint8_t* __restrict__ sb,
-    __nv_bfloat16* __restrict__ out,int m,int n,int dynamic_k) {
+    __nv_bfloat16* __restrict__ out,int m,int n,int dynamic_k, bool pdl) {
   const int k=FixedK?FixedK:dynamic_k;
 #if defined(__CUDA_ARCH_FEAT_SM120_ALL)
   extern __shared__ __align__(16) uint8_t storage[];
@@ -72,6 +73,7 @@ __global__ __launch_bounds__(128) void gemm(
   int wm=(warp%WarpM)*16,wn=(warp/WarpM)*8;
   int row=lane/4,col=(lane%4)*4;
   float accum[TM][TN][4]={};
+  mxfp8_runtime::dependent_prologue(pdl);
 #pragma unroll
   for(int s=0;s<Stages-1;++s)
     prefetch<BM,BN,BK>(storage+s*StageBytes,a,b,sa,sb,pm,pn,s*BK,m,n,k);
@@ -177,13 +179,14 @@ void launch(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,
     TORCH_CHECK(err==cudaSuccess,cudaGetErrorString(err));
   }
   auto stream=at::cuda::getCurrentCUDAStream(a.get_device());
-  fn<<<dim3((n+BN-1)/BN,(m+BM-1)/BM),128,Bytes,stream>>>(
+  bool pdl=mxfp8_runtime::pdl_enabled();
+  auto err=mxfp8_runtime::launch_dependent_kernel(
+    pdl,fn,dim3((n+BN-1)/BN,(m+BM-1)/BM),128,Bytes,stream,
     static_cast<const uint8_t*>((Swap?b:a).data_ptr()),
     static_cast<const uint8_t*>((Swap?a:b).data_ptr()),
     static_cast<const uint8_t*>((Swap?sb:sa).data_ptr()),
     static_cast<const uint8_t*>((Swap?sa:sb).data_ptr()),
-    static_cast<__nv_bfloat16*>(out.data_ptr()),m,n,k);
-  auto err=cudaGetLastError();
+    static_cast<__nv_bfloat16*>(out.data_ptr()),m,n,k,pdl);
   TORCH_CHECK(err==cudaSuccess,cudaGetErrorString(err));
 }
 

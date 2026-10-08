@@ -40,6 +40,7 @@ patches=(
   "${ROOT}/patches/cutlass/0003-sm120-streamk-persistent-workspace.patch"
   "${ROOT}/patches/cutlass/0004-sm120-single-stage-mainloop.patch"
   "${ROOT}/patches/cutlass/0005-sm120-static-problem-shape.patch"
+  "${ROOT}/patches/cutlass/0006-sm120-pdl-release.patch"
 )
 if [[ "${runtime_only}" -eq 0 ]]; then
   patches+=("${ROOT}/patches/cutlass/0002-sm120-mxfp6-profiler-search.patch")

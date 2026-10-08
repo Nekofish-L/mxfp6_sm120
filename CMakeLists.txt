@@ -33,12 +33,20 @@ file(READ
 file(READ
   "${CUTLASS_DIR}/include/cutlass/epilogue/collective/sm90_epilogue_tma_warpspecialized.hpp"
   MXFP8_CUTLASS_EPILOGUE)
+file(READ
+  "${CUTLASS_DIR}/include/cutlass/gemm/kernel/sm90_gemm_tma_warpspecialized_cooperative.hpp"
+  MXFP8_CUTLASS_COOPERATIVE)
+file(READ
+  "${CUTLASS_DIR}/include/cutlass/gemm/kernel/sm90_gemm_tma_warpspecialized_pingpong.hpp"
+  MXFP8_CUTLASS_PINGPONG)
 if(NOT MXFP6_CUTLASS_SM120_BLOCKSCALED_BUILDER MATCHES "sSFATileShape_M" OR
    NOT MXFP6_CUTLASS_SM120_BLOCKWISE_BUILDER MATCHES "SmemCopyOpB" OR
    NOT MXFP6_CUTLASS_SM120_STREAMK_SCHEDULER MATCHES "get_workspace_layout" OR
    NOT MXFP8_CUTLASS_MAINLOOP MATCHES "Specialization requires at least one stage" OR
    NOT MXFP8_CUTLASS_MAINLOOP MATCHES "TMA Params use runtime extent types" OR
-   NOT MXFP8_CUTLASS_EPILOGUE MATCHES "TMA Params use runtime extent types")
+   NOT MXFP8_CUTLASS_EPILOGUE MATCHES "TMA Params use runtime extent types" OR
+   NOT MXFP8_CUTLASS_COOPERATIVE MATCHES "IsSm120Family && IsGdcEnabled" OR
+   NOT MXFP8_CUTLASS_PINGPONG MATCHES "IsSm120Family && IsGdcEnabled")
   message(FATAL_ERROR
     "The required SM120 runtime CUTLASS patches are not applied. Run: "
     "bash scripts/apply_cutlass_patches.sh --runtime-only")
@@ -208,7 +216,7 @@ target_include_directories(mxfp8_torch PRIVATE
   "${CUTLASS_DIR}/tools/util/include")
 target_link_libraries(mxfp8_torch PRIVATE ${TORCH_LIBRARIES})
 target_compile_options(mxfp8_torch PRIVATE
-  $<$<COMPILE_LANGUAGE:CUDA>:-arch=sm_120a;--expt-relaxed-constexpr;-O3;
+  $<$<COMPILE_LANGUAGE:CUDA>:-arch=sm_120a;-DCUTLASS_ENABLE_GDC_FOR_SM100=1;--expt-relaxed-constexpr;-O3;
     -Xcudafe=--diag_suppress=20012;-Xcudafe=--diag_suppress=20013;
     -Xcudafe=--diag_suppress=20015>)
 set_target_properties(mxfp8_torch PROPERTIES

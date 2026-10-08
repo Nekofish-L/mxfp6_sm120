@@ -32,6 +32,13 @@ The CUTLASS submodule is pinned to upstream commit
   shape/config checks, six changing-input graphs, and synccheck (zero errors);
   production coverage is in `tests/test_mxfp8.py`.
 
+- `0006-sm120-pdl-release.patch` enables early dependent-grid release after
+  MMA in the SM120 cooperative and pingpong kernels. These schedulers do not
+  expose the SM90 `is_last_tile` query; dependent consumers still wait for
+  the complete grid, including remaining tiles, reductions and output stores.
+  It is required for the opt-in MXFP8 PDL path and is covered by
+  `tests/test_mxfp8_pdl.py` and the ordinary GEMM regressions.
+
 Run `scripts/apply_cutlass_patches.sh` after initializing the submodule. The
 script is idempotent, verifies the pinned upstream commit, and supports
 `--check`, `--reverse`, and `--runtime-only`.

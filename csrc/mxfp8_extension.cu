@@ -6,6 +6,7 @@
 #include <vector>
 #include "mxfp8_gemm/validation.hpp"
 #include "mxfp8_gemm/workspace.hpp"
+#include "mxfp8_gemm/pdl.cuh"
 
 #define MXFP8_ARGS at::Tensor const& a, at::Tensor const& b, at::Tensor const& sa, at::Tensor const& sb, at::Tensor const& out
 #define MXFP8_NATIVE(NAME) namespace NAME { int64_t mm_out(MXFP8_ARGS, int64_t tactic, int64_t splits, int64_t swizzle, std::optional<at::Tensor> workspace, bool query, int64_t sms); }
@@ -24,6 +25,13 @@ namespace mxfp8_sm120 { void gemv_out(MXFP8_ARGS, int64_t rows); }
 
 namespace mxfp8_runtime {
 struct LaunchConfig { int64_t tactic, splits, swizzle, sms; };
+thread_local bool use_pdl = false;
+bool pdl_enabled() { return use_pdl; }
+struct PdlScope {
+  bool previous;
+  explicit PdlScope(bool enabled) : previous(use_pdl) { use_pdl = enabled; }
+  ~PdlScope() { use_pdl = previous; }
+};
 WorkspacePool& workspace_pool() { static WorkspacePool pool; return pool; }
 }
 #include "mxfp8_gemm/dispatch_policy.hpp"
@@ -117,13 +125,27 @@ std::tuple<at::Tensor,std::optional<at::Tensor>,std::vector<int64_t>> prepare(
   auto workspace=allocate_workspace(a,b,sa,sb,out,c.tactic,c.splits,c.swizzle,c.sms);
   return {out,workspace,config_values(c)};
 }
-at::Tensor gemm_from_float(at::Tensor const& input,at::Tensor const& b,at::Tensor const& sb) {
+at::Tensor gemm_pdl(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at::Tensor const& sb) {
+  PdlScope scope(a.dim() == 2 && a.size(0) <= 32);
+  return gemm(a,b,sa,sb,std::nullopt,std::nullopt,-1,1,1,0);
+}
+template<bool Pdl>
+at::Tensor gemm_from_float_impl(at::Tensor const& input,at::Tensor const& b,at::Tensor const& sb) {
   // Reuse the same native quantizer as W6A8. No MXFP6 GEMM is involved.
-  static auto quantize=c10::Dispatcher::singleton().findSchemaOrThrow("mxfp6::quantize_mxfp8", "")
+  // The PDL quantizer itself falls back to ordinary launch for M > 32.
+  static auto quantize=c10::Dispatcher::singleton().findSchemaOrThrow(
+      Pdl ? "mxfp6::quantize_mxfp8_pdl" : "mxfp6::quantize_mxfp8", "")
       .typed<std::tuple<at::Tensor,at::Tensor>(at::Tensor const&)>();
   auto quantized=quantize.call(input);
   auto a=std::get<0>(quantized).view({input.size(0),input.size(1)}).view(at::ScalarType::Float8_e4m3fn);
+  PdlScope scope(Pdl && input.size(0) <= 32);
   return gemm(a,b,std::get<1>(quantized),sb,std::nullopt,std::nullopt,-1,1,1,0);
+}
+at::Tensor gemm_from_float(at::Tensor const& input,at::Tensor const& b,at::Tensor const& sb) {
+  return gemm_from_float_impl<false>(input,b,sb);
+}
+at::Tensor gemm_from_float_pdl(at::Tensor const& input,at::Tensor const& b,at::Tensor const& sb) {
+  return gemm_from_float_impl<true>(input,b,sb);
 }
 void begin_workspace_planning(at::Tensor const& anchor) { workspace_pool().begin_workspace_planning_cuda(anchor); }
 c10::Dict<std::string,int64_t> finalize_workspace_planning(at::Tensor const& anchor) { return workspace_pool().finalize_workspace_planning_cuda(anchor); }
@@ -137,6 +159,8 @@ TORCH_LIBRARY(mxfp8_sm120,m) {
   m.def("prepare(Tensor a, Tensor b, Tensor sa, Tensor sb, Tensor(a!)? out=None, int tactic=-1, int splits=1, int swizzle=1, int sms=0) -> (Tensor(a!), Tensor?, int[])");
   m.def("allocate_workspace(Tensor a, Tensor b, Tensor sa, Tensor sb, Tensor out, int tactic, int splits=1, int swizzle=1, int sms=0) -> Tensor?");
   m.def("gemm_from_float(Tensor input, Tensor b, Tensor sb) -> Tensor");
+  m.def("gemm_pdl(Tensor a, Tensor b, Tensor sa, Tensor sb) -> Tensor");
+  m.def("gemm_from_float_pdl(Tensor input, Tensor b, Tensor sb) -> Tensor");
   m.def("begin_workspace_planning(Tensor anchor) -> ()");
   m.def("finalize_workspace_planning(Tensor anchor) -> Dict(str, int)");
   m.def("workspace_stats(Tensor anchor) -> Dict(str, int)");
@@ -150,6 +174,8 @@ TORCH_LIBRARY_IMPL(mxfp8_sm120,CUDA,m) {
   m.impl("prepare",mxfp8_runtime::prepare);
   m.impl("allocate_workspace",mxfp8_runtime::allocate_workspace);
   m.impl("gemm_from_float",mxfp8_runtime::gemm_from_float);
+  m.impl("gemm_pdl",mxfp8_runtime::gemm_pdl);
+  m.impl("gemm_from_float_pdl",mxfp8_runtime::gemm_from_float_pdl);
   m.impl("begin_workspace_planning",mxfp8_runtime::begin_workspace_planning);
   m.impl("finalize_workspace_planning",mxfp8_runtime::finalize_workspace_planning);
   m.impl("workspace_stats",mxfp8_runtime::workspace_stats);

@@ -34,6 +34,7 @@ wheelhouse/
 # CUTLASS profiler and autotuning output. Keep only curated manifests.
 /benchmarks/results/**
 !/benchmarks/results/README.md
+!/benchmarks/results/mxfp8_pdl_review.json
 !/benchmarks/results/native_w6a8_dispatch.json
 !/benchmarks/results/persistent_workspace.json
 !/benchmarks/results/runtime_autotune_v4.json
