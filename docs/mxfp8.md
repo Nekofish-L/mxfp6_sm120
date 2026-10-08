@@ -93,7 +93,19 @@ when sharing calling code.
 Both follow Python wrapper → native C++ dispatch → kernel. Floating
 activations use the same native MXFP8 quantizer. MXFP6 retains its PDL
 quantization/GEMM launch; MXFP8 launches quantization and GEMM in stream
-order. All workspace layout selection and allocation happen in C++.
+order by default. All workspace layout selection and allocation happen in C++.
+
+Native callers can opt into PDL with
+`torch.ops.mxfp8_sm120.gemm_from_float_pdl(input, b, sb)`, or chain
+`torch.ops.mxfp6.quantize_mxfp8_pdl(input)` with
+`torch.ops.mxfp8_sm120.gemm_pdl(a, b, sa, sb)`. Load both libraries first;
+the GEMM operands are E4M3 matrices with packed E8M0 scale tensors.
+For M ≤ 32, the quantizer signals an early launch and the selected GEMM
+waits before reading its output. The CUTLASS routes and custom cache-hint,
+occupancy, irregular, TMA256 and eightwarp routes cover all current
+small-batch default tactics. M > 32 uses ordinary launches. The Python
+wrappers retain their existing defaults. PDL latency gains depend on shape
+and available GPU resources; these operators do not imply a serving speedup.
 
 The backends share the workspace implementation and Python helper, with
 independent pools. Plan all expected shapes, freeze capacity, then warm

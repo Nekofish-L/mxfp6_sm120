@@ -4,6 +4,9 @@
 
 ### Added
 
+- added opt-in native MXFP8 PDL operators `quantize_mxfp8_pdl`,
+  `gemm_pdl` and `gemm_from_float_pdl`, covering the small-batch default
+  dispatch and retaining ordinary launches for M > 32;
 - added `silu_and_mul_mxfp8` and `gemm_from_swiglu`, preserving the source
   dtype's SiLU/product rounding and signed-zero boundary;
 - added `gemm_w6a8_pdl` and the exact SM120 TP2 GDN producer

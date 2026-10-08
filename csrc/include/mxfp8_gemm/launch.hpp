@@ -2,6 +2,7 @@
 #include <c10/cuda/CUDACachingAllocator.h>
 #include "mxfp8_gemm/validation.hpp"
 #include "mxfp8_gemm/workspace.hpp"
+#include "mxfp8_gemm/pdl.cuh"
 namespace mxfp8_common {
 template<class Kernel,bool Swap,int CtaMultiplier=1>
 int64_t launch(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at::Tensor const& sb,
@@ -69,7 +70,7 @@ int64_t launch(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at::
     status=gemm.initialize(args,workspace.data_ptr(),stream);
   }
   TORCH_CHECK(status==cutlass::Status::kSuccess,"MXFP8 initialize: ",cutlassGetStatusString(status));
-  status=gemm.run(stream);
+  status=gemm.run(stream, nullptr, mxfp8_runtime::pdl_enabled());
   TORCH_CHECK(status==cutlass::Status::kSuccess,"MXFP8 launch: ",cutlassGetStatusString(status));
   if(bytes>0) c10::cuda::CUDACachingAllocator::recordStream(workspace.storage().data_ptr(),stream);
   return bytes;

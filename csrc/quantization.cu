@@ -5,6 +5,7 @@
 #include <torch/library.h>
 #include <limits>
 #include <tuple>
+#include <type_traits>
 
 #include <ATen/ATen.h>
 #include <c10/cuda/CUDAGuard.h>
@@ -14,7 +15,7 @@
 #include <cuda_fp8.h>
 
 #include "cute/tensor.hpp"
-#include "cutlass/arch/grid_dependency_control.h"
+#include "mxfp_common/pdl.cuh"
 #include "cutlass/detail/sm100_blockscaled_layout.hpp"
 
 namespace mxfp6_gemm::torch_ext {
@@ -70,7 +71,7 @@ __device__ __forceinline__ uint16_t quantize_pair(float first,
 }
 
 template <class Source, int OutputBits, bool PackedScaleLayout,
-          class ScaleLayout, bool SiluAndMul = false>
+          class ScaleLayout, bool SiluAndMul = false, bool Pdl = false>
 __global__ void quantize_mx_kernel(Source const* input,
                                    uint8_t* output,
                                    uint8_t* scales,
@@ -106,6 +107,10 @@ __global__ void quantize_mx_kernel(Source const* input,
         }
       }
     }
+  }
+
+  if constexpr (Pdl) {
+    mxfp_common::dependent_prologue(true);
   }
 
   float values[kElementsPerThread]{};
@@ -229,7 +234,7 @@ __global__ void quantize_mx_kernel(Source const* input,
   }
 }
 
-template <int OutputBits, bool PackedScaleLayout = true, bool SiluAndMul = false>
+template <int OutputBits, bool PackedScaleLayout = true, bool SiluAndMul = false, bool Pdl = false>
 std::tuple<at::Tensor, at::Tensor> quantize_mx(
     at::Tensor const& input) {
   check_quant_input(input);
@@ -263,20 +268,18 @@ std::tuple<at::Tensor, at::Tensor> quantize_mx(
   TORCH_CHECK(block_count <= std::numeric_limits<int>::max(),
               "quantization launch grid is too large");
 
-  if (input.scalar_type() == at::kHalf) {
-    quantize_mx_kernel<at::Half, OutputBits, PackedScaleLayout, decltype(scale_layout), SiluAndMul><<<
-        static_cast<int>(block_count), kThreads, 0, stream.stream()>>>(
-        input.data_ptr<at::Half>(), output.data_ptr<uint8_t>(),
-        scales.data_ptr<uint8_t>(), nullptr,
-        static_cast<int>(groups_per_row), total_groups, scale_layout, PackedScaleLayout);
-  } else {
-    quantize_mx_kernel<at::BFloat16, OutputBits, PackedScaleLayout, decltype(scale_layout), SiluAndMul><<<
-        static_cast<int>(block_count), kThreads, 0, stream.stream()>>>(
-        input.data_ptr<at::BFloat16>(), output.data_ptr<uint8_t>(),
-        scales.data_ptr<uint8_t>(), nullptr,
-        static_cast<int>(groups_per_row), total_groups, scale_layout, PackedScaleLayout);
-  }
-  C10_CUDA_KERNEL_LAUNCH_CHECK();
+  auto launch = [&](auto* source) {
+    using Source = std::remove_pointer_t<decltype(source)>;
+    auto fn = quantize_mx_kernel<Source, OutputBits, PackedScaleLayout,
+                                decltype(scale_layout), SiluAndMul, Pdl>;
+    C10_CUDA_CHECK(mxfp_common::launch_dependent_kernel(
+        Pdl, fn, dim3(static_cast<int>(block_count)), kThreads, 0, stream.stream(),
+        source, output.data_ptr<uint8_t>(), scales.data_ptr<uint8_t>(),
+        static_cast<uint8_t*>(nullptr), static_cast<int>(groups_per_row),
+        total_groups, scale_layout, PackedScaleLayout));
+  };
+  if (input.scalar_type() == at::kHalf) launch(input.data_ptr<at::Half>());
+  else launch(input.data_ptr<at::BFloat16>());
   return {output, scales};
 }
 
@@ -449,6 +452,10 @@ std::tuple<at::Tensor, at::Tensor> quantize_mxfp6_cuda(
 }  // namespace mxfp6_gemm::torch_ext
 
 namespace mxfp6_gemm::torch_ext {
+std::tuple<at::Tensor, at::Tensor> quantize_mxfp8_pdl_cuda(at::Tensor const& input) {
+  return input.dim() == 2 && input.size(0) <= 32
+      ? quantize_mx<8, true, false, true>(input) : quantize_mx<8>(input);
+}
 std::tuple<at::Tensor, at::Tensor> silu_and_mul_mxfp8_cuda(at::Tensor const& input) {
   TORCH_CHECK(input.dim() == 2 && input.size(1) % 64 == 0,
               "SwiGLU input must be [M,2K] with K divisible by 32");
@@ -457,8 +464,10 @@ std::tuple<at::Tensor, at::Tensor> silu_and_mul_mxfp8_cuda(at::Tensor const& inp
 }  // namespace mxfp6_gemm::torch_ext
 
 TORCH_LIBRARY_FRAGMENT(mxfp6, m) {
+  m.def("quantize_mxfp8_pdl(Tensor input) -> (Tensor values, Tensor scales)");
   m.def("silu_and_mul_mxfp8(Tensor input) -> (Tensor values, Tensor scales)");
 }
 TORCH_LIBRARY_IMPL(mxfp6, CUDA, m) {
+  m.impl("quantize_mxfp8_pdl", &mxfp6_gemm::torch_ext::quantize_mxfp8_pdl_cuda);
   m.impl("silu_and_mul_mxfp8", &mxfp6_gemm::torch_ext::silu_and_mul_mxfp8_cuda);
 }
