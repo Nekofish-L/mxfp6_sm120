@@ -98,7 +98,8 @@ int64_t dispatch_out(MXFP8_ARGS, LaunchConfig c, std::optional<at::Tensor> works
 
 at::Tensor gemm(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at::Tensor const& sb,
                std::optional<at::Tensor> output,std::optional<at::Tensor> workspace,
-               int64_t tactic,int64_t splits,int64_t swizzle,int64_t sms) {
+               int64_t tactic,int64_t splits,int64_t swizzle,int64_t sms,bool enable_pdl) {
+  PdlScope scope(enable_pdl);
   auto c=resolve(a,b,tactic,splits,swizzle,sms);
   TORCH_CHECK(a.is_cuda(), "Expected CUDA matrices");
   c10::cuda::CUDAGuard guard(a.device());
@@ -126,23 +127,21 @@ std::tuple<at::Tensor,std::optional<at::Tensor>,std::vector<int64_t>> prepare(
   return {out,workspace,config_values(c)};
 }
 at::Tensor gemm_pdl(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at::Tensor const& sb) {
-  PdlScope scope(a.dim() == 2 && a.size(0) <= 32);
-  return gemm(a,b,sa,sb,std::nullopt,std::nullopt,-1,1,1,0);
+  return gemm(a,b,sa,sb,std::nullopt,std::nullopt,-1,1,1,0,true);
 }
 template<bool Pdl>
 at::Tensor gemm_from_float_impl(at::Tensor const& input,at::Tensor const& b,at::Tensor const& sb) {
   // Reuse the same native quantizer as W6A8. No MXFP6 GEMM is involved.
-  // The PDL quantizer itself falls back to ordinary launch for M > 32.
   static auto quantize=c10::Dispatcher::singleton().findSchemaOrThrow(
       Pdl ? "mxfp6::quantize_mxfp8_pdl" : "mxfp6::quantize_mxfp8", "")
       .typed<std::tuple<at::Tensor,at::Tensor>(at::Tensor const&)>();
   auto quantized=quantize.call(input);
   auto a=std::get<0>(quantized).view({input.size(0),input.size(1)}).view(at::ScalarType::Float8_e4m3fn);
-  PdlScope scope(Pdl && input.size(0) <= 32);
-  return gemm(a,b,std::get<1>(quantized),sb,std::nullopt,std::nullopt,-1,1,1,0);
+  return gemm(a,b,std::get<1>(quantized),sb,std::nullopt,std::nullopt,-1,1,1,0,Pdl);
 }
-at::Tensor gemm_from_float(at::Tensor const& input,at::Tensor const& b,at::Tensor const& sb) {
-  return gemm_from_float_impl<false>(input,b,sb);
+at::Tensor gemm_from_float(at::Tensor const& input,at::Tensor const& b,at::Tensor const& sb,bool enable_pdl) {
+  return enable_pdl ? gemm_from_float_impl<true>(input,b,sb)
+                    : gemm_from_float_impl<false>(input,b,sb);
 }
 at::Tensor gemm_from_float_pdl(at::Tensor const& input,at::Tensor const& b,at::Tensor const& sb) {
   return gemm_from_float_impl<true>(input,b,sb);
@@ -155,10 +154,10 @@ bool workspace_barriers_zero(at::Tensor const& anchor) { return workspace_pool()
 #undef MXFP8_ARGS
 
 TORCH_LIBRARY(mxfp8_sm120,m) {
-  m.def("gemm(Tensor a, Tensor b, Tensor sa, Tensor sb, Tensor(a!)? out=None, Tensor? workspace=None, int tactic=-1, int splits=1, int swizzle=1, int sms=0) -> Tensor(a!)");
+  m.def("gemm(Tensor a, Tensor b, Tensor sa, Tensor sb, Tensor(a!)? out=None, Tensor? workspace=None, int tactic=-1, int splits=1, int swizzle=1, int sms=0, bool use_pdl=False) -> Tensor(a!)");
   m.def("prepare(Tensor a, Tensor b, Tensor sa, Tensor sb, Tensor(a!)? out=None, int tactic=-1, int splits=1, int swizzle=1, int sms=0) -> (Tensor(a!), Tensor?, int[])");
   m.def("allocate_workspace(Tensor a, Tensor b, Tensor sa, Tensor sb, Tensor out, int tactic, int splits=1, int swizzle=1, int sms=0) -> Tensor?");
-  m.def("gemm_from_float(Tensor input, Tensor b, Tensor sb) -> Tensor");
+  m.def("gemm_from_float(Tensor input, Tensor b, Tensor sb, bool use_pdl=False) -> Tensor");
   m.def("gemm_pdl(Tensor a, Tensor b, Tensor sa, Tensor sb) -> Tensor");
   m.def("gemm_from_float_pdl(Tensor input, Tensor b, Tensor sb) -> Tensor");
   m.def("begin_workspace_planning(Tensor anchor) -> ()");

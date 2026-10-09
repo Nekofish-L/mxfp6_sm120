@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Controlled activation-scale ablations and cross-weight GEMM decomposition."""
+import argparse
 import json
 from pathlib import Path
 from contextlib import ExitStack
@@ -35,6 +36,9 @@ def actual_mx(x):
 
 @torch.inference_mode()
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--models', type=Path, required=True, help='Local model collection directory')
+    args = parser.parse_args()
     torch.backends.cuda.matmul.allow_tf32=False
     torch.set_num_threads(4)
     seeds=[20260929,20260930,20260931];m=512
@@ -68,7 +72,7 @@ def main():
                 unequal_scale_fraction=(scales['actual_mx']!=scales['g32_pow2']).float().mean().item())
             assert stats['actual_vs_manual']['relative_rmse']<1e-6
             acts.append(dict(k=k,seed=seed,metrics=stats));cache[k,seed]=(x,variants)
-    data=Path('<LOCAL_PATH>')
+    data=args.models
     paths=[data/'Qwen3.5-2B/model.safetensors-00001-of-00001.safetensors',
            data/'Qwen3.5-2B-FP8_BLOCK/model.safetensors',data/'Qwen3.5-2B-MXFP8/model.safetensors']
     rows=[]

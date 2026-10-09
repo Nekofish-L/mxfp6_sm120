@@ -6,7 +6,7 @@ paths use CUTLASS/CuTe. The MXFP8 Triton implementation and tactic IDs
 100–105 have been removed.
 
 The separate opt-in [dual activation API](mxfp8-dual.md) supplies high and
-BF16-rounded residual limbs for three fixed shapes. It uses a Triton activation
+BF16-rounded residual limbs for M=1–128 at N12288/N18432, K2560. It uses a Triton activation
 quantizer and native GEMM, without changing this module's default dispatch.
 
 ## Shape scheduling
@@ -99,17 +99,52 @@ activations use the same native MXFP8 quantizer. MXFP6 retains its PDL
 quantization/GEMM launch; MXFP8 launches quantization and GEMM in stream
 order by default. All workspace layout selection and allocation happen in C++.
 
-Native callers can opt into PDL with
+All Python GEMM entrypoints (`gemm`, `gemm_from_float`, `gemm_w8a8`,
+`gemm_packed`) and `prepare`/`warmup` accept `use_pdl=True`. This also applies
+to explicit `W8A8Config` choices and private workspace launches. Defaults
+remain `False`. Native `gemm` and `gemm_from_float` accept the same optional
+flag; their existing positional arguments remain valid.
+
+Native callers can also opt into PDL with
 `torch.ops.mxfp8_sm120.gemm_from_float_pdl(input, b, sb)`, or chain
 `torch.ops.mxfp6.quantize_mxfp8_pdl(input)` with
 `torch.ops.mxfp8_sm120.gemm_pdl(a, b, sa, sb)`. Load both libraries first;
 the GEMM operands are E4M3 matrices with packed E8M0 scale tensors.
-For M ≤ 32, the quantizer signals an early launch and the selected GEMM
+The explicit PDL entrypoints have no M ≤ 32 restriction. The quantizer
+signals an early launch and the selected GEMM
 waits before reading its output. The CUTLASS routes and custom cache-hint,
-occupancy, irregular, TMA256 and eightwarp routes cover all current
-small-batch default tactics. M > 32 uses ordinary launches. The Python
-wrappers retain their existing defaults. PDL latency gains depend on shape
+occupancy, irregular, TMA256, eightwarp, vector-store and TMA eightwarp routes
+cover default dispatch across decode and prefill batches. Every registered
+tactic now supports the flag, including GEMV, cute, specialized, TMA4,
+TMA fewwarp/oddwarp/oddrotate/scales, register pipeline and pair-LDSM paths.
+Both dual kernel families accept `mxfp8_dual.gemm_out(..., use_pdl=True)`
+for every M1–128 and both projection widths.
+The quantizer waits before padding stores as well as input reads: a scale
+allocation can reuse the preceding GEMM's temporary Stream-K workspace.
+PDL latency gains depend on shape
 and available GPU resources; these operators do not imply a serving speedup.
+
+Run `tests/test_mxfp8_pdl_all_paths.py` to scan every registered tactic at
+dynamic K512 and fixed K2048/K2560, test Python/prepared entrypoints and
+dual→quantization→single dependencies. `tests/test_mxfp8_dual.py` compares
+PDL Graph replay with ordinary eager results for all 256 dual shapes.
+On CUDA 13, the path suite also inspects captured graph edge metadata for
+every tactic and both dual families: PDL off has no programmatic edges,
+and PDL on creates them. This catches a flag silently falling back to an
+ordinary launch even when numerical comparisons would still pass.
+
+`benchmarks/benchmark_mxfp8_pdl.py` measures paired Graph timings using
+checkpoint weights, both for repeated projections and for a rotating
+multi-layer MLP chain whose weight footprint exceeds L2. It requires
+`safetensors`, and the chain additionally requires a matching vLLM Mach
+source tree. `benchmark_mxfp8_pdl_serving.py` compares identical serving
+configurations with PDL off, M ≤ 32, and an expanded deployment limit.
+Its token/concurrency workload is explicit and differs from the public
+six-point benchmark. Native API support and a profitable deployment limit
+are separate questions; measure both on the target workload.
+The [batch extension and performance report](mxfp8-pdl-performance.md)
+records full-service results alongside chain gains and isolated-projection
+regressions.
 
 The backends share the workspace implementation and Python helper, with
 independent pools. Plan all expected shapes, freeze capacity, then warm
@@ -169,12 +204,12 @@ launch overhead are excluded. Default sampling is three interleaved
 trials of 30 measurements, reported as the median of trial means.
 
 ```bash
-CUDA_VISIBLE_DEVICES=4 PYTHONPATH=python python3 benchmarks/benchmark_mxfp8.py \
+CUDA_VISIBLE_DEVICES="${GPU_ID}" PYTHONPATH=python python3 benchmarks/benchmark_mxfp8.py \
   --out benchmarks/results/mxfp8_current --shard 0 --shards 2 --check-graphs
 CUDA_VISIBLE_DEVICES=5 PYTHONPATH=python python3 benchmarks/benchmark_mxfp8.py \
   --out benchmarks/results/mxfp8_current --shard 1 --shards 2 --check-graphs
 python3 benchmarks/summarize_mxfp8.py benchmarks/results/mxfp8_current
-CUDA_VISIBLE_DEVICES=4 PYTHONPATH=python python3 -m pytest \
+CUDA_VISIBLE_DEVICES="${GPU_ID}" PYTHONPATH=python python3 -m pytest \
   tests/test_mxfp8.py tests/test_mxfp8_api.py tests/test_mxfp8_benchmark.py tests/test_model_gemm_totals.py -q
 ```
 
@@ -187,7 +222,7 @@ GEMM cost, not full-model inference latency.
 
 ## Approximate performance
 
-RTX 5090 / SM120, physical GPUs 4, 5; 240 shapes. Single-GEMM CUDA graph, 8 GB L2 eviction before replay; only GPU kernel time is counted. Quantization, host overhead and eviction are excluded.
+RTX 5090 / SM120, two test GPUs; 240 shapes. Single-GEMM CUDA graph, 8 GB L2 eviction before replay; only GPU kernel time is counted. Quantization, host overhead and eviction are excluded.
 
 FlashInfer uses MXFP8 `mm_mxfp8(..., backend="cutlass")` and exact-batch autotuning. vLLM uses block FP8 `cutlass_scaled_mm`. MXFP8 inputs share E4M3 values and E8M0/32 scales; vLLM quantizes the same source tensors with 1×128 activation / 128×128 weight scales.
 

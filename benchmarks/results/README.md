@@ -4,6 +4,9 @@
 
 | Artifact | Measurement boundary | Main result |
 |---|---|---:|
+| `mxfp8_dual_actual_inference_bs1_128.json` / `.csv` | Full Qwen3.5-4B inference, real activations and natural caches; all 128 requested batches, 32 gate/up + 24 QKVZ layers | GEMM-only dual latency +27.3% QKVZ / +31.8% gate/up; see `docs/mxfp8-dual-actual-inference.md` |
+| `mxfp8_dual_bs1_128.json` / `.csv` | Every M=1–128 for QKVZ and gate/up; native single/dual, GEMM-only and quantization+GEMM, hot/cold weights | Native dual covers all 256 points; see `docs/mxfp8-dual-bs1-128.md` for latency and error |
+| `mxfp8_pdl_batch_validation.json` | Real MXFP8 weights, 8-layer dependency chain, and paired full HTTP serving lifecycles | Low-concurrency HTTP +1.6% to +2.1%; M=33–128 chain +2.2% to +3.8%; see `docs/mxfp8-pdl-performance.md` |
 | `qwen38_27b_quality_fidelity.json` | Qwen3.8-27B, 256 records, BF16 teacher-forced token-logprob fidelity | MXFP6 MAE 48.6% below NVFP4; FP8 lowest |
 | `qwen38_27b_concurrency_tp2.json` | Qwen3.8-27B TP2, fixed ISL 1024 / OSL 256, c1 through c32 | MXFP6 +18.26% to +22.43% vs FP8; NVFP4 fastest |
 | `qwen38_27b_serving_tp2.json` | Qwen3.8-27B TP2, three workloads, FP8/MXFP6/NVFP4 | MXFP6 +18.23% to +22.33% vs FP8; NVFP4 fastest |

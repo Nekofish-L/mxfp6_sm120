@@ -1,4 +1,6 @@
 from pathlib import Path
+import re
+from urllib.parse import urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -47,21 +49,16 @@ def test_example_has_one_build_path_and_direct_vllm_serve_commands():
 
 
 def test_public_example_contains_no_internal_resource_reference():
-    forbidden = (
-        "git.<LOCAL_ID>",
-        "image-docker.<LOCAL_ID>",
-        "<LOCAL_ID>",
-        "<LOCAL_PATH>",
-        "<LOCAL_PATH>",
-        "<LOCAL_ID>",
-    )
     text = "\n".join(
         path.read_text(errors="replace")
         for path in EXAMPLE.rglob("*")
         if path.is_file()
     )
-    for marker in forbidden:
-        assert marker not in text
+    # Generic rules avoid disclosing the internal names they guard against.
+    assert not re.search(r"/(?:data\d*|home|mnt|scratch)/[^\s\"'`]+", text)
+    public_hosts = {"github.com", "huggingface.co"}
+    for url in re.findall(r"https?://[^\s\"'<>`)]+", text):
+        assert urlsplit(url).hostname in public_hosts
 
 
 def test_vllm_patch_is_limited_to_required_integration_points():

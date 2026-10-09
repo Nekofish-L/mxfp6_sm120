@@ -1,31 +1,40 @@
-"""Explicit two-limb MXFP8 activation API for three fixed SM120 shapes.
+"""Explicit two-limb MXFP8 activations for SM120 QKVZ/MLP batches 1–128.
 
 The residual is rounded to BF16 before quantization. Ordinary MXFP8 APIs keep
 using their existing single-activation path. Triton is imported only on launch.
 """
 from __future__ import annotations
 
+from functools import lru_cache
+
 import torch
 from ._loader import load_mxfp8_library as load_library
 
-SUPPORTED_SHAPES = ((32, 18432, 2560), (32, 12288, 2560), (64, 12288, 2560))
+SUPPORTED_SHAPES = tuple((m, n, 2560) for m in range(1, 129)
+                         for n in (12288, 18432))
 
 
 def select_variant(m: int, n: int, k: int) -> str:
-    """Return the fixed launch family; reject shapes without a dual kernel."""
-    variants = ("mlp32", "qkvz32", "qkvz64_pipereg_cfg2")
-    for shape, variant in zip(SUPPORTED_SHAPES, variants):
-        if (m, n, k) == shape:
-            return variant
-    raise ValueError(f"Unsupported dual MXFP8 shape {(m, n, k)}; expected {SUPPORTED_SHAPES}")
+    """Return the tile family; original family names remain API compatible."""
+    if 1 <= m <= 128 and k == 2560:
+        if n == 18432:
+            if m <= 32:
+                return "mlp32"
+            return "mlp_pipereg_cfg2"
+        if n == 12288:
+            if m <= 32:
+                return "qkvz32"
+            return "qkvz64_pipereg_cfg2"
+    raise ValueError(f"Unsupported dual MXFP8 shape {(m, n, k)}; expected "
+                     "1<=M<=128, N12288 or N18432, K2560")
 
 
 def _check_input(x):
     if not isinstance(x, torch.Tensor):
         raise TypeError("x must be a torch.Tensor")
-    if (tuple(x.shape) not in ((32, 2560), (64, 2560))
+    if (x.ndim != 2 or not 1 <= x.shape[0] <= 128 or x.shape[1] != 2560
             or x.dtype != torch.bfloat16 or not x.is_cuda or not x.is_contiguous()):
-        raise ValueError("Expected contiguous CUDA BF16 [32,2560] or [64,2560]")
+        raise ValueError("Expected contiguous CUDA BF16 [M,2560], 1<=M<=128")
 
 
 def _check_buffers(x, hi, s_hi, res, s_res):
@@ -47,9 +56,6 @@ def _check_buffers(x, hi, s_hi, res, s_res):
         for rhs in tensors[i + 1:]:
             if torch._C._is_alias_of(lhs, rhs):
                 raise ValueError("Input and quantization output buffers must not alias")
-
-
-from functools import lru_cache
 
 
 @lru_cache(maxsize=1)
@@ -97,7 +103,6 @@ def _kernel():
     return run
 
 
-
 def quantize_out(x, hi, s_hi, res, s_res):
     """Quantize finite BF16 X into high/residual limbs in supplied buffers.
 
@@ -114,7 +119,7 @@ def quantize_out(x, hi, s_hi, res, s_res):
 
 
 def quantize(x):
-    """Allocate and quantize finite contiguous CUDA BF16 [32/64,2560]."""
+    """Allocate and quantize finite contiguous CUDA BF16 [M,2560], M=1–128."""
     _check_input(x)
     hi = torch.empty_like(x, dtype=torch.float8_e4m3fn)
     res = torch.empty_like(hi)
@@ -123,12 +128,14 @@ def quantize(x):
     return quantize_out(x, hi, s_hi, res, s_res)
 
 
-def gemm_out(hi, weight, s_hi, s_weight, res, s_res, out):
+def gemm_out(hi, weight, s_hi, s_weight, res, s_res, out, *, use_pdl=False):
     """Compute (high @ W.T + residual @ W.T), rounding once to BF16.
 
     Both terms use independent FP32 accumulators. All values are contiguous
     E4M3FN matrices; scales are flat uint8 CUTLASS 128x4 swizzled E8M0 buffers.
     No workspace is needed. Unsupported shapes raise instead of falling back.
+    With use_pdl=True, wait for the predecessor before reading either limb and
+    permit a following PDL kernel to begin its independent setup early.
     """
     if not all(isinstance(t, torch.Tensor) for t in
                (hi, weight, s_hi, s_weight, res, s_res, out)):
@@ -137,7 +144,7 @@ def gemm_out(hi, weight, s_hi, s_weight, res, s_res, out):
         raise ValueError("Expected hi and weight matrices")
     select_variant(hi.shape[0], weight.shape[0], hi.shape[1])
     load_library()
-    torch.ops.mxfp8_sm120.dual_gemm_out(hi, weight, s_hi, s_weight, res, s_res, out)
+    torch.ops.mxfp8_sm120.dual_gemm_out(hi, weight, s_hi, s_weight, res, s_res, out, use_pdl)
     return out
 
 

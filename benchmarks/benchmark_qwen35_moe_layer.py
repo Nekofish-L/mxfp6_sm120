@@ -1698,12 +1698,12 @@ def main() -> None:
     parser.add_argument(
         "--fp8-model",
         type=Path,
-        default=Path("<LOCAL_PATH>"),
+        required=True,
     )
     parser.add_argument(
         "--mx-model",
         type=Path,
-        default=Path("<LOCAL_PATH>"),
+        required=True,
     )
     parser.add_argument(
         "--batch-sizes",

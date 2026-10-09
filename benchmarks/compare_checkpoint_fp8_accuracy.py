@@ -67,7 +67,7 @@ def summarize(rows):
 @torch.inference_mode()
 def main():
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--models',type=Path,default=Path('<LOCAL_PATH>'))
+    p.add_argument('--models',type=Path,required=True,help='Local model collection directory')
     p.add_argument('--out',type=Path,default=ROOT/'benchmarks/results/qwen35_2b_fp8_accuracy')
     p.add_argument('--batches',type=int,nargs='+',default=[1,16,128,512])
     p.add_argument('--seeds',type=int,nargs='+',default=[20260929,20260930,20260931])

@@ -87,6 +87,12 @@ __global__ void quantize_mx_kernel(Source const* input,
       static_cast<int64_t>(blockIdx.x) * kGroupsPerBlock + group_in_block;
   bool const valid = group < total_groups;
 
+  // The allocator may reuse a predecessor's temporary workspace for scales.
+  // Even padding stores must wait before touching that allocation.
+  if constexpr (Pdl) {
+    cutlass::arch::wait_on_dependent_grids();
+  }
+
   // Only padding is initialized here. Logical scale bytes are written below
   // by their owning quantization group, so the two writes never overlap and
   // need no grid synchronization. Replay overwrites every byte, including
@@ -110,7 +116,7 @@ __global__ void quantize_mx_kernel(Source const* input,
   }
 
   if constexpr (Pdl) {
-    mxfp_common::dependent_prologue(true);
+    if (threadIdx.x == 0) cutlass::arch::launch_dependent_grids();
   }
 
   float values[kElementsPerThread]{};
@@ -453,8 +459,7 @@ std::tuple<at::Tensor, at::Tensor> quantize_mxfp6_cuda(
 
 namespace mxfp6_gemm::torch_ext {
 std::tuple<at::Tensor, at::Tensor> quantize_mxfp8_pdl_cuda(at::Tensor const& input) {
-  return input.dim() == 2 && input.size(0) <= 32
-      ? quantize_mx<8, true, false, true>(input) : quantize_mx<8>(input);
+  return quantize_mx<8, true, false, true>(input);
 }
 std::tuple<at::Tensor, at::Tensor> silu_and_mul_mxfp8_cuda(at::Tensor const& input) {
   TORCH_CHECK(input.dim() == 2 && input.size(1) % 64 == 0,

@@ -36,7 +36,7 @@ MMA with FP32 accumulation.
 |---|---|
 | Dense W6A8, FP16/BF16 output | `mxfp6.gemm` |
 | Dense W8A8, BF16 output | `mxfp6.mxfp8.gemm` |
-| Fixed-shape dual-activation W8A8 | `mxfp6.mxfp8_dual` |
+| QKVZ/MLP dual-activation W8A8, M=1–128 | `mxfp6.mxfp8_dual` |
 | Qwen3.5 routed MoE | Router, W1, SiLU/mul, quantization, W2 and routed/shared reduction |
 | Producer fusion and graph replay | Fused MXFP8 preparation, native dispatch and persistent workspaces |
 
@@ -161,13 +161,13 @@ The [attention-gate producer](docs/attention-gate.md) is an explicit API.
 Mach documents model-level eligibility in its
 [producer integration guide](https://github.com/troycheng/vllm-mach/blob/main/docs/dense-producer-fusion.md).
 
-## Fixed-shape dual MXFP8 activations
+## Dual MXFP8 activations at batches 1–128
 
 The opt-in `mxfp6.mxfp8_dual` module quantizes finite BF16 activations into a
 high E4M3 limb and a BF16-rounded residual E4M3 limb, each with its own scales.
 GEMM uses independent FP32 accumulators, adds them after reduction and rounds
-once to BF16. It supports exactly `(M,N,K) = (32,18432,2560)`,
-`(32,12288,2560)` and `(64,12288,2560)`.
+once to BF16. It supports every integer batch **M=1–128** for
+`(N,K) = (18432,2560)` and `(12288,2560)`, using one native GEMM launch.
 
 ```python
 import torch
@@ -185,11 +185,14 @@ mxfp8_dual.gemm_out(
 )
 ```
 
-The dual quantizer uses Triton; the three GEMMs are native kernels linked into
+The dual quantizer uses Triton; GEMMs are native kernels linked into
 `mxfp8_torch`. `quantize_out` and `gemm_out` support preallocated graph replay.
 This API is selected explicitly and retains quantized weights and activations;
 BF16 output does not imply BF16-equivalent numerics. See the
 [dual-activation guide](docs/mxfp8-dual.md) for buffer contracts and validation.
+The [full-model inference measurements](docs/mxfp8-dual-actual-inference.md)
+compare GEMM-only latency at batches 1–128 with natural cache states. Small
+batches have lower overhead; larger batches need further kernel optimization.
 
 ## vLLM integration
 

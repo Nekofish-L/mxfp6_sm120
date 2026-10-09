@@ -65,16 +65,17 @@ def gemm_w8a8(
     config=None,
     out=None,
     workspace=None,
+    use_pdl=False,
 ):
     """Compute prequantized MXFP8(A) @ MXFP8(B).T through native dispatch."""
     _check_output(alpha, out_dtype)
     operands = _operands(a, b)
     load_library()
-    return torch.ops.mxfp8_sm120.gemm(*operands, out, workspace, *_config(config))
+    return torch.ops.mxfp8_sm120.gemm(*operands, out, workspace, *_config(config), use_pdl)
 
 
 def gemm_from_float(
-    a: torch.Tensor, b: MXFP8Tensor, alpha=1.0, *, out_dtype=torch.bfloat16
+    a: torch.Tensor, b: MXFP8Tensor, alpha=1.0, *, out_dtype=torch.bfloat16, use_pdl=False
 ):
     """Quantize FP16/BF16 A with the shared native quantizer, then run W8A8."""
     _check_output(alpha, out_dtype)
@@ -88,7 +89,7 @@ def gemm_from_float(
 
     load_quantizer()
     load_library()
-    return torch.ops.mxfp8_sm120.gemm_from_float(a, b.dequantized_values(), b.scales)
+    return torch.ops.mxfp8_sm120.gemm_from_float(a, b.dequantized_values(), b.scales, use_pdl)
 
 
 def gemm(
@@ -97,11 +98,12 @@ def gemm(
     alpha=1.0,
     *,
     out_dtype=torch.bfloat16,
+    use_pdl=False,
 ):
     """Compute A @ B.T; floating activations are quantized in the native path."""
     if isinstance(a, torch.Tensor):
-        return gemm_from_float(a, b, alpha, out_dtype=out_dtype)
-    return gemm_w8a8(a, b, alpha, out_dtype=out_dtype)
+        return gemm_from_float(a, b, alpha, out_dtype=out_dtype, use_pdl=use_pdl)
+    return gemm_w8a8(a, b, alpha, out_dtype=out_dtype, use_pdl=use_pdl)
 
 
 def gemm_packed(
@@ -118,6 +120,7 @@ def gemm_packed(
     config=None,
     out=None,
     workspace=None,
+    use_pdl=False,
 ):
     """Low-level A @ B.T for byte-aligned E4M3 values and packed scales."""
     _check_output(alpha, out_dtype)
@@ -128,12 +131,13 @@ def gemm_packed(
     av = a.view(m, k).view(torch.float8_e4m3fn)
     bv = b.view(n, k).view(torch.float8_e4m3fn)
     return torch.ops.mxfp8_sm120.gemm(
-        av, bv, sfa, sfb, out, workspace, *_config(config)
+        av, bv, sfa, sfb, out, workspace, *_config(config), use_pdl
     )
 
 
 def prepare(
-    a: MXFP8Tensor, b: MXFP8Tensor, *, out_dtype=torch.bfloat16, config=None, out=None
+    a: MXFP8Tensor, b: MXFP8Tensor, *, out_dtype=torch.bfloat16, config=None, out=None,
+    use_pdl=False,
 ):
     """Allocate private output/workspace in C++; retain the call for graph replay.
 
@@ -149,7 +153,7 @@ def prepare(
     selected = W8A8Config(*selected)
 
     def run():
-        return torch.ops.mxfp8_sm120.gemm(*operands, output, workspace, *selected)
+        return torch.ops.mxfp8_sm120.gemm(*operands, output, workspace, *selected, use_pdl)
 
     run.config = selected
     return run
@@ -163,7 +167,7 @@ def allocate_workspace(a: MXFP8Tensor, b: MXFP8Tensor, *, config=None, out=None)
     return workspace
 
 
-def warmup(a, b, *, out_dtype=torch.bfloat16, iterations=3):
+def warmup(a, b, *, out_dtype=torch.bfloat16, iterations=3, use_pdl=False):
     """Warm the native path before capture; collect layouts when planning."""
     if (
         not isinstance(iterations, int)
@@ -172,7 +176,7 @@ def warmup(a, b, *, out_dtype=torch.bfloat16, iterations=3):
     ):
         raise ValueError("iterations must be a positive integer")
     for _ in range(iterations):
-        gemm(a, b, out_dtype=out_dtype)
+        gemm(a, b, out_dtype=out_dtype, use_pdl=use_pdl)
     torch.cuda.synchronize(a.device)
     m, k = a.shape
     return select_config(m, b.rows, k)

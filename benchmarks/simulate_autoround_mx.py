@@ -81,6 +81,7 @@ def inputs(k,scenario,seed,rows,device):
 @torch.no_grad()
 def main():
     p=argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--models',type=Path,required=True,help='Local model collection directory')
     p.add_argument('--out',type=Path,default=ROOT/'benchmarks/results/qwen35_2b_autoround_sim')
     p.add_argument('--steps',type=int,default=200)
     p.add_argument('--lr',type=float,default=.005)
@@ -102,9 +103,9 @@ def main():
         seeds=dict(calibration=20261101,validation=20261102,test=[20261103,20261104,20261105]),
         scenarios=dict(gaussian='iid N(0,1)',correlated='64 latent N(0,1) channels mixed into K channels, normalized columns; independent Gaussian noise sigma=0.1; shared distribution parameters, independent samples'),
         limitations='Simplified single-GEMM rounding only, not full AutoRound. 7 representative complete attention projection matrices, fake inputs, no end-to-end quality claim.'),indent=2)+'\n')
-    paths=['<LOCAL_PATH>',
-           '<LOCAL_PATH>',
-           '<LOCAL_PATH>']
+    paths=[str(args.models/'Qwen3.5-2B/model.safetensors-00001-of-00001.safetensors'),
+           str(args.models/'Qwen3.5-2B-MXFP6/model.safetensors-00001-of-00001.safetensors'),
+           str(args.models/'Qwen3.5-2B-MXFP8/model.safetensors')]
     with ExitStack() as stack, (args.out/'raw.jsonl').open('w',buffering=1) as log:
         base,six,eight=[stack.enter_context(safe_open(p,framework='pt')) for p in paths]
         common=set(k for k in six.keys() if k.endswith('.weight_scale')) & set(eight.keys())

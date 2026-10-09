@@ -5,6 +5,7 @@
 #include <cuda_fp8.h>
 #include <cuda_bf16.h>
 #include "mxfp8_gemm/validation.hpp"
+#include "mxfp8_gemm/pdl.cuh"
 
 namespace mxfp8_sm120 {
 __device__ __forceinline__ int scale_index(int row,int group,int k) {
@@ -16,11 +17,12 @@ __device__ __forceinline__ float scale_value(uint8_t x) {
 template<int Rows>
 __global__ void gemv(const uint32_t* __restrict__ a,const uint32_t* __restrict__ b,
                      const uint8_t* __restrict__ sa,const uint8_t* __restrict__ sb,
-                     __nv_bfloat16* __restrict__ out,int m,int n,int k) {
+                     __nv_bfloat16* __restrict__ out,int m,int n,int k,bool pdl) {
   int lane=threadIdx.x%32,row=blockIdx.x*4+threadIdx.x/32;
   int mr=blockIdx.y*Rows;
-  if(row>=n) return;
   float acc[Rows]={};
+  mxfp8_runtime::dependent_prologue(pdl);
+  if(row>=n) return;
   for(int kk=lane*4;kk<k;kk+=128) {
     __nv_fp8x4_e4m3 w;w.__x=b[row*(k/4)+kk/4];
     float4 wf=static_cast<float4>(w);
@@ -49,10 +51,11 @@ void gemv_out(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at::T
   TORCH_CHECK(rows==1 || rows==2 || rows==4 || rows==8,"Invalid GEMV row tile");
   dim3 grid((n+3)/4,(m+rows-1)/rows);
   auto stream=at::cuda::getCurrentCUDAStream(a.get_device());
-#define RUN(R) gemv<R><<<grid,128,0,stream>>>(reinterpret_cast<const uint32_t*>(a.data_ptr()),reinterpret_cast<const uint32_t*>(b.data_ptr()),reinterpret_cast<const uint8_t*>(sa.data_ptr()),reinterpret_cast<const uint8_t*>(sb.data_ptr()),reinterpret_cast<__nv_bfloat16*>(out.data_ptr()),m,n,k)
+  bool pdl=mxfp8_runtime::pdl_enabled();
+  cudaError_t error=cudaSuccess;
+#define RUN(R) error=mxfp8_runtime::launch_dependent_kernel(pdl,gemv<R>,grid,128,0,stream,reinterpret_cast<const uint32_t*>(a.data_ptr()),reinterpret_cast<const uint32_t*>(b.data_ptr()),reinterpret_cast<const uint8_t*>(sa.data_ptr()),reinterpret_cast<const uint8_t*>(sb.data_ptr()),reinterpret_cast<__nv_bfloat16*>(out.data_ptr()),m,n,k,pdl)
   switch(rows) {case 1:RUN(1);break;case 2:RUN(2);break;case 4:RUN(4);break;case 8:RUN(8);break;}
 #undef RUN
-  auto error=cudaGetLastError();
   TORCH_CHECK(error==cudaSuccess,cudaGetErrorString(error));
 }
 }

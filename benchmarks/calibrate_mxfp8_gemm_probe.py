@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Small held-out synthetic calibration probe; leaves GEMM kernel unchanged."""
+import argparse
 import json
 from pathlib import Path
 import sys
@@ -17,10 +18,13 @@ def q(x):return actual_mx(x)[0]
 
 @torch.inference_mode()
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--models', type=Path, required=True, help='Local model collection directory')
+    args = parser.parse_args()
     torch.backends.cuda.matmul.allow_tf32=False;torch.set_num_threads(4)
     out=ROOT/'benchmarks/results/qwen35_2b_fp8_accuracy/calibration_probe.json'
     rows=[]
-    with safe_open('<LOCAL_PATH>',framework='pt') as base, safe_open('<LOCAL_PATH>',framework='pt') as mx:
+    with safe_open(str(args.models/'Qwen3.5-2B/model.safetensors-00001-of-00001.safetensors'),framework='pt') as base, safe_open(str(args.models/'Qwen3.5-2B-MXFP8/model.safetensors'),framework='pt') as mx:
         selected={}
         for sk in sorted(mx.keys()):
             if sk.endswith('.weight_scale'):

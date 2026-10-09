@@ -1,4 +1,5 @@
 #pragma once
+#include "mxfp8_gemm/pdl.cuh"
 // Diagnostic alternative to the 384-thread CUTLASS warp-specialized templates.
 // Uses SM120 warp-level CuTe MMA with 2/3/5/6/7 warps and TMA,
 // independent CTAs, and direct BF16 stores. No input repacking is required.
@@ -63,7 +64,7 @@ template<int BM,int BN,int BK,int Stages,bool Swap,int FixedK=0,int WarpM=2,bool
 __global__ __launch_bounds__(Warps*32) void gemm(
     const uint8_t* __restrict__ a,const uint8_t* __restrict__ b,
     const uint8_t* __restrict__ sa,const uint8_t* __restrict__ sb,
-    __nv_bfloat16* __restrict__ out,int m,int n,int dynamic_k, const __grid_constant__ CUtensorMap ma, const __grid_constant__ CUtensorMap mb) {
+    __nv_bfloat16* __restrict__ out,int m,int n,int dynamic_k, const __grid_constant__ CUtensorMap ma, const __grid_constant__ CUtensorMap mb, bool pdl) {
   const int k=FixedK?FixedK:dynamic_k;
 #if defined(__CUDA_ARCH_FEAT_SM120_ALL)
   extern __shared__ __align__(1024) uint8_t storage[];
@@ -80,6 +81,7 @@ __global__ __launch_bounds__(Warps*32) void gemm(
   int wm=(warp%WarpM)*16,wn=(warp/WarpM)*8;
   int row=lane/4,col=(lane%4)*4;
   float accum[TM][TN][4]={};
+  mxfp8_runtime::dependent_prologue(pdl);
 #pragma unroll
   for(int s=0;s<Stages-1;++s)
     prefetch<BM,BN,BK,Warps>(storage+s*StageBytes,a,b,sa,sb,pm,pn,s*BK,m,n,k,&ma,&mb,barriers+s);
@@ -202,13 +204,15 @@ void launch(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,
   auto ma=descriptor((Swap?b:a).data_ptr(),m,BM);
   auto mb=descriptor((Swap?a:b).data_ptr(),n,BN);
   auto stream=at::cuda::getCurrentCUDAStream(a.get_device());
-  fn<<<dim3((n+BN-1)/BN,(m+BM-1)/BM),Warps*32,Bytes,stream>>>(
+  bool pdl=mxfp8_runtime::pdl_enabled();
+  auto err=mxfp8_runtime::launch_dependent_kernel(
+    pdl,fn,dim3((n+BN-1)/BN,(m+BM-1)/BM),Warps*32,Bytes,stream,
+
     static_cast<const uint8_t*>((Swap?b:a).data_ptr()),
     static_cast<const uint8_t*>((Swap?a:b).data_ptr()),
     static_cast<const uint8_t*>((Swap?sb:sa).data_ptr()),
     static_cast<const uint8_t*>((Swap?sa:sb).data_ptr()),
-    static_cast<__nv_bfloat16*>(out.data_ptr()),m,n,k,ma,mb);
-  auto err=cudaGetLastError();
+    static_cast<__nv_bfloat16*>(out.data_ptr()),m,n,k,ma,mb,pdl);
   TORCH_CHECK(err==cudaSuccess,cudaGetErrorString(err));
 }
 

@@ -1,4 +1,4 @@
-"""PDL producer/consumer ordering across all small-batch default tactics."""
+"""PDL ordering across decode, prefill, and scheduler boundaries."""
 
 import pytest
 import torch
@@ -7,7 +7,7 @@ import mxfp6
 import mxfp6.mxfp8 as api
 
 
-# One shape for each tactic used by the M <= 32 interval policy, plus fallback.
+# Small-batch families and larger-M static, split/Stream-K, and dynamic tiles.
 SHAPES = [
     (1, 128, 128, 43),
     (1, 128, 4096, 12),
@@ -27,6 +27,22 @@ SHAPES += [
     for m, n, _, tactic in SHAPES
     if tactic in (709, 563, 624, 666, 576, 665)
     for k in (2048, 2560)
+]
+SHAPES += [
+    (33, 12288, 2560, 572),
+    (48, 18432, 2560, 747),
+    (64, 256, 8192, 14),
+    (65, 256, 8192, 15),
+    (96, 12288, 2560, 707),
+    (128, 12288, 2560, 789),
+    (129, 256, 128, 500),
+    (192, 256, 8192, 51),
+    (256, 12288, 2560, 775),
+    (257, 18432, 2560, 379),
+    (512, 256, 128, 775),
+    (1024, 256, 128, 810),
+    (2048, 256, 128, 781),
+    (2049, 256, 128, 79),
 ]
 
 
