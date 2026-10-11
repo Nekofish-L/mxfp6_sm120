@@ -272,3 +272,7 @@ checks. MXFP6 also passed 14 conversion/GEMM/workspace regression groups,
 10,000 random replays and 1,000 dual-stream iterations across 28 boundary
 batch sizes, with zero workspace fallbacks. Both backends' native pools
 remain independent.
+
+## Fixed BF16 BA projection
+
+`mxfp8.bf16_ba_m16(x, weight)` computes BF16 `X @ W.T` with FP32 MMA accumulation and one BF16 output rounding. It requires contiguous, 16-byte-aligned CUDA BF16 `X[16,2048]` and `W[32,2048]` on SM120 and returns `Y[16,32]`. The call uses `mxfp8_torch` without quantization. Warm it before CUDA Graph capture and update captured inputs in place. Its fixed reduction order is not guaranteed bitwise equal to an arbitrary BF16 GEMM backend.
