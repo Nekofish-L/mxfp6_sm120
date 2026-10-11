@@ -23,6 +23,8 @@ namespace mxfp8_sm120 { void gemv_out(MXFP8_ARGS, int64_t rows); }
 #include "mxfp8_gemm/registry.def"
 #undef MXFP8_FAMILY
 
+namespace mxfp8_bf16_ba { at::Tensor bf16_ba_m16(at::Tensor const& x, at::Tensor const& weight); }
+
 namespace mxfp8_runtime {
 struct LaunchConfig { int64_t tactic, splits, swizzle, sms; };
 thread_local bool use_pdl = false;
@@ -154,6 +156,7 @@ bool workspace_barriers_zero(at::Tensor const& anchor) { return workspace_pool()
 #undef MXFP8_ARGS
 
 TORCH_LIBRARY(mxfp8_sm120,m) {
+  m.def("bf16_ba_m16(Tensor x, Tensor weight) -> Tensor");
   m.def("gemm(Tensor a, Tensor b, Tensor sa, Tensor sb, Tensor(a!)? out=None, Tensor? workspace=None, int tactic=-1, int splits=1, int swizzle=1, int sms=0, bool use_pdl=False) -> Tensor(a!)");
   m.def("prepare(Tensor a, Tensor b, Tensor sa, Tensor sb, Tensor(a!)? out=None, int tactic=-1, int splits=1, int swizzle=1, int sms=0) -> (Tensor(a!), Tensor?, int[])");
   m.def("allocate_workspace(Tensor a, Tensor b, Tensor sa, Tensor sb, Tensor out, int tactic, int splits=1, int swizzle=1, int sms=0) -> Tensor?");
@@ -169,6 +172,7 @@ TORCH_LIBRARY(mxfp8_sm120,m) {
   m.def("policy_sha256() -> str", &mxfp8_runtime::policy_hash);
 }
 TORCH_LIBRARY_IMPL(mxfp8_sm120,CUDA,m) {
+  m.impl("bf16_ba_m16",mxfp8_bf16_ba::bf16_ba_m16);
   m.impl("gemm",mxfp8_runtime::gemm);
   m.impl("prepare",mxfp8_runtime::prepare);
   m.impl("allocate_workspace",mxfp8_runtime::allocate_workspace);

@@ -92,6 +92,14 @@ y6 = mxfp6.gemm_w6a8(qa, w6, out_dtype=torch.bfloat16)
 y8 = mxfp8.gemm_w8a8(qa, w8)
 ```
 
+For the fixed BA projection, `mxfp8.bf16_ba_m16(x, weight)` computes BF16
+`X @ W.T` with FP32 MMA accumulation and one BF16 output rounding. It requires
+contiguous, 16-byte-aligned CUDA BF16 `X[16,2048]` and `W[32,2048]` on SM120
+and returns `Y[16,32]`. It uses the packaged `mxfp8_torch` extension without
+quantization or external weights. Warm the call before CUDA graph capture;
+graph replay reads inputs updated in place. The reduction order is fixed and
+is not guaranteed bitwise equal to an arbitrary BF16 GEMM backend.
+
 Both backends accept FP16/BF16 activations or the shared `MXFP8Tensor` type.
 MXFP6 defaults to FP16 output; MXFP8 supports BF16 output and `alpha=1`.
 Their Python wrappers call native C++ dispatch and workspace management.
