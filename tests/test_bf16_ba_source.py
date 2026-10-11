@@ -15,5 +15,3 @@ def test_accepted_kernel_source_is_unchanged():
         "} // namespace", 1
     )[0]
     assert hashlib.sha256(kernel.encode()).hexdigest() == ACCEPTED_KERNEL_SHA256
-
-
