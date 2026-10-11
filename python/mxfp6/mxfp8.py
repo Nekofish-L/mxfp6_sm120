@@ -22,6 +22,17 @@ class W8A8Config(NamedTuple):
     sms: int = 0
 
 
+def bf16_ba_m16(x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
+    """Compute BF16 X @ W.T for contiguous X[16,2048], W[32,2048] on SM120.
+
+    Inputs require 16-byte-aligned storage. This dedicated BA projection does
+    not quantize inputs; FP32 MMA accumulation is rounded once to BF16.
+    Warm this call before CUDA graph capture, then mutate inputs in place.
+    """
+    load_library()
+    return torch.ops.mxfp8_sm120.bf16_ba_m16(x, weight)
+
+
 def select_config(m: int, n: int, k: int) -> W8A8Config:
     """Inspect the configuration selected by the compiled C++ interval policy."""
     load_library()
@@ -195,6 +206,7 @@ __all__ = [
     "quantize_activation",
     "pack_scales",
     "unpack_scales",
+    "bf16_ba_m16",
     "gemm",
     "gemm_w8a8",
     "gemm_from_float",
