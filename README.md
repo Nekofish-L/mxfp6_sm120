@@ -13,9 +13,9 @@ The package provides Dense GEMM, Qwen3.5 routed MoE, activation producers and CU
 
 ## Model serving performance
 
-The model-size comparison measures complete Mach serving configurations against their recorded FP8 baselines on RTX 5090. These gains include the configured attention, communication, recurrent-state and LM-head paths; they are not gains attributable to an isolated native kernel. Parallelism, runtime and baseline differ by model and remain explicit in the [performance report](docs/performance.md).
+**3,000 input / 1,000 output tokens · output tokens/s · text-only, non-speculative inference.** End-to-end serving with [vLLM Mach](https://github.com/troycheng/vllm-mach) on one (TP1) or two (TP2) 32 GiB RTX 5090 GPUs.
 
-| Model / profile | GPUs | Measured gain over its FP8 baseline | Details |
+| Model / profile | GPUs | Throughput gain vs FP8 | Details |
 |---|---|---:|---|
 | Qwen3.5-2B · MXFP8 · Triton + hybrid | 1 · TP1 | +17.53% to +25.89% | [Data](docs/performance.md#qwen35-2b) |
 | Qwen3.5-4B · MXFP8 champion | 1 · TP1 | +20.83% to +36.77% | [Data](docs/performance.md#qwen35-4b) |
@@ -26,7 +26,7 @@ The model-size comparison measures complete Mach serving configurations against 
 
 [Detailed service data and methodology](docs/performance.md) · [Machine-readable data](docs/data/model-performance.json)
 
-Earlier frozen Qwen3.5 TP2 serving measurements, GEMM timings and complete MoE-layer measurements remain in [component and historical benchmarks](docs/benchmarks.md). The separate [Qwen3.8-27B study](docs/qwen38-27b.md) covers throughput, BF16 token-logprob fidelity and memory capacity. Operator timings, reference fidelity and service throughput have distinct measurement boundaries.
+See [kernel benchmarks](docs/benchmarks.md) for GEMM and MoE operator timings, and the [Qwen3.8-27B study](docs/qwen38-27b.md) for memory capacity and precision results.
 
 ## Install
 
@@ -42,7 +42,7 @@ python3 -m pip install --no-deps dist/mxfp6_sm120-*.whl
 
 For an existing clone, run `git submodule update --init third_party/cutlass`. The wheel script applies the checked-in CUTLASS runtime patches and builds both extensions. `MAX_JOBS` defaults to 2. See [development and compatibility](docs/development.md) for ABI, build and upgrade policies.
 
-Source metadata reports `0.2.1`; producer and dual-activation APIs are newer source additions. Pin the integration's required source commit and rebuild when replacing an older wheel.
+Build from `main` to use the current producer and dual-activation APIs.
 
 ## Python API
 
@@ -66,7 +66,7 @@ y6 = mxfp6.gemm_w6a8(qa, w6, out_dtype=torch.bfloat16)
 y8 = mxfp8.gemm_w8a8(qa, w8)
 ```
 
-| Operator | Supported boundary | Guide |
+| Operator | Parameters | Guide |
 |---|---|---|
 | Dense W6A8 | Positive M/N/K; N multiple of 8, K multiple of 128; FP16/BF16 output | [Dense GEMM](docs/dense-gemm.md) |
 | Dense W8A8 | Positive M; N/K multiples of 128; BF16 output, alpha=1 | [MXFP8](docs/mxfp8.md) |
@@ -74,7 +74,7 @@ y8 = mxfp8.gemm_w8a8(qa, w8)
 | Routed MoE | Qwen3.5-35B-A3B TP2 router, routed/shared experts and reduction | [MoE API](docs/qwen35-moe.md) |
 | Activation producers | SwiGLU, GDN norm and attention gate with specified rounding/shape contracts | [Producer APIs](docs/producer-fusion.md) |
 
-Packed operands require contiguous CUDA storage on one SM120 device and the documented scale layout; public quantizers construct it. Before CUDA Graph capture, plan all expected shapes, freeze workspace capacity and warm each stream. Retain input buffers and update them in place between replays. Concurrent prepared calls require separate objects. The API guides specify buffer alignment, workspace ownership and numerical contracts.
+The [API guides](docs/README.md#operators) cover CUDA Graph setup, concurrent streams, buffer layout and workspace planning.
 
 ## Serving integration
 

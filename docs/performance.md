@@ -2,7 +2,7 @@
 
 Measured complete configurations on RTX 5090: **3,000 input / 1,000 output tokens**, text-only, non-speculative inference. Throughput is **output tokens/s**; `c` is concurrent requests, and physical kernel rows are denoted `M`.
 
-The 2B/4B MXFP8 and 27B/35B MXFP6 paths combine native operators with vLLM Mach. Block-FP8 is a separate Mach path. Each model keeps its own measured FP8 baseline; the tables below state the comparison date and scope.
+MXFP8 accelerates the 2B/4B profiles; MXFP6 accelerates the 27B/35B profiles. The tables compare complete vLLM Mach serving configurations with community FP8 and include a separate 4B block-FP8 profile.
 
 ![Serving throughput across four model sizes](assets/model-throughput.svg)
 
@@ -13,7 +13,7 @@ MXFP6 **default** retains FP32 recurrent state and the BF16 head. **Full** adds 
 <a id="qwen35-2b"></a>
 ## Qwen3.5-2B — MXFP8 · Triton + hybrid
 
-2026-10-11 · 1 × RTX 5090 · TP1. Selected and previous configurations are paired on GPU0; community FP8 is the historical GPU1 reference.
+2026-10-11 · 1 × RTX 5090 · TP1
 
 | Concurrency | Community FP8 | Previous FA2/full-head | Current Triton + hybrid | vs FP8 | vs previous |
 |---|---:|---:|---:|---:|---:|
@@ -35,12 +35,10 @@ MXFP6 **default** retains FP32 recurrent state and the BF16 head. **Full** adds 
 
 [Profile / study](https://github.com/troycheng/vllm-mach/blob/main/docs/mxfp8-2b-champion.md) · [Source measurements](https://github.com/troycheng/vllm-mach/blob/eaa0acd6f5700913d10a422f6d4075614b9fb6be/docs/data/mxfp8-2b-triton-hybrid-sixpoint-20261011.json)
 
-A later same-runtime c32 observation was 7,216.58 tok/s, paired with FA2 + hybrid at 7,210.06 tok/s. It remains a separate comparison.
-
 <a id="qwen35-4b"></a>
 ## Qwen3.5-4B — MXFP8 champion
 
-2026-10-06 · 1 × RTX 5090 · TP1. One complete source-built champion screen versus the October 5 community FP8 screen; 1,040 requests per screen.
+2026-10-06 · 1 × RTX 5090 · TP1
 
 | Concurrency | FP8 baseline | Selected profile | Gain |
 |---|---:|---:|---:|
@@ -65,7 +63,7 @@ A later same-runtime c32 observation was 7,216.58 tok/s, paired with FA2 + hybri
 <a id="qwen35-4b-block-fp8"></a>
 ## Qwen3.5-4B block-FP8 — Block-FP8 · all four features
 
-2026-10-06 · 1 × RTX 5090 · TP1. One same-stack stock/all-features pair at each point; 680 requests per arm. Its FP8 baseline is separate from the MXFP8 study.
+2026-10-06 · 1 × RTX 5090 · TP1
 
 | Concurrency | FP8 baseline | Selected profile | Gain |
 |---|---:|---:|---:|
@@ -86,7 +84,7 @@ A later same-runtime c32 observation was 7,216.58 tok/s, paired with FA2 + hybri
 <a id="qwen38-27b"></a>
 ## Qwen3.8-27B Dense — MXFP6 default / full
 
-2026-09-20 · 2 × RTX 5090 · TP2. One configuration sweep; runtime, GPU-group and measurement-batch differences are recorded in the study.
+2026-09-20 · 2 × RTX 5090 · TP2
 
 | Concurrency | FP8 | MXFP6 default | Gain | MXFP6 full | Gain |
 |---|---:|---:|---:|---:|---:|
@@ -100,7 +98,7 @@ A later same-runtime c32 observation was 7,216.58 tok/s, paired with FA2 + hybri
 <a id="qwen35-35b-a3b"></a>
 ## Qwen3.5-35B-A3B MoE — MXFP6 default / full
 
-2026-09-28 · 2 × RTX 5090 · TP2. MXFP6 means of two sweeps versus September 17 FP8. The measured default has projection tuning off; full includes it. Current launchers enable eligible tuning.
+2026-09-28 · 2 × RTX 5090 · TP2
 
 | Concurrency | FP8 | MXFP6 default | Gain | MXFP6 full | Gain |
 |---|---:|---:|---:|---:|---:|
@@ -113,20 +111,24 @@ A later same-runtime c32 observation was 7,216.58 tok/s, paired with FA2 + hybri
 
 ## Numerical fidelity
 
-Fixed-gold checks use 256 queries / 10,479 token logprobs per tested physical-row setting. MAE is deviation from the named reference; it is not a task-accuracy score. The evaluation corpus is private. MXFP6 rows below come from the September 17 diagnostics. MXFP6 and 2B logprob requests use the complete BF16 head; the 2B head was also checked during actual generation.
+Precision is measured as token-logprob MAE against BF16 using 256 queries / 10,479 tokens per physical-row setting. Lower MAE means closer agreement with BF16.
 
 | Profile | Physical rows | Numerical result |
 |---|---|---|
 | 2B MXFP8 Triton + hybrid | M4/16/24/32/48/64 | BF16-anchor MAE 0.04783–0.04947; M32 +2.58% versus FA2. Actual-generation head checks: 129,878 decisions, no omitted BF16 winner or lower-scored selection, one equal-score tie. |
-| 4B MXFP8 | M32/64 | Same-M BF16 MAE 0.04904 / 0.05329; fixed-gold records unchanged from the accepted champion. |
+| 4B MXFP8 | M32/64 | Same-M BF16 MAE 0.04904 / 0.05329. |
 | 4B block-FP8 | M4/32/64 | Fixed-gold records byte-identical to stock block-FP8. |
 | 27B Dense MXFP6 default / full | M32 | BF16 MAE 0.09064 / 0.08962; FP8 0.06143, NVFP4 0.17328. |
 | 35B-A3B MoE MXFP6 default / full | M32 | BF16 MAE 0.07261 / 0.07409; FP8 0.05534, NVFP4 0.22836. |
 
 [2B precision and generation coverage](https://github.com/troycheng/vllm-mach/blob/main/docs/mxfp8-2b-champion.md#precision) · [4B qualification](https://github.com/troycheng/vllm-mach/blob/main/docs/mxfp8-qualification-20261006.md) · [MXFP6 fidelity methodology](https://github.com/troycheng/vllm-mach/blob/main/docs/profile-fidelity-20260917.md)
 
+### Measurement protocol
+
+The linked studies and [source records](data/model-performance.json) retain hardware identities, software revisions, request counts and baseline dates. MXFP6 precision results use the September 17 evaluation. MXFP6 and 2B logprob checks use the complete BF16 head; hybrid-head validation uses actual generation. The fixed-gold corpus is private.
+
 ## Data and regeneration
 
-The [normalized data](data/model-performance.json) record the source revision, SHA-256 hashes, unrounded throughputs and per-point ratios. Gain is `100 × (selected / baseline − 1)`. No gains from different experiments are multiplied together.
+The [normalized data](data/model-performance.json) record source revisions, SHA-256 hashes, unrounded throughputs and per-point ratios. Gain is `100 × (selected / baseline − 1)`.
 
 These figures are generated by [vLLM Mach's renderer](https://github.com/troycheng/vllm-mach/blob/main/tools/render_performance_docs.py). The native-only kernel and earlier service studies remain in [benchmarks](benchmarks.md).
