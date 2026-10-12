@@ -2,7 +2,7 @@
 
 ## Start here
 
-- [Model performance](performance.md): current complete Mach serving configurations by model size, absolute throughput, baseline and workload.
+- [Model performance](performance.md): per-model FP8/NVFP4 throughput charts, current Mach configurations and precision against BF16.
 - [Checkpoint conversion and format](quantize-checkpoints.md): validated model layouts, metadata admission and persistent ABI limits.
 - [Development and compatibility](development.md): source build, toolchain, ABI, runtime surfaces and validation.
 
