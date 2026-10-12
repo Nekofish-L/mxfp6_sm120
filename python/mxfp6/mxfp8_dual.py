@@ -65,11 +65,13 @@ def _kernel():
 
     @triton.jit
     def run(X, HI, LO, SHI, SLO, K: tl.constexpr, M: tl.constexpr,
-            GROUPS: tl.constexpr):
+            GROUPS: tl.constexpr, launch_pdl: tl.constexpr):
         row = tl.program_id(1)
         group = tl.program_id(0) * GROUPS + tl.arange(0, GROUPS)
         lane = tl.arange(0, 32)
         col = group[:, None] * 32 + lane[None, :]
+        if launch_pdl:
+            tl.extra.cuda.gdc_wait()
         x = tl.load(X + row * K + col, col < K, other=0).to(tl.float32)
         maximum = tl.max(tl.abs(x), axis=1)
         e = tl.minimum(tl.maximum(tl.ceil(tl.log2(maximum * (1.0 / 448.0))) + 127.0,
@@ -99,11 +101,13 @@ def _kernel():
             mask = (pr[:, None] < tl.cdiv(M, 128) * 128) & (group[None, :] < K // 32)
             tl.store(SHI + po, 0, mask)
             tl.store(SLO + po, 0, mask)
+        if launch_pdl:
+            tl.extra.cuda.gdc_launch_dependents()
 
     return run
 
 
-def quantize_out(x, hi, s_hi, res, s_res):
+def quantize_out(x, hi, s_hi, res, s_res, *, use_pdl=False):
     """Quantize finite BF16 X into high/residual limbs in supplied buffers.
 
     Scale padding is written in the same launch. All buffers must be distinct;
@@ -113,19 +117,31 @@ def quantize_out(x, hi, s_hi, res, s_res):
     _check_buffers(x, hi, s_hi, res, s_res)
     m = x.shape[0]
     with torch.cuda.device(x.device):
-        _kernel()[(20, m)](x, hi, res, s_hi, s_res, K=2560, M=m, GROUPS=4,
-                          num_warps=4, num_stages=1, enable_fp_fusion=False)
+        _kernel()[(20, m)](
+            x,
+            hi,
+            res,
+            s_hi,
+            s_res,
+            K=2560,
+            M=m,
+            GROUPS=4,
+            launch_pdl=use_pdl,
+            num_warps=4,
+            num_stages=1,
+            enable_fp_fusion=False,
+        )
     return hi, s_hi, res, s_res
 
 
-def quantize(x):
+def quantize(x, *, use_pdl=False):
     """Allocate and quantize finite contiguous CUDA BF16 [M,2560], M=1–128."""
     _check_input(x)
     hi = torch.empty_like(x, dtype=torch.float8_e4m3fn)
     res = torch.empty_like(hi)
     s_hi = torch.empty(10240, dtype=torch.uint8, device=x.device)
     s_res = torch.empty_like(s_hi)
-    return quantize_out(x, hi, s_hi, res, s_res)
+    return quantize_out(x, hi, s_hi, res, s_res, use_pdl=use_pdl)
 
 
 def gemm_out(hi, weight, s_hi, s_weight, res, s_res, out, *, use_pdl=False):
