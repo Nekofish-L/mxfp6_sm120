@@ -59,25 +59,49 @@ projection widths in `mxfp8_dual_small.cu`; `mxfp8_dual_pipereg.cu` handles
 M33–128. Tensor validation lives in `mxfp8_dual_extension.cu`, and both kernels
 reuse the scale/layout helpers and TMA descriptor builder in
 `include/mxfp8_gemm/dual.cuh`. The public variant names remain unchanged.
-These APIs are unreleased source additions; the original 0.2.1 wheel does not
-provide them.
+Build from `main` for the current dual-activation APIs.
 
 On SM120, run `pytest -q tests/test_mxfp8_dual.py`. Tests use random inputs,
 an independent exponent/scale oracle, eager execution and changing-input,
-poisoned-buffer CUDA Graph replay for every supported shape. The GEMM oracle
-checks mathematical accuracy within BF16 rounding; bitwise comparison against
-a previous implementation is a separate check.
+poisoned-buffer CUDA Graph replay for every supported shape. The GEMM oracle checks mathematical accuracy within BF16 rounding.
 
-Original fixed-shape component validation on RTX 5090 (SM120), CUDA 13.0.88,
-PyTorch 2.13.0+cu130 and Triton 3.7.1 passed all six tests. A paired check against the three original
-prototype binaries also found zero differing output bytes for every shape on
-zero, small, random, large and negative inputs, including changing-input graph
-replay. Both activation limbs and scale buffers matched exactly. This establishes
-the tested component boundary; it does not establish whole-model fidelity or
-end-to-end throughput for a serving integration.
+## Performance and activation fidelity
 
-The batch extension tests every M for both projections, with an independent
-scale oracle, poisoned-buffer changing-input Graph replay, and a mathematical
-GEMM reference. The [single/dual comparison](mxfp8-dual-performance.md) records
-all 256 batch/projection points, GEMM-only and quantization+GEMM timings,
-hot/cold weight-cache measurements, and activation approximation error.
+On RTX 5090, CUDA 13.0, PyTorch 2.13 and Triton 3.7.1, the synthetic sweep measures every integer M1–128 for both projections. D/S is dual latency divided by single latency; a ratio above 1 means slower execution. Hot weights use 16 calls per Graph; cold weights use one call with a 256 MiB L2 eviction outside timing. Results aggregate nine randomized paired trials.
+
+| 投影 | 纯GEMM hot D/S | 纯GEMM cold D/S | 量化+GEMM hot D/S | 量化+GEMM cold D/S |
+|---|---:|---:|---:|---:|
+| QKVZ | 1.507× | 1.276× | 1.462× | 1.250× |
+| gate/up | 1.684× | 1.326× | 1.643× | 1.326× |
+
+| 投影 | single relative L2 | dual relative L2 | 误差改善倍数 |
+|---|---:|---:|---:|
+| QKVZ | 2.670% | 0.166% | 16.10× |
+| gate/up | 2.669% | 0.166% | 16.10× |
+
+误差为128个bs的中位数。参考是BF16输入对应的FP32 GEMM，使用同一份反量化MXFP8权重，TF32关闭；衡量激活近似和BF16输出舍入，不包含原始BF16权重转MXFP8的误差。
+
+Activation error is measured against FP32 GEMM with BF16 activations and the same decoded MXFP8 weights; it excludes weight-conversion error. The 256-point correctness sweep includes independent scale oracles and changing-input poisoned-buffer Graph replay.
+
+![Dual GEMM hot/cold comparison](mxfp8-dual-bs1-128-gemm.svg)
+
+### Real-model activations
+
+The October 9 Qwen3.5-4B study uses real BF16 activations and natural caches across 32 gate/up and 24 QKVZ projections, with PDL off. ISL256/OSL32 covers all request batches1–128 in both orders; ISL3000/OSL384 checks seven representative batches. Graph padding maps requests to physical M (for example BS3→M4, BS33→M40).
+
+GEMM timings exclude quantization and use external events inside the Graph. Steady-state timings discard the first three and final two decode steps. Backbone timings remove internal events and exclude LM head, sampling, CPU scheduling and HTTP. Across the 128 request batches, steady-state dual GEMM latency is 27.3% higher for QKVZ and 31.8% higher for gate/up; backbone latency is 8.2% higher.
+
+| 请求 BS 范围 | 稳态 QKVZ D/S | 稳态 gate/up D/S | 无内部事件 backbone D/S |
+|---|---:|---:|---:|
+| 1-32 | 1.060 | 1.013 | 1.007 |
+| 33-64 | 1.180 | 1.064 | 1.034 |
+| 65-128 | 1.448 | 1.673 | 1.148 |
+
+![Dual GEMM with real activations and natural caches](mxfp8-dual-actual-inference.svg)
+
+### Data and tools
+
+- Synthetic sweep: [JSON](../benchmarks/results/mxfp8_dual_bs1_128.json), [CSV](../benchmarks/results/mxfp8_dual_bs1_128.csv), [benchmark](../benchmarks/benchmark_mxfp8_dual.py).
+- Natural-cache study: [JSON](../benchmarks/results/mxfp8_dual_actual_inference_bs1_128.json), [CSV](../benchmarks/results/mxfp8_dual_actual_inference_bs1_128.csv), [inference harness](../benchmarks/benchmark_mxfp8_dual_inference.py), [report tool](../benchmarks/report_mxfp8_dual_inference.py).
+
+The JSON retains per-batch absolute latencies, physical-row mappings, repeat samples, environment and numerical checks. Use the native test suite for the current source revision.

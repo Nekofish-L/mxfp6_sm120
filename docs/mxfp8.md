@@ -142,9 +142,7 @@ configurations with PDL off, M ≤ 32, and an expanded deployment limit.
 Its token/concurrency workload is explicit and differs from the public
 six-point benchmark. Native API support and a profitable deployment limit
 are separate questions; measure both on the target workload.
-The [batch extension and performance report](mxfp8-pdl-performance.md)
-records full-service results alongside chain gains and isolated-projection
-regressions.
+The [PDL measurements](#pdl-measurements) below cover service, dependency-chain and isolated-projection timing.
 
 The backends share the workspace implementation and Python helper, with
 independent pools. Plan all expected shapes, freeze capacity, then warm
@@ -276,3 +274,40 @@ remain independent.
 ## Fixed BF16 BA projection
 
 `mxfp8.bf16_ba_m16(x, weight)` computes BF16 `X @ W.T` with FP32 MMA accumulation and one BF16 output rounding. It requires contiguous, 16-byte-aligned CUDA BF16 `X[16,2048]` and `W[32,2048]` on SM120 and returns `Y[16,32]`. The call uses `mxfp8_torch` without quantization. Warm it before CUDA Graph capture and update captured inputs in place. Its fixed reduction order is not guaranteed bitwise equal to an arbitrary BF16 GEMM backend.
+
+## PDL measurements
+
+October 8, 2026; RTX 5090, CUDA 13.0, PyTorch 2.13, vLLM 0.29. The Qwen3.5-4B single-activation MXFP8 service comparison changed only PDL off/on and its physical-row limit. Each setting used two fresh lifecycles in forward/reverse order; the table reports output tokens/s.
+
+| Concurrency | PDL off tok/s | M≤32 tok/s | M≤128 tok/s | M≤32 vs off | M≤128 vs off | M≤128 vs M≤32 |
+|---:|---:|---:|---:|---:|---:|---:|
+| 4 | 852.31 (852.21, 852.41) | 870.01 (870.75, 869.27) | 869.82 (870.08, 869.55) | +2.08% | +2.05% | -0.02% |
+| 16 | 2769.84 (2769.67, 2770.01) | 2813.56 (2816.81, 2810.31) | 2814.94 (2813.67, 2816.20) | +1.58% | +1.63% | +0.05% |
+| 32 | 4203.76 (4195.13, 4212.39) | 4227.66 (4217.61, 4237.70) | 4239.30 (4230.01, 4248.58) | +0.57% | +0.85% | +0.28% |
+| 64 | 5178.57 (5171.38, 5185.75) | 5149.25 (5155.80, 5142.70) | 5195.95 (5188.78, 5203.13) | -0.57% | +0.34% | +0.91% |
+| 128 | 6075.12 (6042.47, 6107.77) | 6048.58 (6038.18, 6058.98) | 6071.19 (6050.45, 6091.93) | -0.44% | -0.06% | +0.37% |
+
+The workload used 1024 input and 512 output tokens, greedy sampling, TP1, FP8 KV, Triton attention and an NVFP4 candidate head with BF16 refinement. Limits were maxseq128, maxlen4096, maxbatch2048 and memory utilization 0.80. All 2,928 scored requests completed with matching token contracts and response hashes. The M≤128 result was +2.05%/+1.63% at c4/c16 and +0.34%/−0.06% at c64/c128. Differences near the two-run spread are inconclusive. This is a PDL increment on the recorded service configuration.
+
+An eight-layer rotating MLP chain (557 MiB of real weights, synthetic BF16 inputs) used GemmaNorm → gate/up → SwiGLU/quantization → down with planned workspaces. Timings are medians of nine randomized paired Graph trials; GPU gain is off/on−1.
+
+| M | PDL off µs | PDL on µs | GPU speedup |
+|---:|---:|---:|---:|
+| 1 | 426.50 | 411.70 | +3.59% |
+| 16 | 440.12 | 426.29 | +3.24% |
+| 32 | 437.25 | 424.04 | +3.12% |
+| 33 | 450.66 | 436.43 | +3.26% |
+| 48 | 453.32 | 443.60 | +2.19% |
+| 64 | 456.70 | 442.16 | +3.29% |
+| 65 | 491.11 | 475.44 | +3.30% |
+| 96 | 504.37 | 486.09 | +3.76% |
+| 128 | 511.95 | 496.95 | +3.02% |
+| 192 | 624.84 | 619.93 | +0.79% |
+| 256 | 691.35 | 680.50 | +1.60% |
+| 512 | 1297.20 | 1295.56 | +0.13% |
+| 1024 | 2255.31 | 2233.80 | +0.96% |
+| 2048 | 4417.13 | 4421.84 | -0.11% |
+
+Repeated isolated projections can regress: at M64, down was 20.6% slower with PDL while the rotating chain was 3.3% faster. The [raw artifact](../benchmarks/results/mxfp8_pdl_batch_validation.json) retains all 56 projection points, 14 chain points, source/library hashes and service samples. Changed-input Graph replay produced bitwise-equal PDL on/off outputs; sanitizer checks recorded zero errors.
+
+Use [the GPU benchmark](../benchmarks/benchmark_mxfp8_pdl.py) and [the HTTP benchmark](../benchmarks/benchmark_mxfp8_pdl_serving.py) to measure the target shape and deployment limit. Native PDL APIs and buffer contracts are specified above.

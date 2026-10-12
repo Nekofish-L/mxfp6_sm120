@@ -21,10 +21,10 @@
 
 | Report | Scope |
 |---|---|
-| [Component and earlier service benchmarks](benchmarks.md) | Native GEMM/MoE measurements and frozen Qwen3.5 TP2 service snapshots |
-| [Qwen3.8-27B](qwen38-27b.md) | Separate FP8/MXFP6/NVFP4 fidelity, service and capacity study |
-| [Dual performance](mxfp8-dual-performance.md) | Synthetic and real activations; cache-dependent latency and approximation error |
-| [PDL performance](mxfp8-pdl-performance.md) | Incremental launch-mode HTTP and dependency-chain comparisons |
+| [Kernel benchmarks](benchmarks.md) | Native Dense GEMM and complete TP2 MoE layer |
+| [Qwen3.8-27B](qwen38-27b.md) | FP8/MXFP6/NVFP4 fidelity and capacity |
+| [Dual measurements](mxfp8-dual.md#performance-and-activation-fidelity) | Synthetic and real activations; cache-dependent latency and approximation error |
+| [PDL measurements](mxfp8.md#pdl-measurements) | Incremental launch-mode HTTP and dependency-chain comparisons |
 | [Raw artifacts](../benchmarks/results/README.md) | Scope and source index for checked-in JSON/CSV |
 
 Serving gains, component speedups and reference fidelity answer different questions. Use each report's baseline, units, workload and runtime identity.
