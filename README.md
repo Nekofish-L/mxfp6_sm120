@@ -80,7 +80,7 @@ The [API guides](docs/README.md#operators) cover CUDA Graph setup, concurrent st
 
 Use [Mach's installation and launch guides](https://github.com/troycheng/vllm-mach) for current model profiles and dependency revisions. The library supplies operators and layouts; Mach owns model admission, scheduling and serving configuration.
 
-The [vLLM v0.28 TP2 example](examples/vllm/README.md) is a separate version-locked reproducer for Qwen3.5-27B and Qwen3.5-35B-A3B. Its validation and earlier baseline comparison are recorded in [benchmarks](docs/benchmarks.md#public-reproduction-history).
+The [vLLM v0.28 TP2 example](examples/vllm/README.md) is a separate version-locked reproducer for Qwen3.5-27B and Qwen3.5-35B-A3B. The example includes build, launch and native-execution checks.
 
 ## Documentation
 
@@ -90,7 +90,7 @@ The [vLLM v0.28 TP2 example](examples/vllm/README.md) is a separate version-lock
 | [API guides](docs/README.md#operators) | Dense W6A8/W8A8, dual activations, MoE and producer contracts |
 | [Checkpoint conversion](docs/quantize-checkpoints.md) | Validated Quark conversion, metadata checks and layout/ABI boundary |
 | [Development](docs/development.md) | Platform, source build, ABI, integration and validation |
-| [Benchmark evidence](docs/README.md#measurement-evidence) | Component results, earlier service snapshots and fidelity studies |
+| [Benchmark evidence](docs/README.md#measurement-evidence) | Kernel measurements and fidelity studies |
 | [Contributing](CONTRIBUTING.md) | Contribution and review requirements |
 
 ## License

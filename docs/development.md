@@ -136,4 +136,4 @@ The standalone package has no vLLM or SGLang dependency and does not provide a g
 
 The example registers native Dense execution ahead of the emulation fallback and selects routed MoE only for its validated checkpoint geometry, SM120 and TP2 configuration. CUDA implementations and GPU tests belong to this package; registration, checkpoint admission and unsupported-case fallback belong to the runtime adapter. SGLang has no adapter in this repository.
 
-See [checkpoint conversion and format](quantize-checkpoints.md) for the model-scoped loader boundary and [benchmark evidence](benchmarks.md) for the frozen reproducer measurements.
+See [checkpoint conversion and format](quantize-checkpoints.md) for the model-scoped loader boundary and [v0.28 integration receipt](../benchmarks/results/vllm_v028_public_reproducer_validation.json) for its measured execution checks.
