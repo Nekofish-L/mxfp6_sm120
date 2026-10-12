@@ -78,6 +78,6 @@ end-to-end throughput for a serving integration.
 
 The batch extension tests every M for both projections, with an independent
 scale oracle, poisoned-buffer changing-input Graph replay, and a mathematical
-GEMM reference. The [single/dual comparison](mxfp8-dual-bs1-128.md) records
+GEMM reference. The [single/dual comparison](mxfp8-dual-performance.md) records
 all 256 batch/projection points, GEMM-only and quantization+GEMM timings,
 hot/cold weight-cache measurements, and activation approximation error.

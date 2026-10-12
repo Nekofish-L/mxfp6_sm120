@@ -1,0 +1,338 @@
+{
+  "schema_version": 1,
+  "updated": "2026-10-11",
+  "unit": "output tokens/s",
+  "workload": {
+    "input_tokens": 3000,
+    "output_tokens": 1000
+  },
+  "gpu": "RTX 5090 32 GiB",
+  "full_profile": "MXFP6 full adds FP16 recurrent state and NVFP4 candidate search with BF16 head refinement.",
+  "sources": {
+    "mxfp8-2b-triton-hybrid-sixpoint-20261011.json": {
+      "url": "https://github.com/troycheng/vllm-mach/blob/eaa0acd6f5700913d10a422f6d4075614b9fb6be/docs/data/mxfp8-2b-triton-hybrid-sixpoint-20261011.json",
+      "sha256": "2085f611b0078e430e0cae63b4d8ab0f202ad17473d99fe170accb8006d0ee96"
+    },
+    "mxfp8-qualification-20261006.json": {
+      "url": "https://github.com/troycheng/vllm-mach/blob/eaa0acd6f5700913d10a422f6d4075614b9fb6be/docs/data/mxfp8-qualification-20261006.json",
+      "sha256": "c4746833405c6c69c669fa72797a8fbd99605e5fe87033e33823762bc5f3f76f"
+    },
+    "fp8-qualification-20261006.json": {
+      "url": "https://github.com/troycheng/vllm-mach/blob/eaa0acd6f5700913d10a422f6d4075614b9fb6be/docs/data/fp8-qualification-20261006.json",
+      "sha256": "517edfcdaaf567b9d38bd7e7db602cc3ae03545a2aa81fa4425eda03c0a73c9a"
+    },
+    "dense-gains-aligned-baseline-20260920.json": {
+      "url": "https://github.com/troycheng/vllm-mach/blob/eaa0acd6f5700913d10a422f6d4075614b9fb6be/docs/data/dense-gains-aligned-baseline-20260920.json",
+      "sha256": "a44c762ea075df8e4f24224a1455d89b0305f35389443b7b377edbb0ef509bea"
+    },
+    "dense-core-ablation-20260920.json": {
+      "url": "https://github.com/troycheng/vllm-mach/blob/eaa0acd6f5700913d10a422f6d4075614b9fb6be/docs/data/dense-core-ablation-20260920.json",
+      "sha256": "38522465ff8b79a3440ef621d0ebfd13874986466593d5d31146d2daa3b6a2fe"
+    },
+    "moe-recheck-20260928.json": {
+      "url": "https://github.com/troycheng/vllm-mach/blob/eaa0acd6f5700913d10a422f6d4075614b9fb6be/docs/data/moe-recheck-20260928.json",
+      "sha256": "d2cab7031b5b2b7ea17604e18515ebf1d30422d1506290b3d2ecde75bbba16f8"
+    },
+    "profile-fidelity-20260917.json": {
+      "url": "https://github.com/troycheng/vllm-mach/blob/eaa0acd6f5700913d10a422f6d4075614b9fb6be/docs/data/profile-fidelity-20260917.json",
+      "sha256": "7540a439279281429951168868d1d5b78f9849519de5ac620a87a3090e0bf31e"
+    }
+  },
+  "models": [
+    {
+      "id": "qwen35-2b",
+      "title": "Qwen3.5-2B",
+      "profile": "MXFP8 \u00b7 Triton + hybrid",
+      "tp": 1,
+      "date": "2026-10-11",
+      "guide": "mxfp8-2b-champion.md",
+      "scope": "Selected and previous configurations are paired on GPU0; community FP8 is the historical GPU1 reference.",
+      "source": "mxfp8-2b-triton-hybrid-sixpoint-20261011.json",
+      "points": [
+        {
+          "c": 4,
+          "baseline_tps": 1261.892459195426,
+          "selected_tps": 1588.2700442385856,
+          "gain_pct": 25.864136255418767,
+          "previous_tps": 1395.3051165127224,
+          "previous_gain_pct": 13.829586478414079,
+          "mean_ttft_ms": 98.90179886715487,
+          "mean_tpot_ms": 2.421406098805532
+        },
+        {
+          "c": 16,
+          "baseline_tps": 3814.3333161740834,
+          "selected_tps": 4801.955864194793,
+          "gain_pct": 25.892402843580854,
+          "previous_tps": 4295.09679241665,
+          "previous_gain_pct": 11.800876587299381,
+          "mean_ttft_ms": 134.0918363624951,
+          "mean_tpot_ms": 3.1978914620024055
+        },
+        {
+          "c": 24,
+          "baseline_tps": 5069.677071743112,
+          "selected_tps": 6209.524540632418,
+          "gain_pct": 22.483630668361123,
+          "previous_tps": 5594.325153970394,
+          "previous_gain_pct": 10.99684715725553,
+          "mean_ttft_ms": 192.81430379487574,
+          "mean_tpot_ms": 3.665692983481854
+        },
+        {
+          "c": 32,
+          "baseline_tps": 5870.222273980189,
+          "selected_tps": 7259.99006032221,
+          "gain_pct": 23.67487501286245,
+          "previous_tps": 6595.489524089714,
+          "previous_gain_pct": 10.075075304197512,
+          "mean_ttft_ms": 224.48807231266983,
+          "mean_tpot_ms": 4.173916445513539
+        },
+        {
+          "c": 48,
+          "baseline_tps": 6837.596724087279,
+          "selected_tps": 8036.469609693067,
+          "gain_pct": 17.53354188588565,
+          "previous_tps": 7896.459572214782,
+          "previous_gain_pct": 1.773073567943495,
+          "mean_ttft_ms": 277.4473630745585,
+          "mean_tpot_ms": 5.67791963469128
+        },
+        {
+          "c": 64,
+          "baseline_tps": 7578.863502078369,
+          "selected_tps": 9008.341662091349,
+          "gain_pct": 18.861378881160352,
+          "previous_tps": 8702.232050997764,
+          "previous_gain_pct": 3.5175988102786437,
+          "mean_ttft_ms": 333.2564046722837,
+          "mean_tpot_ms": 6.7434899885802535
+        }
+      ]
+    },
+    {
+      "id": "qwen35-4b",
+      "title": "Qwen3.5-4B",
+      "profile": "MXFP8 champion",
+      "tp": 1,
+      "date": "2026-10-06",
+      "guide": "mxfp8-champion.md",
+      "scope": "One complete source-built champion screen versus the October 5 community FP8 screen; 1,040 requests per screen.",
+      "source": "mxfp8-qualification-20261006.json",
+      "points": [
+        {
+          "c": 4,
+          "baseline_tps": 683.9592274311776,
+          "selected_tps": 880.13087219406,
+          "gain_pct": 28.681774716259945,
+          "mean_ttft_ms": 173.56061685131863,
+          "mean_tpot_ms": 4.374511143156758
+        },
+        {
+          "c": 16,
+          "baseline_tps": 2053.547069808179,
+          "selected_tps": 2481.297504243179,
+          "gain_pct": 20.82983344886056,
+          "mean_ttft_ms": 237.62080769520253,
+          "mean_tpot_ms": 6.211401395282608
+        },
+        {
+          "c": 24,
+          "baseline_tps": 2559.262243795155,
+          "selected_tps": 3189.417177357051,
+          "gain_pct": 24.622522959094372,
+          "mean_ttft_ms": 347.69653003119555,
+          "mean_tpot_ms": 7.16718850591853
+        },
+        {
+          "c": 32,
+          "baseline_tps": 2887.824845075892,
+          "selected_tps": 3672.6956325990527,
+          "gain_pct": 27.17861468854197,
+          "mean_ttft_ms": 410.6970969354734,
+          "mean_tpot_ms": 8.286266025516216
+        },
+        {
+          "c": 48,
+          "baseline_tps": 3220.5493315162103,
+          "selected_tps": 4168.038142969189,
+          "gain_pct": 29.420099303583957,
+          "mean_ttft_ms": 540.3606674808543,
+          "mean_tpot_ms": 10.947146269583
+        },
+        {
+          "c": 64,
+          "baseline_tps": 3402.756586123198,
+          "selected_tps": 4653.928865958399,
+          "gain_pct": 36.76937354078203,
+          "mean_ttft_ms": 688.760968085262,
+          "mean_tpot_ms": 13.017450564057782
+        }
+      ]
+    },
+    {
+      "id": "qwen35-4b-block-fp8",
+      "title": "Qwen3.5-4B block-FP8",
+      "profile": "Block-FP8 \u00b7 all four features",
+      "tp": 1,
+      "date": "2026-10-06",
+      "guide": "fp8-profile.md",
+      "scope": "One same-stack stock/all-features pair at each point; 680 requests per arm. Its FP8 baseline is separate from the MXFP8 study.",
+      "source": "fp8-qualification-20261006.json",
+      "points": [
+        {
+          "c": 4,
+          "baseline_tps": 678.5384136298194,
+          "selected_tps": 739.8429277011128,
+          "gain_pct": 9.034789017079659,
+          "mean_ttft_ms": 192.46329728048295,
+          "mean_tpot_ms": 5.218103843183164
+        },
+        {
+          "c": 16,
+          "baseline_tps": 2018.8898012747036,
+          "selected_tps": 2143.5958061160563,
+          "gain_pct": 6.176959473598553,
+          "mean_ttft_ms": 260.1608932192903,
+          "mean_tpot_ms": 7.2047305159078245
+        },
+        {
+          "c": 32,
+          "baseline_tps": 2834.83972607626,
+          "selected_tps": 3003.9997471498423,
+          "gain_pct": 5.967181125534715,
+          "mean_ttft_ms": 451.1746731615858,
+          "mean_tpot_ms": 10.182331362069148
+        },
+        {
+          "c": 64,
+          "baseline_tps": 3363.732949532293,
+          "selected_tps": 3598.8375299173026,
+          "gain_pct": 6.989394934508697,
+          "mean_ttft_ms": 771.874387349817,
+          "mean_tpot_ms": 16.9547920445354
+        }
+      ]
+    },
+    {
+      "id": "qwen38-27b",
+      "title": "Qwen3.8-27B Dense",
+      "profile": "MXFP6 default / full",
+      "tp": 2,
+      "date": "2026-09-20",
+      "guide": "dense-gains-aligned-baseline-20260920.md",
+      "scope": "One configuration sweep; runtime, GPU-group and measurement-batch differences are recorded in the study.",
+      "source": "dense-gains-aligned-baseline-20260920.json",
+      "points": [
+        {
+          "c": 4,
+          "baseline_tps": 264.5709786588496,
+          "selected_tps": 411.141253128587,
+          "gain_pct": 55.39922602725527,
+          "default_tps": 380.1737351988204,
+          "default_gain_pct": 43.694420728221495
+        },
+        {
+          "c": 16,
+          "baseline_tps": 802.7942706277097,
+          "selected_tps": 1141.4009465471138,
+          "gain_pct": 42.17851176922893,
+          "default_tps": 1046.9349302348999,
+          "default_gain_pct": 30.41136048670292
+        },
+        {
+          "c": 24,
+          "baseline_tps": 1011.428013369025,
+          "selected_tps": 1498.9256416926964,
+          "gain_pct": 48.198944648550615,
+          "default_tps": 1374.5279969327348,
+          "default_gain_pct": 35.89973569688254
+        },
+        {
+          "c": 32,
+          "baseline_tps": 1150.9702784595104,
+          "selected_tps": 1718.2421537657672,
+          "gain_pct": 49.28640521156713,
+          "default_tps": 1553.0945838877315,
+          "default_gain_pct": 34.93785312740092
+        }
+      ]
+    },
+    {
+      "id": "qwen35-35b-a3b",
+      "title": "Qwen3.5-35B-A3B MoE",
+      "profile": "MXFP6 default / full",
+      "tp": 2,
+      "date": "2026-09-28",
+      "guide": "moe-gains-fp8-baseline-20260920.md",
+      "scope": "MXFP6 means of two sweeps versus September 17 FP8. The measured default has projection tuning off; full includes it. Current launchers enable eligible tuning.",
+      "source": "moe-recheck-20260928.json",
+      "points": [
+        {
+          "c": 4,
+          "baseline_tps": 679.8925570357494,
+          "selected_tps": 1096.9335991399048,
+          "gain_pct": 61.339256885294446,
+          "default_tps": 1008.5593463306529,
+          "default_gain_pct": 48.34098945395897
+        },
+        {
+          "c": 16,
+          "baseline_tps": 1471.581584046277,
+          "selected_tps": 2561.852691500362,
+          "gain_pct": 74.08839029204645,
+          "default_tps": 2338.96634693553,
+          "default_gain_pct": 58.94234966601597
+        },
+        {
+          "c": 24,
+          "baseline_tps": 1774.638681882689,
+          "selected_tps": 3073.564339231173,
+          "gain_pct": 73.19380956863131,
+          "default_tps": 2920.7350489624296,
+          "default_gain_pct": 64.58195568372618
+        },
+        {
+          "c": 32,
+          "baseline_tps": 1962.1364112538754,
+          "selected_tps": 3518.4360093513587,
+          "gain_pct": 79.31658518598879,
+          "default_tps": 3277.023547274038,
+          "default_gain_pct": 67.01303377678529
+        }
+      ]
+    }
+  ],
+  "fidelity": {
+    "date_native": "2026-09-17",
+    "two_b": {
+      "4": 0.04897896855017646,
+      "16": 0.049287281043412685,
+      "24": 0.04782972899157243,
+      "32": 0.04946947933678193,
+      "48": 0.048998622286014454,
+      "64": 0.04875406544717415
+    },
+    "four_b": {
+      "32": 0.049038113195664354,
+      "64": 0.05328604736462726
+    },
+    "native": {
+      "dense": {
+        "bf16": 0.0,
+        "fp8": 0.06143042320101007,
+        "nvfp4": 0.17328151586343543,
+        "default": 0.09064301912451689,
+        "full": 0.08962351675540736
+      },
+      "moe": {
+        "bf16": 0.0,
+        "fp8": 0.055339743714714784,
+        "nvfp4": 0.22836021565722003,
+        "default": 0.07261099291964493,
+        "full": 0.07408866144119812
+      }
+    }
+  }
+}

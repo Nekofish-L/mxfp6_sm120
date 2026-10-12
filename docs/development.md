@@ -9,8 +9,7 @@ git clone --recurse-submodules https://github.com/Nekofish-L/mxfp6_sm120.git
 cd mxfp6_sm120
 ```
 
-Toolchain and platform requirements are listed in
-[Compatibility](compatibility.md).
+Toolchain, ABI and platform requirements are listed below.
 
 For an existing clone:
 
@@ -40,12 +39,7 @@ ctest --test-dir build --output-on-failure
 ## CUTLASS patch queue
 
 CUTLASS is pinned at `e6233cbac5d7c7a865c19c91cd684ceece19513c`.
-The runtime build requires the small-tile SM120 patch; the profiler patch adds
-the wider candidate grid used for offline search:
-
-- `patches/cutlass/0001-sm120-mxfp6-small-tile-runtime.patch`;
-- `patches/cutlass/0002-sm120-mxfp6-profiler-search.patch`;
-- `patches/cutlass/0003-sm120-streamk-persistent-workspace.patch`.
+The runtime patch set includes small tiles, persistent Stream-K workspaces, the single-stage mainloop, static problem shapes and PDL release. `scripts/apply_cutlass_patches.sh --runtime-only` applies patches 0001/0003/0004/0005/0006; patch 0002 adds the wider offline profiler search grid. See the [patch queue](../patches/cutlass/README.md) for each change.
 
 Apply, validate or reverse the queue with:
 
@@ -97,3 +91,49 @@ patches/cutlass/       Versioned SM120 CUTLASS fixes
 scripts/               Build and patch helpers
 third_party/           Pinned CUTLASS submodule
 ```
+
+## Compatibility
+
+### Project scope
+
+`mxfp6-sm120` is a source-built PyTorch CUDA extension for NVIDIA compute
+capability 12.0. The public compatibility boundary is the Python and
+`torch.ops.mxfp6` API in this repository. vLLM and SGLang are optional
+benchmark/integration consumers, not package dependencies.
+
+### Supported boundary
+
+| Component | Current policy |
+|---|---|
+| GPU | Exactly SM120. Other compute capabilities fail closed at runtime. |
+| OS | Linux. Other operating systems are not supported. |
+| CUDA Toolkit | 12.8 or newer; the release is compiled for `sm_120a`. |
+| PyTorch | CUDA-enabled PyTorch with FP8 dtype support. Build the extension against the exact PyTorch ABI used at runtime. |
+| Python | 3.10 or newer. |
+| CUTLASS | Pinned submodule commit `e6233cbac5d7c7a865c19c91cd684ceece19513c` plus the checked-in runtime patches. |
+| Distribution | Source wheel only. No cross-PyTorch or cross-CUDA binary compatibility is promised. |
+
+The build intentionally rejects an uninitialized or mismatched CUTLASS
+checkout. The Python API checks CUDA placement, dtype, contiguity, shape and
+SM120 capability before dispatch.
+
+
+### Upgrade policy
+
+Until a 1.0 release, CUDA operator schemas, workspace layouts and Qwen-specific
+APIs may change between minor releases. Patch releases must remain compatible
+within their minor line. Applications should pin both the package version and
+the source commit.
+
+## Runtime consumers
+
+The standalone package has no vLLM or SGLang dependency and does not provide a general model checkpoint loader. [vLLM Mach](https://github.com/troycheng/vllm-mach) is the serving integration for current model profiles. [`examples/vllm`](../examples/vllm/README.md) retains a separate vLLM v0.28.0 TP2 reproducer for the validated Qwen3.5-27B and 35B-A3B Quark layouts.
+
+| Public reproducer path | vLLM v0.28 interface | Package responsibility |
+|---|---|---|
+| Dense | `MxFp6LinearKernel` | Weight processing, capability checks and native W6A8 GEMM |
+| Routed MoE | `FusedMoEExpertsModular` | Routing, W1, activation, W2, shared expert and reduction |
+
+The example registers native Dense execution ahead of the emulation fallback and selects routed MoE only for its validated checkpoint geometry, SM120 and TP2 configuration. CUDA implementations and GPU tests belong to this package; registration, checkpoint admission and unsupported-case fallback belong to the runtime adapter. SGLang has no adapter in this repository.
+
+See [checkpoint conversion and format](quantize-checkpoints.md) for the model-scoped loader boundary and [benchmark evidence](benchmarks.md) for the frozen reproducer measurements.
