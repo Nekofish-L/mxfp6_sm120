@@ -466,13 +466,20 @@ std::tuple<at::Tensor, at::Tensor> silu_and_mul_mxfp8_cuda(at::Tensor const& inp
               "SwiGLU input must be [M,2K] with K divisible by 32");
   return quantize_mx<8, true, true>(input);
 }
+std::tuple<at::Tensor, at::Tensor> silu_and_mul_mxfp8_pdl_cuda(at::Tensor const& input) {
+  TORCH_CHECK(input.dim() == 2 && input.size(1) % 64 == 0,
+              "SwiGLU input must be [M,2K] with K divisible by 32");
+  return quantize_mx<8, true, true, true>(input);
+}
 }  // namespace mxfp6_gemm::torch_ext
 
 TORCH_LIBRARY_FRAGMENT(mxfp6, m) {
   m.def("quantize_mxfp8_pdl(Tensor input) -> (Tensor values, Tensor scales)");
   m.def("silu_and_mul_mxfp8(Tensor input) -> (Tensor values, Tensor scales)");
+  m.def("silu_and_mul_mxfp8_pdl(Tensor input) -> (Tensor values, Tensor scales)");
 }
 TORCH_LIBRARY_IMPL(mxfp6, CUDA, m) {
   m.impl("quantize_mxfp8_pdl", &mxfp6_gemm::torch_ext::quantize_mxfp8_pdl_cuda);
   m.impl("silu_and_mul_mxfp8", &mxfp6_gemm::torch_ext::silu_and_mul_mxfp8_cuda);
+  m.impl("silu_and_mul_mxfp8_pdl", &mxfp6_gemm::torch_ext::silu_and_mul_mxfp8_pdl_cuda);
 }
