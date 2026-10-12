@@ -1,6 +1,6 @@
 {
-  "schema_version": 1,
-  "updated": "2026-10-11",
+  "schema_version": 2,
+  "updated": "2026-10-12",
   "unit": "output tokens/s",
   "workload": {
     "input_tokens": 3000,
@@ -32,6 +32,14 @@
     "moe-recheck-20260928.json": {
       "url": "https://github.com/troycheng/vllm-mach/blob/eaa0acd6f5700913d10a422f6d4075614b9fb6be/docs/data/moe-recheck-20260928.json",
       "sha256": "d2cab7031b5b2b7ea17604e18515ebf1d30422d1506290b3d2ecde75bbba16f8"
+    },
+    "native-serving.json": {
+      "url": "https://github.com/troycheng/vllm-mach/blob/eaa0acd6f5700913d10a422f6d4075614b9fb6be/docs/data/native-serving.json",
+      "sha256": "fd03ecb1110361253eb77a60b99fdafd1a1db4cfaf4480659dce4cfad424b8ac"
+    },
+    "qwen35-default-full-20260917.json": {
+      "url": "https://github.com/troycheng/vllm-mach/blob/eaa0acd6f5700913d10a422f6d4075614b9fb6be/docs/data/qwen35-default-full-20260917.json",
+      "sha256": "956efa65f71f56e0ac11b438e3d8a0c63ef065416cabff246440c979bb5bb212"
     },
     "profile-fidelity-20260917.json": {
       "url": "https://github.com/troycheng/vllm-mach/blob/eaa0acd6f5700913d10a422f6d4075614b9fb6be/docs/data/profile-fidelity-20260917.json",
@@ -224,6 +232,9 @@
       "guide": "dense-gains-aligned-baseline-20260920.md",
       "scope": "One configuration sweep; runtime, GPU-group and measurement-batch differences are recorded in the study.",
       "source": "dense-gains-aligned-baseline-20260920.json",
+      "nvfp4_source": "native-serving.json",
+      "nvfp4_date": "2026-09-15",
+      "fidelity_key": "dense",
       "points": [
         {
           "c": 4,
@@ -231,6 +242,9 @@
           "selected_tps": 411.141253128587,
           "gain_pct": 55.39922602725527,
           "default_tps": 380.1737351988204,
+          "nvfp4_tps": 378.9749021842816,
+          "nvfp4_gain_pct": 8.487725904514942,
+          "default_nvfp4_gain_pct": 0.3163357276772638,
           "default_gain_pct": 43.694420728221495
         },
         {
@@ -239,6 +253,9 @@
           "selected_tps": 1141.4009465471138,
           "gain_pct": 42.17851176922893,
           "default_tps": 1046.9349302348999,
+          "nvfp4_tps": 1142.8736960118938,
+          "nvfp4_gain_pct": -0.1288637117049074,
+          "default_nvfp4_gain_pct": -8.394520419165852,
           "default_gain_pct": 30.41136048670292
         },
         {
@@ -247,6 +264,9 @@
           "selected_tps": 1498.9256416926964,
           "gain_pct": 48.198944648550615,
           "default_tps": 1374.5279969327348,
+          "nvfp4_tps": 1424.61477493059,
+          "nvfp4_gain_pct": 5.21620778260754,
+          "default_nvfp4_gain_pct": -3.515812055248102,
           "default_gain_pct": 35.89973569688254
         },
         {
@@ -255,6 +275,9 @@
           "selected_tps": 1718.2421537657672,
           "gain_pct": 49.28640521156713,
           "default_tps": 1553.0945838877315,
+          "nvfp4_tps": 1607.5551116538861,
+          "nvfp4_gain_pct": 6.885427523414989,
+          "default_nvfp4_gain_pct": -3.3877860467330767,
           "default_gain_pct": 34.93785312740092
         }
       ]
@@ -268,6 +291,9 @@
       "guide": "moe-gains-fp8-baseline-20260920.md",
       "scope": "MXFP6 means of two sweeps versus September 17 FP8. The measured default has projection tuning off; full includes it. Current launchers enable eligible tuning.",
       "source": "moe-recheck-20260928.json",
+      "nvfp4_source": "qwen35-default-full-20260917.json",
+      "nvfp4_date": "2026-09-17",
+      "fidelity_key": "moe",
       "points": [
         {
           "c": 4,
@@ -275,6 +301,9 @@
           "selected_tps": 1096.9335991399048,
           "gain_pct": 61.339256885294446,
           "default_tps": 1008.5593463306529,
+          "nvfp4_tps": 730.6000100164259,
+          "nvfp4_gain_pct": 50.14147058596983,
+          "default_nvfp4_gain_pct": 38.04535073958974,
           "default_gain_pct": 48.34098945395897
         },
         {
@@ -283,6 +312,9 @@
           "selected_tps": 2561.852691500362,
           "gain_pct": 74.08839029204645,
           "default_tps": 2338.96634693553,
+          "nvfp4_tps": 1654.1982241771157,
+          "nvfp4_gain_pct": 54.869752249598804,
+          "default_nvfp4_gain_pct": 41.39577184584717,
           "default_gain_pct": 58.94234966601597
         },
         {
@@ -291,6 +323,9 @@
           "selected_tps": 3073.564339231173,
           "gain_pct": 73.19380956863131,
           "default_tps": 2920.7350489624296,
+          "nvfp4_tps": 1985.3099920941713,
+          "nvfp4_gain_pct": 54.81533621805201,
+          "default_nvfp4_gain_pct": 47.117329817170805,
           "default_gain_pct": 64.58195568372618
         },
         {
@@ -299,6 +334,9 @@
           "selected_tps": 3518.4360093513587,
           "gain_pct": 79.31658518598879,
           "default_tps": 3277.023547274038,
+          "nvfp4_tps": 2202.1139291920717,
+          "nvfp4_gain_pct": 59.77538503842212,
+          "default_nvfp4_gain_pct": 48.81262517041236,
           "default_gain_pct": 67.01303377678529
         }
       ]
@@ -333,6 +371,57 @@
         "default": 0.07261099291964493,
         "full": 0.07408866144119812
       }
+    },
+    "native_ci95": {
+      "dense": {
+        "bf16": [
+          0.0,
+          0.0
+        ],
+        "fp8": [
+          0.054315287902509064,
+          0.06908395588011668
+        ],
+        "nvfp4": [
+          0.15625508854895392,
+          0.1912902037392678
+        ],
+        "default": [
+          0.08264653861703357,
+          0.09895425906780657
+        ],
+        "full": [
+          0.08203567080437918,
+          0.09731123508434938
+        ]
+      },
+      "moe": {
+        "bf16": [
+          0.0,
+          0.0
+        ],
+        "fp8": [
+          0.05136981922732846,
+          0.059458091726807605
+        ],
+        "nvfp4": [
+          0.2127264740967845,
+          0.24409256944146243
+        ],
+        "default": [
+          0.06706965851977592,
+          0.07838494486766849
+        ],
+        "full": [
+          0.06854481697669648,
+          0.07979091027648726
+        ]
+      }
+    },
+    "bootstrap": {
+      "seed": 20260910,
+      "replicates": 20000,
+      "unit": "query"
     }
   }
 }
