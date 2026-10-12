@@ -22,7 +22,27 @@ The package provides Dense GEMM, Qwen3.5 routed MoE, activation producers and CU
 | Qwen3.8-27B Dense · MXFP6 default / full | 2 · TP2 | default +30.41% to +43.69%; full +42.18% to +55.40% | [Data](docs/performance.md#qwen38-27b) |
 | Qwen3.5-35B-A3B MoE · MXFP6 default / full | 2 · TP2 | default +48.34% to +67.01%; full +61.34% to +79.32% | [Data](docs/performance.md#qwen35-35b-a3b) |
 
-![Model serving throughput](docs/assets/model-throughput.svg)
+MXFP6 **default** uses FP32 recurrent state and the BF16 head; **full** adds FP16 state and NVFP4 candidate search with BF16 refinement.
+
+### Qwen3.5-2B · MXFP8
+
+![2B FP8 and MXFP8 champion throughput](docs/assets/qwen35-2b-throughput.svg)
+
+### Qwen3.5-4B · MXFP8
+
+![4B FP8 and MXFP8 champion throughput](docs/assets/qwen35-4b-throughput.svg)
+
+### Qwen3.8-27B Dense · FP8, NVFP4 and MXFP6
+
+![27B FP8, NVFP4 and MXFP6 throughput](docs/assets/qwen38-27b-throughput.svg)
+
+![27B precision against BF16](docs/assets/qwen38-27b-precision.svg)
+
+### Qwen3.5-35B-A3B MoE · FP8, NVFP4 and MXFP6
+
+![35B-A3B FP8, NVFP4 and MXFP6 throughput](docs/assets/qwen35-35b-a3b-throughput.svg)
+
+![35B-A3B precision against BF16](docs/assets/qwen35-35b-a3b-precision.svg)
 
 [Detailed service data and methodology](docs/performance.md) · [Machine-readable data](docs/data/model-performance.json)
 
