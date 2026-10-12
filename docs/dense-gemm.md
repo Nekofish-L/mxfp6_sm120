@@ -126,7 +126,7 @@ restored_codes, restored_scales = mxfp6.unpack_operand(packed_weight)
 
 Each code uses its low six bits. UE8M0 byte `0x7f` represents scale 1.0.
 These utilities expose the current in-memory layout; they are not yet a stable
-portable checkpoint format. See [Checkpoint format](checkpoint-format.md).
+portable checkpoint format. See [Checkpoint format](quantize-checkpoints.md).
 
 ## Performance and validation
 

@@ -68,7 +68,7 @@ all-reduce.
 
 Serving evidence includes a public two-model vLLM v0.28.0 reproducer and the
 internal Champion c1 through c32 sweep. The wheel alone does not load an MXFP6
-Hugging Face checkpoint. See [Runtime integration](runtime-integration.md).
+Hugging Face checkpoint. See [Runtime integration](development.md).
 
 ## Benchmarking
 

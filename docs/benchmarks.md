@@ -1,6 +1,6 @@
-# Benchmark methodology and results
+# Component benchmarks and earlier serving snapshots
 
-The project reports three measurement layers. Each answers a different
+Current Mach model-size service results are in the [performance report](performance.md). This page preserves the earlier frozen service environments and native component measurements. The project reports three measurement layers. Each answers a different
 question:
 
 | Layer | Question | Primary metric |
@@ -17,7 +17,7 @@ TP2 serving and TP1 capacity across official FP8, MXFP6 and standard NVFP4
 W4A4. Its integration environment and workload differ from the Qwen3.5
 Champion results below, so the numbers should not be combined.
 
-## Champion full-service comparison
+## Earlier Champion full-service comparison
 
 ### Runtime
 
@@ -62,7 +62,7 @@ The comparison uses four fresh service lifecycles:
 3. MXFP6 B2, concurrency ascending;
 4. FP8 A2, concurrency descending.
 
-Each point had a concurrency-matched warmup. The current update reran both FP8
+Each point had a concurrency-matched warmup. The recorded B4 update reran both FP8
 and MXFP6 c4 lifecycles for the 35B-A3B B4 cluster optimization. The unchanged
 35B-A3B c1/c2 and grouped-from-B5 c8-c32 points were retained, as were all 27B
 points. Every reported point remains the mean of two opposite-order
@@ -188,6 +188,8 @@ weights. Each result is the median of nine paired repeats after 40 warmups and
 | 64 | 238.9 us | 188.3 us | 1.269x | 0.0980 | 0.9952 |
 | 96 | 264.6 us | 207.0 us | 1.278x | 0.0994 | 0.9951 |
 
+The table uses the original nine-batch artifact (1.241–1.787×) except M4, which is the later [B4 cluster update](../benchmarks/results/qwen35_moe_b4_cluster_tp2.json) at 1.313×. The combined table therefore spans 1.269–1.787×; these two implementation snapshots remain separate in the artifacts.
+
 The recorded routed expert IDs matched the FP8 checkpoint at every batch. The
 run recorded this comparison but did not configure a mismatch as a hard process
 failure. The [artifact](../benchmarks/results/qwen35_moe_layer_current_main.json)
@@ -233,9 +235,9 @@ were:
 | Qwen3.5-27B, 3000 input / 1000 output, c32 | 1229.90 | 1341.97 | +9.11% |
 | Qwen3.5-35B-A3B, public `random-mm`, c4 | 678.37 | 793.33 | +16.95% |
 
-The current [`examples/vllm`](../examples/vllm/README.md) image is based on
+The version-locked [`examples/vllm`](../examples/vllm/README.md) image is based on
 vLLM v0.28.0. A single-lifecycle validation on the same dual-RTX-5090 host used
-the current MXFP6 checkpoints, TP2, `max_num_batched_tokens=4096`, prefix
+the recorded MXFP6 checkpoints, TP2, `max_num_batched_tokens=4096`, prefix
 caching disabled and CUDA Graph sizes `[1,2,4,8,16,24,32]`:
 
 | Model | Concurrency | Public v0.28 tok/s | Comparable internal reference | Delta |
@@ -255,15 +257,6 @@ validation, not a replacement for the paired concurrency sweep above. The
 records the exact token contracts and whether the SM120 GDN prefill backport
 was active for each point.
 
-## Artifact index
+## Artifacts
 
-| Artifact | Scope |
-|---|---|
-| [`qwen35_champion_concurrency_tp2.json`](../benchmarks/results/qwen35_champion_concurrency_tp2.json) | Latest Champion full-service c1 through c32 sweep |
-| [`vllm_v028_public_reproducer_validation.json`](../benchmarks/results/vllm_v028_public_reproducer_validation.json) | Public vLLM v0.28 two-model c4/c32 integration validation |
-| [`qwen35_moe_b4_cluster_tp2.json`](../benchmarks/results/qwen35_moe_b4_cluster_tp2.json) | B4 cluster optimization, correctness and fresh c4 service comparison |
-| [`qwen35_dense_gemm_current_main.json`](../benchmarks/results/qwen35_dense_gemm_current_main.json) | Current-main 70-shape Dense GEMM matrix |
-| [`qwen35_moe_layer_current_main.json`](../benchmarks/results/qwen35_moe_layer_current_main.json) | Current-main complete TP2 MoE layer |
-| [`qwen35_public_vllm_tp2.json`](../benchmarks/results/qwen35_public_vllm_tp2.json) | Historical public vLLM v0.25.1 service comparison |
-| [`qwen35_moe_service_tp2.json`](../benchmarks/results/qwen35_moe_service_tp2.json) | Earlier internal 35B-A3B service and fidelity evidence |
-| [`qwen35_27b_service_tp2.json`](../benchmarks/results/qwen35_27b_service_tp2.json) | Earlier internal 27B service evidence |
+The [artifact index](../benchmarks/results/README.md) identifies component, earlier service and specialized measurements with their scopes.
