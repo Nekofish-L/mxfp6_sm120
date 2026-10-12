@@ -59,10 +59,6 @@ workspace reset, quantization arithmetic or packed layout is changed. Both
 FP6/FP8 allocation paths retain initialized UE8M0 padding bytes (127).
 The dual/out quantizers keep their existing initialization contracts.
 
-The grid also covers the scale allocation with at least one thread per scale
-byte. Reusing only the old small-M grid lost performance because too few CTAs
-serialized padding writes. That prototype is not retained.
-
 Validation on RTX 5090: 120 FP16/BF16 × row/K cases with an independent
 FP64/frexp exponent and scale-layout oracle; changing-input captured replay
 poisons output/scales before every replay. The original library passes the same
