@@ -197,6 +197,7 @@ add_library(mxfp8_torch SHARED
   csrc/mxfp8_irregular.cu
   csrc/mxfp8_tma256.cu
   csrc/mxfp8_eightwarp.cu
+  csrc/mxfp8_small_batch.cu
   csrc/mxfp8_tma_fewwarp.cu
   csrc/mxfp8_tma_eightwarp.cu
   csrc/mxfp8_release.cu

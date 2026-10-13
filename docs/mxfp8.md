@@ -34,11 +34,11 @@ M=17 uses the same interval as M=20–32.
 
 Additional splits limit regressions in the broad intervals:
 
-- Narrow/medium K: split at K=5120 for M≤8, 64<M≤128 and 128<M≤256.
+- Narrow/medium K: split at K=5120 for 64<M≤128 and 128<M≤256.
 - Narrow/medium K, 64<M≤128: also split at M=112. For M≤112 and
   K>5120, three K splits improve work balance.
 - Wide/short K, 64<M≤256: split at N=6656.
-- Wider/short K, 64<M≤256: split at N=11264; for 64<M≤128 and
+- Wider/short K, 16<M≤32 and 64<M≤256: split at N=11264; for 64<M≤128 and
   N>11264, also split at M=112.
 - Widest/short K, 128<M≤256: split at M=224.
 
@@ -47,8 +47,9 @@ There are **65 configuration intervals**. Each selects
 device's available SM count. Configurations specialized to an exact K
 are excluded from the interval policy.
 
-Small-M, short-K regions mostly use direct-output CUTLASS or CuTe tiles;
-long-K, narrow-N regions use Stream-K to supply enough parallel work.
+M≤32 in these six regions uses one CuTe TMA kernel template, including
+long-K, narrow-N projections. Nine instantiations vary tile dimensions,
+pipeline depth and warp layout; no exact-K specialization is required.
 Larger M uses larger tiles and fewer splits. Selection accounts for the
 combined measurements of the shapes in a region, rather than copying a
 single shape's winner.
@@ -62,6 +63,38 @@ Outside the calibrated regions:
 The rules accept unseen dimensions within the input contract. Performance
 outside the measured range remains untuned; interval coverage alone does
 not establish optimal performance on every shape or other GPU models.
+
+## Unified small-batch kernel
+
+`small_batch.cuh` implements tactics 1240–1248 using a single value/scale
+pipeline and output layout. It covers all ten Qwen3.5-2B/4B projection shapes
+at every integer M1–32 through the interval policy. TMA moves the E4M3
+values, `cp.async` moves packed E8M0 scales, and CuTe's SM120 block-scaled
+`16x8x32` MMA accumulates in FP32. Invalid rows and K tails are masked.
+The pipeline does not issue TMA reads past the last K slab and drains
+pending scale copies before reusing shared memory for output.
+
+For narrow projections, tactic 1240 partitions each K slab among four
+warps in the same CTA. The epilogue sums their FP32 partial results
+and rounds once to BF16. This adds parallel work without a second kernel,
+global partial-result buffer or inter-CTA semaphore. Other instantiations
+use the same template with one K partition. All support PDL and changing
+inputs/scales during CUDA Graph replay. FP32 reduction order can differ
+from the previous Stream-K implementation.
+
+The limiting distinction is between instruction support and CUTLASS's
+default thread organization: SM120 exposes a warp-level MMA atom, while
+the generic warp-specialized builders choose larger producer/consumer
+layouts. The unified kernel uses the existing CuTe MMA/TMA primitives;
+this change needs no additional CUTLASS patch. Shared-memory capacity and
+TMA layout/alignment requirements still apply to every instantiation.
+See the local [SM120 builder's AtomLayoutMNK selection](../third_party/cutlass/include/cutlass/gemm/collective/builders/sm120_blockscaled_mma_builder.inl)
+and [warp-level MMA primitive](../third_party/cutlass/include/cute/arch/mma_sm120.hpp).
+
+`tests/test_mxfp8_small_batch.py` covers all 320 model shape/batch pairs
+against independently decoded FP32 operands, plus unseen partial tiles
+and changing-input/scale/zero-input graphs with PDL off/on. The existing
+all-tactic suites also exercise the new nine tactics explicitly.
 
 ## Input contract and use
 
@@ -218,42 +251,61 @@ checks a zero-input replay. Model totals weight the measured projection
 latencies by actual layer/call counts; they are estimates of quantized
 GEMM cost, not full-model inference latency.
 
-## Approximate performance
+## Small-batch cold-cache results, October 13, 2026
 
-RTX 5090 / SM120, two test GPUs; 240 shapes. Single-GEMM CUDA graph, 8 GB L2 eviction before replay; only GPU kernel time is counted. Quantization, host overhead and eviction are excluded.
+The unified template was validated on RTX 5090 GPUs 4/5 with the method
+above: 8 GB eviction before every graph replay, three interleaved trials
+of 30 measurements. The workload is all ten model N/K pairs at batches
+1, 2, 4, 8, 10, 12, 14, 16, 20, 24, 28 and 32 (120 points).
+FlashInfer 0.6.18 uses exact-batch autotuning. The original dispatch's
+explicit configurations run interleaved in the same binary on the same
+GPU as each new configuration. Parameter selection uses this cold-cache
+method too.
 
-FlashInfer uses MXFP8 `mm_mxfp8(..., backend="cutlass")` and exact-batch autotuning. vLLM uses block FP8 `cutlass_scaled_mm`. MXFP8 inputs share E4M3 values and E8M0/32 scales; vLLM quantizes the same source tensors with 1×128 activation / 128×128 weight scales.
-
-Speedup = baseline latency / current latency. Figures are approximate and describe this GPU and cache policy.
-
-| Baseline | Geometric mean speedup | Shapes faster |
-|---|---:|---:|
-| FlashInfer MXFP8 | 1.14× | 206/240 |
-| vLLM block FP8 | 1.26× | 207/240 |
-
-## Model-weighted GEMM estimates
-
-TP=1, all 24 batches from 1 to 2048. The six main quantized projections are weighted by their actual layer/call counts: 96 GEMMs for Qwen3.5-2B and 128 for Qwen3.5-4B. These are sums of microbenchmarks, not full-model inference latency. BF16 projections, lm_head, attention, quantization and communication are excluded.
-
-The oracle chooses the fastest of current MXFP8, FlashInfer MXFP8 and vLLM block FP8 per shape before weighting. A mixed-backend model has not been implemented.
-
-| Model | vs FlashInfer across batches | vs vLLM across batches | Largest gap to per-shape oracle |
+| Baseline | Geometric mean speedup | Points faster | Largest latency increase |
 |---|---:|---:|---:|
-| Qwen3.5-2B | 1.01–1.21× | 1.15–1.66× | 0.9% (12 µs, batch 64) |
-| Qwen3.5-4B | 1.02–1.22× | 1.20–1.59× | 1.0% (29 µs, batch 4) |
+| Original repository dispatch | 1.064× | 92/120 | 3.59% |
+| FlashInfer MXFP8 | 1.231× | 108/120 | 1.82% |
+| vLLM block FP8 | 1.247× | 92/120 | 2.92% |
 
-## Range scheduling versus the former point table
-
-Both configurations are measured on the same GPU for each shape. Positive changes mean more time.
-
-| Model | Weighted latency change across batches | Worst absolute increase |
+| Model | Weighted GEMM latency reduction vs original | Speedup vs FlashInfer |
 |---|---:|---:|
-| Qwen3.5-2B | -3.2% to +1.7% | 41 µs |
-| Qwen3.5-4B | -3.2% to +1.4% | 64 µs |
+| Qwen3.5-2B | 3.76–10.33% | 1.197–1.283× |
+| Qwen3.5-4B | 1.16–4.61% | 1.231–1.266× |
 
-Changing-input/scale and zero-input graph checks passed for 240/240 measured shapes.
+These ranges cover the twelve measured batches. They sum projection
+kernel times using the model's layer/call counts, not inference latency.
+The small-batch policy uses the same template throughout these shapes;
+tile, warp and pipeline parameters vary. M>32 retains the previous policy.
+Six points regress by more than 2% against the original dispatch; the
+largest is M28/N12288/K2560 (25.163 vs 24.290 µs). Twelve points remain
+slower than FlashInfer, all by less than 2%; the largest gap is
+M24/N12288/K2048 (20.437 vs 20.072 µs). No per-point fallback is added.
 
-The final policy has 65 M/N/K configuration intervals and no MXFP8 Triton path. All 72 additional unseen shapes passed changing-input/scale and zero-input graph checks. Detailed search and per-shape records were removed as requested.
+All 120 changing-input/scale and zero-input graph checks passed. The
+correctness/API/graph/PDL suites passed 276 tests, including every integer
+M1–32 on the ten model shapes. Compute Sanitizer memcheck and racecheck
+reported zero errors/hazards across all nine new tactics on partial tiles.
+
+[The curated artifact](../benchmarks/results/mxfp8_small_batch_20261013.json)
+contains per-point trial means, old/new configurations, weighted totals,
+source/library hashes and validation details. To reproduce
+the workload and original configuration comparison:
+
+```bash
+python3 - <<'PY'
+import json
+from pathlib import Path
+data = json.loads(Path('benchmarks/results/mxfp8_small_batch_20261013.json').read_text())
+Path('/tmp/mxfp8_small_shapes.json').write_text(json.dumps([[r['m'], r['n'], r['k']] for r in data['points']]))
+Path('/tmp/mxfp8_small_before.json').write_text(json.dumps({'configs': {f"{r['m']},{r['n']},{r['k']}": r['reference_config'] for r in data['points']}}))
+PY
+CUDA_VISIBLE_DEVICES=4 PYTHONPATH=python python3 benchmarks/benchmark_mxfp8.py \
+  --out benchmarks/results/mxfp8_small_recheck \
+  --shapes /tmp/mxfp8_small_shapes.json \
+  --reference-dispatch /tmp/mxfp8_small_before.json \
+  --reference-bench /data/lxy/gemm_bench.py --tests 30 --trials 3 --check-graphs
+```
 
 ## Native dispatch and shared workspace validation
 
