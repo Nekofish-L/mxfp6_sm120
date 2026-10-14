@@ -114,7 +114,9 @@ def main():
     torch.manual_seed(20260929)
     torch.backends.cuda.matmul.allow_tf32=False
     load_library()
-    sources=[Path(__file__),ROOT/'python/mxfp6/mxfp8.py',ROOT/'python/mxfp6/mxfp8_dispatch.json']
+    sources=[Path(__file__),ROOT/'python/mxfp6/mxfp8.py',ROOT/'python/mxfp6/mxfp8_dispatch.json',
+             ROOT/'csrc/include/mxfp8_gemm/small_batch.cuh',
+             ROOT/'csrc/include/mxfp8_gemm/registry.def']
     library=Path(os.getenv('MXFP8_LIBRARY_PATH',str(ROOT/'build/mxfp8/mxfp8_torch.so')))
     meta=dict(visible_devices=os.environ['CUDA_VISIBLE_DEVICES'],gpu=str(torch.cuda.get_device_properties(0)),
         method='Single-GEMM CUDA graph; 8 GB L2 eviction before replay; kernel time only',

@@ -254,6 +254,8 @@ void mm_out(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,
     RUN(6,128,16,128,2,4,4,1);
     RUN(7,64,16,256,1,2,4,1);
     RUN(8,128,16,256,1,4,4,1);
+    RUN(9,32,16,512,3,1,4,2);
+    RUN(10,64,32,256,3,2,4,1);
     default:TORCH_CHECK(false,"Unknown small-batch configuration");
   }
 #undef RUN

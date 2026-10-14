@@ -50,8 +50,9 @@ def calculate(rows, geometry):
 
 
 def render(totals, geometry):
+    batches = sorted({r['batch'] for r in totals})
     lines = ['', '## Model-weighted GEMM estimates', '',
-        'TP=1, all 24 batches from 1 to 2048. The six main quantized projections are weighted by their actual layer/call counts: '
+        f'TP=1, {len(batches)} batches from {min(batches)} to {max(batches)}. The six main quantized projections are weighted by their actual layer/call counts: '
         '96 GEMMs for Qwen3.5-2B and 128 for Qwen3.5-4B. These are sums of microbenchmarks, not full-model inference latency. '
         'BF16 projections, lm_head, attention, quantization and communication are excluded.', '',
         'The oracle chooses the fastest of current MXFP8, FlashInfer MXFP8 and vLLM block FP8 per shape before weighting. '

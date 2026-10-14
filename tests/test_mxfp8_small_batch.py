@@ -22,26 +22,24 @@ def test_all_decode_batches(n, k):
     scale = torch.exp2(torch.arange(k // 32, device="cuda") % 13 - 6).repeat_interleave(32)
     b, sb, br = quantize(torch.randn(n, k, device="cuda") / scale)
     qb = mxfp8.MXFP8Tensor(b.view(torch.uint8), sb, n, k)
-    for m in range(1, 33):
+    for m in range(1, 65):
         a, sa, ar = quantize(torch.randn(m, k, device="cuda") * scale)
         qa = mxfp8.MXFP8Tensor(a.view(torch.uint8), sa, m, k)
         fn = mxfp8.prepare(qa, qb)
-        assert 1240 <= fn.config.config_id < 1300, (m, n, k, fn.config)
+        if m <= 32:
+            assert 1240 <= fn.config.config_id < 1300, (m, n, k, fn.config)
         actual = fn().float()
         reference = ar @ br.T
         error = ((actual - reference).square().sum() / reference.square().sum()).sqrt()
         assert error < .004, (m, n, k, fn.config, error)
 
 
-@pytest.mark.parametrize("m,n,k", [(3, 384, 128), (9, 2176, 384),
-                                   (17, 4224, 2176), (31, 10368, 2688)])
-@pytest.mark.parametrize("pdl", [False, True])
-def test_partial_tiles_graph(m, n, k, pdl):
+def check_partial_tiles_graph(m, n, k, pdl, config=None):
     a, sa, _ = quantize(torch.randn(m, k, device="cuda"))
     b, sb, _ = quantize(torch.randn(n, k, device="cuda"))
     qa = mxfp8.MXFP8Tensor(a.view(torch.uint8), sa, m, k)
     qb = mxfp8.MXFP8Tensor(b.view(torch.uint8), sb, n, k)
-    fn = mxfp8.prepare(qa, qb, use_pdl=pdl)
+    fn = mxfp8.prepare(qa, qb, use_pdl=pdl, config=config)
     for _ in range(3):
         fn()
     torch.cuda.synchronize()
@@ -64,3 +62,19 @@ def test_partial_tiles_graph(m, n, k, pdl):
     output.fill_(float("nan"))
     graph.replay()
     assert torch.count_nonzero(output).item() == 0
+
+
+@pytest.mark.parametrize("m,n,k", [(3, 384, 128), (9, 2176, 384),
+                                   (17, 4224, 2176), (31, 10368, 2688),
+                                   (33, 2176, 384), (49, 10368, 2688),
+                                   (63, 4224, 2176), (31, 12416, 2688)])
+@pytest.mark.parametrize("pdl", [False, True])
+def test_partial_tiles_graph(m, n, k, pdl):
+    check_partial_tiles_graph(m, n, k, pdl)
+
+
+@pytest.mark.parametrize("tactic", (1249, 1250))
+@pytest.mark.parametrize("pdl", [False, True])
+def test_decode_kernel_graph(tactic, pdl):
+    check_partial_tiles_graph(49, 384, 640, pdl,
+                              mxfp8.W8A8Config(tactic, 1, 1, 0))

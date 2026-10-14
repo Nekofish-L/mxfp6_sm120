@@ -40,7 +40,7 @@ def main():
     normalized=[dict(m=r['m'],n=r['n'],k=r['k'],native_us=r['backends']['native']['us'],
                     flashinfer_us=r['backends']['flashinfer']['us'],block_fp8_us=r['backends']['block_fp8']['us']) for r in values]
     geometry=json.loads(GEOMETRY.read_text())
-    expected={(m,p['n'],p['k']) for m in [1,2,4,8,10,12,14,16,20,24,28,32,36,40,48,56,64,96,128,192,256,512,1024,2048]
+    expected={(m,p['n'],p['k']) for m in {r['m'] for r in values}
               for model in geometry['models'] for p in model['projections']}
     if set(rows)==expected:
         totals,_=calculate(normalized,geometry)
@@ -48,7 +48,7 @@ def main():
         if all('reference' in r['backends'] for r in values):
             before=[dict(n, native_us=r['backends']['reference']['us']) for n,r in zip(normalized,values)]
             prior,_=calculate(before,geometry)
-            lines+=['','## Range scheduling versus the former point table','',
+            lines+=['','## Current scheduling versus the frozen reference policy','',
                     'Both configurations are measured on the same GPU for each shape. Positive changes mean more time.','',
                     '| Model | Weighted latency change across batches | Worst absolute increase |','|---|---:|---:|']
             for model in geometry['models']:

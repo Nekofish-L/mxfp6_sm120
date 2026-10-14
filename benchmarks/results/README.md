@@ -4,7 +4,7 @@
 
 | Evidence | Artifacts | Report |
 |---|---|---|
-| Unified MXFP8, Qwen3.5-2B/4B TP1, 120 small-batch cold-cache points | [October 13 measurements and validation](mxfp8_small_batch_20261013.json) | [Small-batch results](../../docs/mxfp8.md#small-batch-cold-cache-results-october-13-2026) |
+| MXFP8 decode, Qwen3.5-2B/4B TP1, 170 points at BS1–64 | [Initial policy](mxfp8_decode_20261013.json), [final policy](mxfp8_decode_20261014.json), [original 120-point study](mxfp8_small_batch_20261013.json) | [Decode results](../../docs/mxfp8.md#decode-results-october-14-2026) |
 | Dense W6A8, five TP2 projection shapes ×14 batches | [70-shape matrix](qwen35_dense_gemm_current_main.json) | [Kernel benchmarks](../../docs/benchmarks.md#dense-gemm) |
 | Complete TP2 MoE layer | [Nine-batch sweep](qwen35_moe_layer_current_main.json), [B4 cluster update](qwen35_moe_b4_cluster_tp2.json) | [MoE benchmarks](../../docs/benchmarks.md#complete-qwen35-moe-layer) |
 | Dual activation, all M1–128 | [Synthetic JSON](mxfp8_dual_bs1_128.json), [CSV](mxfp8_dual_bs1_128.csv), [real-model JSON](mxfp8_dual_actual_inference_bs1_128.json), [CSV](mxfp8_dual_actual_inference_bs1_128.csv) | [Dual API and measurements](../../docs/mxfp8-dual.md#performance-and-activation-fidelity) |
