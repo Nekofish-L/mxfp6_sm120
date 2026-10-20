@@ -1,6 +1,6 @@
 {
-  "schema_version": 2,
-  "updated": "2026-10-12",
+  "schema_version": 3,
+  "updated": "2026-10-20",
   "unit": "output tokens/s",
   "workload": {
     "input_tokens": 3000,
@@ -9,13 +9,13 @@
   "gpu": "RTX 5090 32 GiB",
   "full_profile": "MXFP6 full adds FP16 recurrent state and NVFP4 candidate search with BF16 head refinement.",
   "sources": {
-    "mxfp8-2b-triton-hybrid-sixpoint-20261011.json": {
-      "url": "https://github.com/troycheng/vllm-mach/blob/eaa0acd6f5700913d10a422f6d4075614b9fb6be/docs/data/mxfp8-2b-triton-hybrid-sixpoint-20261011.json",
-      "sha256": "2085f611b0078e430e0cae63b4d8ab0f202ad17473d99fe170accb8006d0ee96"
+    "mxfp8-benchmark.json": {
+      "url": "https://github.com/troycheng/vllm-mach/blob/main/docs/data/mxfp8-benchmark.json",
+      "sha256": "54ca70f3681fdb845346ea7963f050a4b737a10dee902d61fd0a2829815019fa"
     },
-    "mxfp8-qualification-20261006.json": {
-      "url": "https://github.com/troycheng/vllm-mach/blob/eaa0acd6f5700913d10a422f6d4075614b9fb6be/docs/data/mxfp8-qualification-20261006.json",
-      "sha256": "c4746833405c6c69c669fa72797a8fbd99605e5fe87033e33823762bc5f3f76f"
+    "mxfp8-fidelity-20261020.json": {
+      "url": "https://github.com/troycheng/vllm-mach/blob/main/docs/data/mxfp8-fidelity-20261020.json",
+      "sha256": "75407f911df51fe8a54c071d64d4dd82e15d081c50e3cdce55bb5001d4490016"
     },
     "fp8-qualification-20261006.json": {
       "url": "https://github.com/troycheng/vllm-mach/blob/eaa0acd6f5700913d10a422f6d4075614b9fb6be/docs/data/fp8-qualification-20261006.json",
@@ -50,132 +50,136 @@
     {
       "id": "qwen35-2b",
       "title": "Qwen3.5-2B",
-      "profile": "MXFP8 \u00b7 Triton + hybrid",
+      "profile": "MXFP8 \u00b7 FP32 SSM / BF16 KV",
       "tp": 1,
-      "date": "2026-10-11",
+      "date": "2026-10-14",
       "guide": "mxfp8-2b-champion.md",
-      "scope": "Selected and previous configurations are paired on GPU0; community FP8 is the historical GPU1 reference.",
-      "source": "mxfp8-2b-triton-hybrid-sixpoint-20261011.json",
+      "source": "mxfp8-benchmark.json",
+      "mxfp8": true,
+      "kv_dtype": "BF16",
+      "scope": "Greedy generation, October 14 configuration sweep; block-FP8 references are historical. BF16 SSM is optional and uses ordered GDN.",
       "points": [
         {
           "c": 4,
           "baseline_tps": 1261.892459195426,
-          "selected_tps": 1588.2700442385856,
-          "gain_pct": 25.864136255418767,
-          "previous_tps": 1395.3051165127224,
-          "previous_gain_pct": 13.829586478414079,
-          "mean_ttft_ms": 98.90179886715487,
-          "mean_tpot_ms": 2.421406098805532
+          "selected_tps": 1682.8939819834181,
+          "gain_pct": 33.36271008833984,
+          "bf16_tps": 1720.4831185293633,
+          "bf16_gain_pct": 36.34150089353347,
+          "bf16_vs_main_pct": 2.2336009842784943
         },
         {
           "c": 16,
           "baseline_tps": 3814.3333161740834,
-          "selected_tps": 4801.955864194793,
-          "gain_pct": 25.892402843580854,
-          "previous_tps": 4295.09679241665,
-          "previous_gain_pct": 11.800876587299381,
-          "mean_ttft_ms": 134.0918363624951,
-          "mean_tpot_ms": 3.1978914620024055
+          "selected_tps": 5134.268741514625,
+          "gain_pct": 34.60461674242159,
+          "bf16_tps": 5406.606434068815,
+          "bf16_gain_pct": 41.74446714299842,
+          "bf16_vs_main_pct": 5.304313160550489
         },
         {
           "c": 24,
           "baseline_tps": 5069.677071743112,
-          "selected_tps": 6209.524540632418,
-          "gain_pct": 22.483630668361123,
-          "previous_tps": 5594.325153970394,
-          "previous_gain_pct": 10.99684715725553,
-          "mean_ttft_ms": 192.81430379487574,
-          "mean_tpot_ms": 3.665692983481854
+          "selected_tps": 6631.1473400382365,
+          "gain_pct": 30.800191929349907,
+          "bf16_tps": 7086.1781411731545,
+          "bf16_gain_pct": 39.775730108519646,
+          "bf16_vs_main_pct": 6.862022178085003
         },
         {
           "c": 32,
           "baseline_tps": 5870.222273980189,
-          "selected_tps": 7259.99006032221,
-          "gain_pct": 23.67487501286245,
-          "previous_tps": 6595.489524089714,
-          "previous_gain_pct": 10.075075304197512,
-          "mean_ttft_ms": 224.48807231266983,
-          "mean_tpot_ms": 4.173916445513539
+          "selected_tps": 7610.928925886451,
+          "gain_pct": 29.653164235738714,
+          "bf16_tps": 8086.386738823786,
+          "bf16_gain_pct": 37.75264992378167,
+          "bf16_vs_main_pct": 6.247040506713941
         },
         {
           "c": 48,
           "baseline_tps": 6837.596724087279,
-          "selected_tps": 8036.469609693067,
-          "gain_pct": 17.53354188588565,
-          "previous_tps": 7896.459572214782,
-          "previous_gain_pct": 1.773073567943495,
-          "mean_ttft_ms": 277.4473630745585,
-          "mean_tpot_ms": 5.67791963469128
+          "selected_tps": 8963.549299170056,
+          "gain_pct": 31.09210239898377,
+          "bf16_tps": 9547.912831433981,
+          "bf16_gain_pct": 39.63843169923847,
+          "bf16_vs_main_pct": 6.519331938276207
         },
         {
           "c": 64,
           "baseline_tps": 7578.863502078369,
-          "selected_tps": 9008.341662091349,
-          "gain_pct": 18.861378881160352,
-          "previous_tps": 8702.232050997764,
-          "previous_gain_pct": 3.5175988102786437,
-          "mean_ttft_ms": 333.2564046722837,
-          "mean_tpot_ms": 6.7434899885802535
+          "selected_tps": 9811.22794801969,
+          "gain_pct": 29.45513460334963,
+          "bf16_tps": 10463.618921052785,
+          "bf16_gain_pct": 38.063166306971,
+          "bf16_vs_main_pct": 6.649432430777158
         }
       ]
     },
     {
       "id": "qwen35-4b",
       "title": "Qwen3.5-4B",
-      "profile": "MXFP8 champion",
+      "profile": "MXFP8 \u00b7 FP32 SSM / FP8 KV",
       "tp": 1,
-      "date": "2026-10-06",
+      "date": "2026-10-14",
       "guide": "mxfp8-champion.md",
-      "scope": "One complete source-built champion screen versus the October 5 community FP8 screen; 1,040 requests per screen.",
-      "source": "mxfp8-qualification-20261006.json",
+      "source": "mxfp8-benchmark.json",
+      "mxfp8": true,
+      "kv_dtype": "FP8",
+      "scope": "Greedy generation, October 14 configuration sweep; block-FP8 references are historical. BF16 SSM is optional and uses ordered GDN.",
       "points": [
         {
           "c": 4,
           "baseline_tps": 683.9592274311776,
-          "selected_tps": 880.13087219406,
-          "gain_pct": 28.681774716259945,
-          "mean_ttft_ms": 173.56061685131863,
-          "mean_tpot_ms": 4.374511143156758
+          "selected_tps": 957.3817196363897,
+          "gain_pct": 39.97643152386956,
+          "bf16_tps": 980.4193390655378,
+          "bf16_gain_pct": 43.344705319322706,
+          "bf16_vs_main_pct": 2.406314948012356
         },
         {
           "c": 16,
           "baseline_tps": 2053.547069808179,
-          "selected_tps": 2481.297504243179,
-          "gain_pct": 20.82983344886056,
-          "mean_ttft_ms": 237.62080769520253,
-          "mean_tpot_ms": 6.211401395282608
+          "selected_tps": 2713.3348847001575,
+          "gain_pct": 32.1291790479197,
+          "bf16_tps": 2861.8625820904567,
+          "bf16_gain_pct": 39.36191793050949,
+          "bf16_vs_main_pct": 5.473990631521786
         },
         {
           "c": 24,
           "baseline_tps": 2559.262243795155,
-          "selected_tps": 3189.417177357051,
-          "gain_pct": 24.622522959094372,
-          "mean_ttft_ms": 347.69653003119555,
-          "mean_tpot_ms": 7.16718850591853
+          "selected_tps": 3432.686330125525,
+          "gain_pct": 34.1279635741885,
+          "bf16_tps": 3668.420427714776,
+          "bf16_gain_pct": 43.33898124776927,
+          "bf16_vs_main_pct": 6.867335809870845
         },
         {
           "c": 32,
           "baseline_tps": 2887.824845075892,
-          "selected_tps": 3672.6956325990527,
-          "gain_pct": 27.17861468854197,
-          "mean_ttft_ms": 410.6970969354734,
-          "mean_tpot_ms": 8.286266025516216
+          "selected_tps": 3889.6487305796218,
+          "gain_pct": 34.691296711155005,
+          "bf16_tps": 4179.175314247064,
+          "bf16_gain_pct": 44.71706348025535,
+          "bf16_vs_main_pct": 7.443514921829419
         },
         {
           "c": 48,
           "baseline_tps": 3220.5493315162103,
-          "selected_tps": 4168.038142969189,
-          "gain_pct": 29.420099303583957,
-          "mean_ttft_ms": 540.3606674808543,
-          "mean_tpot_ms": 10.947146269583
+          "selected_tps": 4396.726125333518,
+          "gain_pct": 36.52099914468856,
+          "bf16_tps": 4777.597856167656,
+          "bf16_gain_pct": 48.34729620236553,
+          "bf16_vs_main_pct": 8.662621231729473
         },
         {
           "c": 64,
           "baseline_tps": 3402.756586123198,
-          "selected_tps": 4653.928865958399,
-          "gain_pct": 36.76937354078203,
-          "mean_ttft_ms": 688.760968085262,
-          "mean_tpot_ms": 13.017450564057782
+          "selected_tps": 4867.513092037902,
+          "gain_pct": 43.046173560816456,
+          "bf16_tps": 5373.242651642113,
+          "bf16_gain_pct": 57.908522565345,
+          "bf16_vs_main_pct": 10.389896237392037
         }
       ]
     },
@@ -344,17 +348,154 @@
   ],
   "fidelity": {
     "date_native": "2026-09-17",
-    "two_b": {
-      "4": 0.04897896855017646,
-      "16": 0.049287281043412685,
-      "24": 0.04782972899157243,
-      "32": 0.04946947933678193,
-      "48": 0.048998622286014454,
-      "64": 0.04875406544717415
-    },
-    "four_b": {
-      "32": 0.049038113195664354,
-      "64": 0.05328604736462726
+    "date_mxfp8": "2026-10-20",
+    "mxfp8": {
+      "2b": {
+        "attention": "TRITON_ATTN",
+        "kv_dtype": "bfloat16",
+        "anchor": "Frozen BF16 M32 anchor at both shapes",
+        "points": [
+          {
+            "rows": 32,
+            "bf16_vs_fp32": {
+              "mae_delta": 0.0015039577057788453,
+              "relative_pct": 2.746780494781076,
+              "paired_delta_ci95": [
+                -0.001005919448540773,
+                0.004066266530802509
+              ]
+            },
+            "float32": {
+              "mae": 0.05475347260679885,
+              "ci95": [
+                0.05121465945483912,
+                0.058408722954748624
+              ],
+              "repeat": {
+                "scope": "first cohort",
+                "max_abs": 0.0
+              }
+            },
+            "bfloat16": {
+              "mae": 0.0562574303125777,
+              "ci95": [
+                0.052568183642782075,
+                0.05992514476522711
+              ],
+              "repeat": {
+                "scope": "first cohort",
+                "max_abs": 0.0
+              }
+            }
+          },
+          {
+            "rows": 64,
+            "bf16_vs_fp32": {
+              "mae_delta": -0.0011961829740570612,
+              "relative_pct": -2.115268545857618,
+              "paired_delta_ci95": [
+                -0.003834836844427907,
+                0.0014225755569575612
+              ]
+            },
+            "float32": {
+              "mae": 0.05654993435228718,
+              "ci95": [
+                0.05283986325193281,
+                0.06042480842564796
+              ],
+              "repeat": {
+                "scope": "first cohort",
+                "max_abs": 0.0
+              }
+            },
+            "bfloat16": {
+              "mae": 0.05535375137823012,
+              "ci95": [
+                0.05172219230098507,
+                0.05902853513123349
+              ],
+              "repeat": {
+                "scope": "first cohort",
+                "max_abs": 0.0
+              }
+            }
+          }
+        ]
+      },
+      "4b": {
+        "attention": "FLASHINFER",
+        "kv_dtype": "fp8_e4m3",
+        "anchor": "Frozen BF16 anchor at each matching physical shape",
+        "points": [
+          {
+            "rows": 32,
+            "bf16_vs_fp32": {
+              "mae_delta": 0.0004354614797060924,
+              "relative_pct": 0.8413460352862279,
+              "paired_delta_ci95": [
+                -0.001358769686017176,
+                0.0022078138526096095
+              ]
+            },
+            "float32": {
+              "mae": 0.05175771459574913,
+              "ci95": [
+                0.047569762377255284,
+                0.05607596175592288
+              ],
+              "repeat": {
+                "scope": "first cohort",
+                "max_abs": 0.0
+              }
+            },
+            "bfloat16": {
+              "mae": 0.05219317607545522,
+              "ci95": [
+                0.048052895653848876,
+                0.056624744013703494
+              ],
+              "repeat": {
+                "scope": "first cohort",
+                "max_abs": 0.0
+              }
+            }
+          },
+          {
+            "rows": 64,
+            "bf16_vs_fp32": {
+              "mae_delta": -0.00017661925621999947,
+              "relative_pct": -0.3007361996873237,
+              "paired_delta_ci95": [
+                -0.002521063916189776,
+                0.0021603798620192685
+              ]
+            },
+            "float32": {
+              "mae": 0.0587289645887765,
+              "ci95": [
+                0.05403851314576598,
+                0.06374406276038744
+              ],
+              "repeat": {
+                "scope": "first cohort",
+                "max_abs": 0.0
+              }
+            },
+            "bfloat16": {
+              "mae": 0.0585523453325565,
+              "ci95": [
+                0.05372098473004351,
+                0.06368866415187759
+              ],
+              "repeat": {
+                "scope": "first cohort",
+                "max_abs": 0.0
+              }
+            }
+          }
+        ]
+      }
     },
     "native": {
       "dense": {

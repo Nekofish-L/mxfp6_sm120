@@ -4,61 +4,77 @@ Measured complete configurations on RTX 5090: **3,000 input / 1,000 output token
 
 Each model has its own throughput chart. The 27B Dense and 35B-A3B MoE comparisons include FP8, NVFP4 and both MXFP6 profiles, followed by a separate precision chart against BF16.
 
-MXFP6 **default** retains FP32 recurrent state and the BF16 head. **Full** adds FP16 state and NVFP4 candidate search with BF16 refinement. The 2B MXFP8 champion uses BF16 KV and K128 hybrid head at M≤32; 4B uses calibrated FP8 KV and its own refined head.
+MXFP6 **default** retains FP32 recurrent state and the BF16 head. **Full** adds FP16 state and NVFP4 candidate search with BF16 refinement. MXFP8 uses FP32 SSM by default: BF16 KV on 2B and FP8 KV on 4B. BF16 SSM is an optional configuration.
 
 <a id="qwen35-2b"></a>
-## Qwen3.5-2B — MXFP8 · Triton + hybrid
+## Qwen3.5-2B — MXFP8 · FP32 SSM / BF16 KV
 
-Mach profile: 2026-10-11 · 1 × RTX 5090 · TP1
+Mach profile: 2026-10-14 · 1 × RTX 5090 · TP1
 
 ![Qwen3.5-2B output throughput by concurrency](assets/qwen35-2b-throughput.svg)
 
-| Concurrency | Community FP8 | Previous FA2/full-head | Current Triton + hybrid | vs FP8 | vs previous |
-|---|---:|---:|---:|---:|---:|
-| c4 | 1261.89 | 1395.31 | 1588.27 | +25.86% | +13.83% |
-| c16 | 3814.33 | 4295.10 | 4801.96 | +25.89% | +11.80% |
-| c24 | 5069.68 | 5594.33 | 6209.52 | +22.48% | +11.00% |
-| c32 | 5870.22 | 6595.49 | 7259.99 | +23.67% | +10.08% |
-| c48 | 6837.60 | 7896.46 | 8036.47 | +17.53% | +1.77% |
-| c64 | 7578.86 | 8702.23 | 9008.34 | +18.86% | +3.52% |
+| Concurrency | Historical block FP8 | MXFP8 FP32 SSM | vs block FP8 | Optional BF16 SSM | vs block FP8 | BF16 vs FP32 |
+|---|---:|---:|---:|---:|---:|---:|
+| c4 | 1261.89 | 1682.89 | +33.36% | 1720.48 | +36.34% | +2.23% |
+| c16 | 3814.33 | 5134.27 | +34.60% | 5406.61 | +41.74% | +5.30% |
+| c24 | 5069.68 | 6631.15 | +30.80% | 7086.18 | +39.78% | +6.86% |
+| c32 | 5870.22 | 7610.93 | +29.65% | 8086.39 | +37.75% | +6.25% |
+| c48 | 6837.60 | 8963.55 | +31.09% | 9547.91 | +39.64% | +6.52% |
+| c64 | 7578.86 | 9811.23 | +29.46% | 10463.62 | +38.06% | +6.65% |
 
-| Concurrency | Selected mean TTFT (ms) | Selected mean TPOT (ms) |
-|---|---:|---:|
-| c4 | 98.90 | 2.421 |
-| c16 | 134.09 | 3.198 |
-| c24 | 192.81 | 3.666 |
-| c32 | 224.49 | 4.174 |
-| c48 | 277.45 | 5.678 |
-| c64 | 333.26 | 6.743 |
+Both MXFP8 curves use BF16 KV and ordered GDN. FP32 SSM is the launcher default; add `--ssm-dtype bfloat16` for the optional curve. Block-FP8 rates are historical references; MXFP8 curves are the October 14 greedy configuration sweep. These ratios compare complete configurations.
 
-[Profile / study](https://github.com/troycheng/vllm-mach/blob/main/docs/mxfp8-2b-champion.md) · [Source measurements](https://github.com/troycheng/vllm-mach/blob/eaa0acd6f5700913d10a422f6d4075614b9fb6be/docs/data/mxfp8-2b-triton-hybrid-sixpoint-20261011.json)
+[October 15 random-sampling and best-path recheck](https://github.com/troycheng/vllm-mach/blob/main/docs/best-path-recheck-20261015.md) uses a separate sampling workload.
+
+### Qwen3.5-2B precision
+
+![Qwen3.5-2B FP32 and BF16 SSM error against BF16](assets/qwen35-2b-precision.svg)
+
+| Physical rows | FP32 SSM MAE [95% CI] | Optional BF16 SSM MAE [95% CI] | BF16 vs FP32 |
+|---|---:|---:|---:|
+| M32 | 0.05475 [0.05121, 0.05841] | 0.05626 [0.05257, 0.05993] | +2.75% |
+| M64 | 0.05655 [0.05284, 0.06042] | 0.05535 [0.05172, 0.05903] | -2.12% |
+
+October 20 · 256 queries / 10,479 fixed gold tokens per configuration · query-mean logprob MAE against BF16. Lower is better; intervals use 20,000 query-bootstrap samples. Frozen BF16 M32 anchor at both shapes. All first-cohort repeats were identical.
+
+[Precision data](https://github.com/troycheng/vllm-mach/blob/main/docs/data/mxfp8-fidelity-20261020.json) · [Raw logprobs and receipts](https://github.com/troycheng/vllm-mach/blob/main/docs/data/mxfp8-fidelity-20261020-records.json.gz) · [Configuration and reproduction](https://github.com/troycheng/vllm-mach/blob/main/docs/mxfp8-2b-champion.md)
+
+[Profile / study](https://github.com/troycheng/vllm-mach/blob/main/docs/mxfp8-2b-champion.md) · [Source measurements](https://github.com/troycheng/vllm-mach/blob/main/docs/data/mxfp8-benchmark.json)
 
 <a id="qwen35-4b"></a>
-## Qwen3.5-4B — MXFP8 champion
+## Qwen3.5-4B — MXFP8 · FP32 SSM / FP8 KV
 
-Mach profile: 2026-10-06 · 1 × RTX 5090 · TP1
+Mach profile: 2026-10-14 · 1 × RTX 5090 · TP1
 
 ![Qwen3.5-4B output throughput by concurrency](assets/qwen35-4b-throughput.svg)
 
-| Concurrency | FP8 baseline | Selected profile | Gain |
+| Concurrency | Historical block FP8 | MXFP8 FP32 SSM | vs block FP8 | Optional BF16 SSM | vs block FP8 | BF16 vs FP32 |
+|---|---:|---:|---:|---:|---:|---:|
+| c4 | 683.96 | 957.38 | +39.98% | 980.42 | +43.34% | +2.41% |
+| c16 | 2053.55 | 2713.33 | +32.13% | 2861.86 | +39.36% | +5.47% |
+| c24 | 2559.26 | 3432.69 | +34.13% | 3668.42 | +43.34% | +6.87% |
+| c32 | 2887.82 | 3889.65 | +34.69% | 4179.18 | +44.72% | +7.44% |
+| c48 | 3220.55 | 4396.73 | +36.52% | 4777.60 | +48.35% | +8.66% |
+| c64 | 3402.76 | 4867.51 | +43.05% | 5373.24 | +57.91% | +10.39% |
+
+Both MXFP8 curves use FP8 KV and ordered GDN. FP32 SSM is the launcher default; add `--ssm-dtype bfloat16` for the optional curve. Block-FP8 rates are historical references; MXFP8 curves are the October 14 greedy configuration sweep. These ratios compare complete configurations.
+
+[October 15 random-sampling and best-path recheck](https://github.com/troycheng/vllm-mach/blob/main/docs/best-path-recheck-20261015.md) uses a separate sampling workload.
+
+### Qwen3.5-4B precision
+
+![Qwen3.5-4B FP32 and BF16 SSM error against BF16](assets/qwen35-4b-precision.svg)
+
+| Physical rows | FP32 SSM MAE [95% CI] | Optional BF16 SSM MAE [95% CI] | BF16 vs FP32 |
 |---|---:|---:|---:|
-| c4 | 683.96 | 880.13 | +28.68% |
-| c16 | 2053.55 | 2481.30 | +20.83% |
-| c24 | 2559.26 | 3189.42 | +24.62% |
-| c32 | 2887.82 | 3672.70 | +27.18% |
-| c48 | 3220.55 | 4168.04 | +29.42% |
-| c64 | 3402.76 | 4653.93 | +36.77% |
+| M32 | 0.05176 [0.04757, 0.05608] | 0.05219 [0.04805, 0.05662] | +0.84% |
+| M64 | 0.05873 [0.05404, 0.06374] | 0.05855 [0.05372, 0.06369] | -0.30% |
 
-| Concurrency | Selected mean TTFT (ms) | Selected mean TPOT (ms) |
-|---|---:|---:|
-| c4 | 173.56 | 4.375 |
-| c16 | 237.62 | 6.211 |
-| c24 | 347.70 | 7.167 |
-| c32 | 410.70 | 8.286 |
-| c48 | 540.36 | 10.947 |
-| c64 | 688.76 | 13.017 |
+October 20 · 256 queries / 10,479 fixed gold tokens per configuration · query-mean logprob MAE against BF16. Lower is better; intervals use 20,000 query-bootstrap samples. Frozen BF16 anchor at each matching physical shape. All first-cohort repeats were identical.
 
-[Profile / study](https://github.com/troycheng/vllm-mach/blob/main/docs/mxfp8-champion.md) · [Source measurements](https://github.com/troycheng/vllm-mach/blob/eaa0acd6f5700913d10a422f6d4075614b9fb6be/docs/data/mxfp8-qualification-20261006.json)
+[Precision data](https://github.com/troycheng/vllm-mach/blob/main/docs/data/mxfp8-fidelity-20261020.json) · [Raw logprobs and receipts](https://github.com/troycheng/vllm-mach/blob/main/docs/data/mxfp8-fidelity-20261020-records.json.gz) · [Configuration and reproduction](https://github.com/troycheng/vllm-mach/blob/main/docs/mxfp8-champion.md)
+
+[Profile / study](https://github.com/troycheng/vllm-mach/blob/main/docs/mxfp8-champion.md) · [Source measurements](https://github.com/troycheng/vllm-mach/blob/main/docs/data/mxfp8-benchmark.json)
 
 <a id="qwen38-27b"></a>
 ## Qwen3.8-27B Dense — MXFP6 default / full
@@ -155,12 +171,11 @@ Mach profile: 2026-10-06 · 1 × RTX 5090 · TP1
 
 ## Numerical fidelity
 
-Precision is measured as token-logprob MAE against BF16 using 256 queries / 10,479 tokens per physical-row setting. Lower MAE means closer agreement with BF16.
+The September 17 MXFP6 evaluation measures token-logprob MAE against BF16 using 256 queries / 10,479 tokens. Lower MAE means closer numerical agreement with BF16.
 
 | Profile | Physical rows | Numerical result |
 |---|---|---|
-| 2B MXFP8 Triton + hybrid | M4/16/24/32/48/64 | BF16-anchor MAE 0.04783–0.04947; M32 +2.58% versus FA2. Actual-generation head checks: 129,878 decisions, no omitted BF16 winner or lower-scored selection, one equal-score tie. |
-| 4B MXFP8 | M32/64 | Same-M BF16 MAE 0.04904 / 0.05329. |
+| 2B / 4B MXFP8 | M32/M64 | October 20: eight current-runtime configurations, with FP32 and BF16 SSM reported separately above. |
 | 4B block-FP8 | M4/32/64 | Fixed-gold records byte-identical to stock block-FP8. |
 | 27B Dense MXFP6 default / full | M32 | BF16 MAE 0.09064 / 0.08962; FP8 0.06143, NVFP4 0.17328. |
 | 35B-A3B MoE MXFP6 default / full | M32 | BF16 MAE 0.07261 / 0.07409; FP8 0.05534, NVFP4 0.22836. |
@@ -169,9 +184,23 @@ Precision is measured as token-logprob MAE against BF16 using 256 queries / 10,4
 
 ### Measurement protocol
 
-The linked studies and [source records](data/model-performance.json) retain hardware identities, software revisions, request counts and baseline dates. MXFP6 precision results use the September 17 evaluation. MXFP6 and 2B logprob checks use the complete BF16 head; hybrid-head validation uses actual generation. The fixed-gold corpus is private.
+The linked studies and [source records](data/model-performance.json) retain hardware identities, software revisions, request counts and baseline dates. MXFP8 precision uses Mach `afcb4cf` and native `ce0cd05`; MXFP6 precision uses the September 17 evaluation. Logprob checks use the complete head: BF16 for MXFP6/2B, and the existing NVFP4 head with K2048 BF16 score refinement for 4B. The [frozen token manifest](https://github.com/troycheng/vllm-mach/blob/main/docs/data/fidelity-samples.json) is public. Hybrid candidate selection has separate generation checks in the profile guides.
 
 The 27B NVFP4 throughput reference is the September 15 token-ID sweep. The 35B-A3B NVFP4 throughput reference is the September 17 user service; its launch configuration was not recorded. The separate 35B-A3B precision evaluation used the NVFP4 ScaleSweep checkpoint. Source records preserve these identities and measurement dates.
+
+### Reproduce MXFP8 fidelity
+
+Run from a vLLM Mach checkout inside the pinned MXFP8 environment with a prepared checkpoint:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 python tools/measure_mxfp8_fidelity.py \
+  --profile 2b --model /models/PREPARED-2B --rows 32 \
+  --ssm-dtype float32 --outdir /results/2b-m32-fp32
+```
+
+Use `--profile 4b` for the prepared 4B model. Run each M32/M64 × float32/bfloat16 combination in a separate process and fresh output directory. The tool saves raw gold logprobs, model/library identities, runtime receipts and repeat differences. The published compressed record bundle includes the BF16 anchors. For each query, average the absolute logprob differences over its gold tokens, then average those 256 query errors.
+
+[Validation tool](https://github.com/troycheng/vllm-mach/blob/main/tools/measure_mxfp8_fidelity.py) · [Results and raw-record bundle](https://github.com/troycheng/vllm-mach/blob/main/docs/data/mxfp8-fidelity-20261020.json)
 
 ## Data and regeneration
 

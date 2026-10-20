@@ -110,6 +110,7 @@ benchmark/integration consumers, not package dependencies.
 | CUDA Toolkit | 12.8 or newer; the release is compiled for `sm_120a`. |
 | PyTorch | CUDA-enabled PyTorch with FP8 dtype support. Build the extension against the exact PyTorch ABI used at runtime. |
 | Python | 3.10 or newer. |
+| Build tools | CMake 3.24+ and a host compiler with C++20 support; both C++ and CUDA sources compile in C++20 mode. |
 | CUTLASS | Pinned submodule commit `e6233cbac5d7c7a865c19c91cd684ceece19513c` plus the checked-in runtime patches. |
 | Distribution | Source wheel only. No cross-PyTorch or cross-CUDA binary compatibility is promised. |
 
