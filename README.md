@@ -17,12 +17,15 @@ The package provides Dense GEMM, Qwen3.5 routed MoE, activation producers and CU
 
 | Model / profile | GPUs | Throughput gain vs FP8 | Details |
 |---|---|---:|---|
-| Qwen3.5-2B · MXFP8 · Triton + hybrid | 1 · TP1 | +17.53% to +25.89% | [Data](docs/performance.md#qwen35-2b) |
-| Qwen3.5-4B · MXFP8 champion | 1 · TP1 | +20.83% to +36.77% | [Data](docs/performance.md#qwen35-4b) |
+| Qwen3.5-2B · MXFP8 · FP32 SSM / BF16 KV | 1 · TP1 | FP32 +29.46% to +34.60%; BF16 optional +36.34% to +41.74% | [Data](docs/performance.md#qwen35-2b) |
+| Qwen3.5-4B · MXFP8 · FP32 SSM / FP8 KV | 1 · TP1 | FP32 +32.13% to +43.05%; BF16 optional +39.36% to +57.91% | [Data](docs/performance.md#qwen35-4b) |
+| Qwen3.5-4B block-FP8 · Block-FP8 · all four features | 1 · TP1 | +5.97% to +9.03% | [Data](docs/performance.md#qwen35-4b-block-fp8) |
 | Qwen3.8-27B Dense · MXFP6 default / full | 2 · TP2 | default +30.41% to +43.69%; full +42.18% to +55.40% | [Data](docs/performance.md#qwen38-27b) |
 | Qwen3.5-35B-A3B MoE · MXFP6 default / full | 2 · TP2 | default +48.34% to +67.01%; full +61.34% to +79.32% | [Data](docs/performance.md#qwen35-35b-a3b) |
 
-MXFP6 **default** uses FP32 recurrent state and the BF16 head; **full** adds FP16 state and NVFP4 candidate search with BF16 refinement.
+MXFP8 defaults to **FP32 SSM**, with **BF16 KV on 2B** and **FP8 KV on 4B**. The optional BF16 SSM curves use `--ssm-dtype bfloat16` with ordered GDN. The six greedy points are c4/16/24/32/48/64, measured on October 14 against historical block-FP8 references.
+
+MXFP6 **default** uses FP32 recurrent state and the BF16 head; **full** adds FP16 state and NVFP4 candidate search with BF16 refinement. The launcher enables hybrid head by default; pass `--no-hybrid-head` to reproduce the measured historical default.
 
 ### Qwen3.5-2B · MXFP8
 
@@ -46,11 +49,13 @@ MXFP6 **default** uses FP32 recurrent state and the BF16 head; **full** adds FP1
 
 [Detailed service data and methodology](docs/performance.md) · [Machine-readable data](docs/data/model-performance.json)
 
+The [October 15 random-sampling and best-path recheck](https://github.com/troycheng/vllm-mach/blob/main/docs/best-path-recheck-20261015.md) reports sampling gains separately from these greedy curves.
+
 See [kernel benchmarks](docs/benchmarks.md) for GEMM and MoE operator timings, and the [Qwen3.8-27B study](docs/qwen38-27b.md) for memory capacity and precision results.
 
 ## Install
 
-Requirements: Linux, SM120, Python 3.10+, CUDA Toolkit 12.8+, CUDA-enabled PyTorch with FP8 dtype support, CMake 3.24+ and a C++17 compiler. Install PyTorch and Triton first, then build against the runtime PyTorch ABI:
+Requirements: Linux, SM120, Python 3.10+, CUDA Toolkit 12.8+, CUDA-enabled PyTorch with FP8 dtype support, CMake 3.24+ and a host compiler with C++20 support. Install PyTorch and Triton first, then build against the runtime PyTorch ABI:
 
 ```bash
 git clone --recurse-submodules https://github.com/Nekofish-L/mxfp6_sm120.git

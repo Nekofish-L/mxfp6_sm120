@@ -95,8 +95,8 @@ the generic warp-specialized builders choose larger producer/consumer
 layouts. The unified kernel uses the existing CuTe MMA/TMA primitives;
 this change needs no additional CUTLASS patch. Shared-memory capacity and
 TMA layout/alignment requirements still apply to every instantiation.
-See the local [SM120 builder's AtomLayoutMNK selection](../third_party/cutlass/include/cutlass/gemm/collective/builders/sm120_blockscaled_mma_builder.inl)
-and [warp-level MMA primitive](../third_party/cutlass/include/cute/arch/mma_sm120.hpp).
+See the pinned CUTLASS [SM120 builder's AtomLayoutMNK selection](https://github.com/NVIDIA/cutlass/blob/e6233cbac5d7c7a865c19c91cd684ceece19513c/include/cutlass/gemm/collective/builders/sm120_blockscaled_mma_builder.inl)
+and [warp-level MMA primitive](https://github.com/NVIDIA/cutlass/blob/e6233cbac5d7c7a865c19c91cd684ceece19513c/include/cute/arch/mma_sm120.hpp).
 
 `tests/test_mxfp8_small_batch.py` covers all 640 model shape/batch pairs
 against independently decoded FP32 operands, plus unseen partial tiles
