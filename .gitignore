@@ -38,6 +38,7 @@ wheelhouse/
 !/benchmarks/results/mxfp8_small_batch_20261013.json
 !/benchmarks/results/mxfp8_decode_20261013.json
 !/benchmarks/results/mxfp8_decode_20261014.json
+!/benchmarks/results/mxfp8_qwen35_08b_20261021.json
 !/benchmarks/results/mxfp8_pdl_batch_validation.json
 !/benchmarks/results/mxfp8_dual_bs1_128.json
 !/benchmarks/results/mxfp8_dual_bs1_128.csv

@@ -58,6 +58,8 @@ def test_compiled_policy_matches_source_intervals():
 
     for r in policy["regions"]:
         for axis in ("n", "k"):
+            if axis + "_min" in r:
+                dimensions[axis].update([r[axis + "_min"] - 1, r[axis + "_min"]])
             if r[axis + "_max"] is not None:
                 dimensions[axis].update([r[axis + "_max"], r[axis + "_max"] + 1])
         for c in r["configs"]:
@@ -67,7 +69,7 @@ def test_compiled_policy_matches_source_intervals():
         for r in policy["regions"]:
             if (r["n_max"] is None or n <= r["n_max"]) and (
                 r["k_max"] is None or k <= r["k_max"]
-            ):
+            ) and n >= r.get("n_min", 1) and k >= r.get("k_min", 1):
                 for bound, c in zip(policy["m_bounds"], r["configs"]):
                     if m <= bound:
                         while isinstance(c, dict):

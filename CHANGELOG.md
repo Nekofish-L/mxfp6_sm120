@@ -4,6 +4,10 @@
 
 ### Added
 
+- added four MXFP8 tile configurations and interval scheduling for compact
+  Qwen3.5-0.8B projections, with checkpoint-weight paired comparisons against
+  independently autotuned FlashInfer CUTLASS and b12x; see
+  `docs/mxfp8.md`;
 - added opt-in dual MXFP8 activation quantization and GEMM for every M=1–128
   at N18432/N12288, K2560, with tail masking and independent FP32
   accumulators and BF16 residual/output rounding; see `docs/mxfp8-dual.md`;

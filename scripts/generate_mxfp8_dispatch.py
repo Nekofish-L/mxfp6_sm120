@@ -32,6 +32,10 @@ def generate(source):
             for axis in ("n", "k")
             if r[axis + "_max"] is not None
         ]
+        terms += [
+            f"{axis} >= {int(r[axis + '_min'])}"
+            for axis in ("n", "k") if axis + "_min" in r
+        ]
         assert len(r["configs"]) == len(policy["m_bounds"])
         lines.append("  if (" + " && ".join(terms) + ") {")
         for upper, cfg in zip(policy["m_bounds"], r["configs"]):

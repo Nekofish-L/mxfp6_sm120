@@ -21,6 +21,10 @@ The first matching N/K region is selected:
 
 | Region | N | K |
 |---|---:|---:|
+| Compact output | 768–1536 | 1536–4096 |
+| Short K, medium width | 4097–6144 | 768–1536 |
+| Short K, wide | 6145–7680 | 768–1536 |
+| Short K, wider | 7681–9216 | 768–1536 |
 | Narrow, short K | ≤4096 | ≤3072 |
 | Narrow, medium K | ≤4096 | 3072–7168, lower bound excluded |
 | Narrow, long K | ≤4096 | >7168 |
@@ -28,9 +32,13 @@ The first matching N/K region is selected:
 | Wider, short K | 9216–14336, lower bound excluded | ≤3072 |
 | Widest, short K | >14336 | ≤3072 |
 
-Each region has nine M intervals with inclusive upper bounds:
-**8, 16, 32, 64, 128, 256, 512, 1024, 2048**. Thus an unseen batch such as
+Each region has eleven M intervals with inclusive upper bounds:
+**8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192**. Thus an unseen batch such as
 M=17 uses the same interval as M=20–32.
+The first four regions target compact hidden dimensions and short K in
+Qwen3.5-0.8B. Lower bounds keep tiny diagnostic shapes and the existing
+Qwen3.5-2B/4B projection geometry on their previous routes. In the other
+six regions, M>2048 retains tactic 79.
 
 Additional splits limit regressions in the broad intervals:
 
@@ -45,12 +53,12 @@ Additional splits limit regressions in the broad intervals:
   N>11264, also split at M=112. For 16<M≤32 and N>11264, split at K=2048.
 - Widest/short K, 128<M≤256: split at M=224.
 
-There are **71 configuration intervals**. Each selects
+Each configuration interval selects
 `(tactic, splits, swizzle, sms)`. All use `sms=0`, so the scheduler uses the
 device's available SM count. Configurations specialized to an exact K
 are excluded from the interval policy.
 
-M≤32 in these six regions uses one CuTe TMA kernel template, including
+M≤32 in the original six regions uses one CuTe TMA kernel template, including
 long-K, narrow-N projections. The selected instantiations vary tile dimensions,
 pipeline depth and warp layout; no exact-K specialization is required.
 Larger M uses larger tiles and fewer splits. Selection accounts for the
@@ -59,7 +67,7 @@ single shape's winner.
 
 Outside the calibrated regions:
 
-- M>2048 uses the general tactic 79.
+- M>8192 uses the general tactic 79.
 - N>4096 and K>3072 uses Stream-K tactics 12–16 according to M, with 2/4
   splits for small M and long K, otherwise one split.
 
@@ -69,7 +77,7 @@ not establish optimal performance on every shape or other GPU models.
 
 ## Unified small-batch kernel
 
-`small_batch.cuh` implements tactics 1240–1250 using a single value/scale
+`small_batch.cuh` implements tactics 1240–1254 using a single value/scale
 pipeline and output layout. It covers all ten Qwen3.5-2B/4B projection shapes
 at every integer M1–32 through the interval policy, plus selected M33–64 regions. TMA moves the E4M3
 values, `cp.async` moves packed E8M0 scales, and CuTe's SM120 block-scaled
@@ -101,7 +109,16 @@ and [warp-level MMA primitive](https://github.com/NVIDIA/cutlass/blob/e6233cbac5
 `tests/test_mxfp8_small_batch.py` covers all 640 model shape/batch pairs
 against independently decoded FP32 operands, plus unseen partial tiles
 and changing-input/scale/zero-input graphs with PDL off/on. The existing
-all-tactic suites also exercise all eleven small-batch tactics explicitly.
+all-tactic suites also exercise every registered small-batch tactic explicitly.
+
+For compact hidden dimensions, tactic 1251 uses a 32×32 weight/batch tile,
+BK512, two stages and two CTA-local K partitions. Tactic 1252 uses a
+128×32 tile, BK256 and two stages for short-K intermediate batches.
+Tactics 1253/1254 use BK128 with 64×64/five-stage and 128×32/four-stage
+tiles respectively. These increase reuse or overlap memory loads without
+changing packed scales, output rounding or the operator contract. The
+new tiles are tested with partial K slabs and mutable graphs with PDL
+off/on in the existing small-batch suite.
 
 ## Input contract and use
 
@@ -339,6 +356,22 @@ changed-policy and K-tail graph cases with PDL off/on passed memcheck
 instantiations and their twenty diagnostic tests. Rebuilding after cleanup
 and rerunning the retained suites passed all 381 tests; both retained
 additions remain covered.
+
+## Qwen3.5-0.8B results (October 21, 2026)
+
+On RTX 5090 (SM120), five projection shapes across 23 batches (M1–8192,
+115 points) achieve a **1.165× geometric mean speedup** over the faster
+of independently autotuned FlashInfer CUTLASS and b12x at each point;
+**109/115 points are faster**. The speedup over the previous native policy
+is **1.068×**. Six points remain 0.14%–0.82% slower; batch 512 is near parity,
+so these results do not establish a strict advantage on every point.
+
+This environment-bound snapshot uses private checkpoint weights and
+synthetic BF16 activations; the measured checkpoint is not publicly
+reproducible. It measures isolated GEMMs, excluding quantization and host
+overhead, and makes no task-accuracy or serving-throughput claim. The
+[result artifact](../benchmarks/results/mxfp8_qwen35_08b_20261021.json)
+retains measurement methods, trial means and environment/content hashes.
 
 ## Native dispatch and shared workspace validation
 

@@ -256,6 +256,12 @@ void mm_out(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,
     RUN(8,128,16,256,1,4,4,1);
     RUN(9,32,16,512,3,1,4,2);
     RUN(10,64,32,256,3,2,4,1);
+    // Compact output widths need more CTAs and CTA-local K parallelism.
+    RUN(11,32,32,512,2,1,4,2);
+    // Short K: wider activation tiles reuse each weight load across batches.
+    RUN(12,128,32,256,2,4,4,1);
+    RUN(13,64,64,128,5,2,4,1);
+    RUN(14,128,32,128,4,4,4,1);
     default:TORCH_CHECK(false,"Unknown small-batch configuration");
   }
 #undef RUN
