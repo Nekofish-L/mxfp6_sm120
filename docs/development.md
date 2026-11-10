@@ -27,7 +27,19 @@ python3 -m pip install --no-deps dist/mxfp6_sm120-*.whl
 The wheel build applies the required runtime CUTLASS patch idempotently. Use
 `MAX_JOBS=1` on memory-constrained systems.
 
-For an editable source build and CTest run:
+### Wheel build identity
+
+The wheel command uses the installed Torch runtime with `--no-build-isolation` and `--no-deps`; install the target Torch and Triton first. It writes `build_info.json` next to both DSOs in the build output and packages it in the wheel, keeping generated identities and DSOs in the build directory.
+
+The identity records the complete Torch version, Torch's CUDA version, CXX11 ABI, Python, detected C++/CUDA compilers, CMake arguments/cache and both DSO hashes. For packaged DSOs accompanied by this metadata, the loader checks the exact Torch/CUDA/CXX ABI identity and SHA-256 before loading. Python/compiler/CMake details provide build provenance. Inspect an installed wheel without loading a DSO:
+
+```bash
+python3 -c 'from importlib.metadata import distribution; print(distribution("mxfp6-sm120").locate_file("mxfp6/build_info.json").read_text())'
+```
+
+Explicit `MXFP6_LIBRARY_PATH` / `MXFP8_LIBRARY_PATH` overrides retain their existing precedence and bypass the packaged identity check, including paths inside the package. Manual/source builds without `build_info.json` retain the existing loader behavior and path selection.
+
+For a manual CMake build and CTest run:
 
 ```bash
 bash scripts/apply_cutlass_patches.sh --runtime-only
@@ -118,6 +130,10 @@ The build intentionally rejects an uninitialized or mismatched CUTLASS
 checkout. The Python API checks CUDA placement, dtype, contiguity, shape and
 SM120 capability before dispatch.
 
+
+### Qualified 0.3 build
+
+On November 10, 2026, a Linux x86_64 / CPython 3.12.3 wheel was built with Torch 2.14.0+cu130, Torch CUDA 13.0, CXX11 ABI enabled, GCC 13.3.0, NVCC 13.0.88 and CMake 4.1.0. Its wheel RECORD and build identity match both packaged DSOs. Device-code inspection confirmed SM120 targets and unchanged executable device math relative to the previously tested target build. Source builds use the active Torch runtime. See [serving performance](performance.md) for the serving measurements and their runtime versions.
 
 ### Upgrade policy
 

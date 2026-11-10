@@ -18,6 +18,8 @@ include tests/test_mxfp8_dual.py
 include tests/test_mxfp8_pdl_all_paths.py
 include tests/test_public_metadata.py
 include scripts/generate_mxfp8_dispatch.py
+include scripts/write_build_info.py
+include tests/test_build_identity.py
 recursive-include patches *.patch *.md
 recursive-include third_party/cutlass/include *
 recursive-include third_party/cutlass/tools/util/include *

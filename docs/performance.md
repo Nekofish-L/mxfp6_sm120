@@ -2,6 +2,8 @@
 
 Measured complete configurations on RTX 5090: **3,000 input / 1,000 output tokens**, text-only, non-speculative inference. Throughput is **output tokens/s**; `c` is concurrent requests, and physical kernel rows are denoted `M`.
 
+The serving measurements below use vLLM 0.29 and Torch 2.13.
+
 Each model has its own throughput chart. The 27B Dense and 35B-A3B MoE comparisons include FP8, NVFP4 and both MXFP6 profiles, followed by a separate precision chart against BF16.
 
 MXFP6 **default** retains FP32 recurrent state and the BF16 head. **Full** adds FP16 state and NVFP4 candidate search with BF16 refinement. MXFP8 uses FP32 SSM by default: BF16 KV on 2B and FP8 KV on 4B. BF16 SSM is an optional configuration.

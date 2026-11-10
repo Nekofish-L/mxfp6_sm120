@@ -69,6 +69,15 @@ find_package(Torch CONFIG REQUIRED)
 set(CUDA_NVCC_FLAGS "${MXFP6_SAVED_CUDA_NVCC_FLAGS}")
 set(CMAKE_CUDA_FLAGS "${MXFP6_SAVED_CMAKE_CUDA_FLAGS}")
 
+# Build-local provenance for wheels. Use the interpreter selected by CMake,
+# which may differ from the interpreter that invoked setuptools.
+execute_process(
+  COMMAND "${Python3_EXECUTABLE}" -c
+          "import json, platform, sys, torch; print(json.dumps({'runtime': {'torch_version': str(torch.__version__), 'torch_cuda': torch.version.cuda, 'cxx11_abi': bool(torch._C._GLIBCXX_USE_CXX11_ABI)}, 'python': {'version': sys.version, 'executable': sys.executable, 'implementation': platform.python_implementation(), 'compiler': platform.python_compiler()}}))"
+  OUTPUT_FILE "${CMAKE_CURRENT_BINARY_DIR}/torch_build_identity.json"
+  COMMAND_ERROR_IS_FATAL ANY
+)
+
 if(MXFP6_BUILD_STANDALONE)
   add_executable(mxfp6_gemm
     csrc/mxfp6_gemm.cu

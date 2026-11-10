@@ -1,9 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (unreleased)
 
 ### Added
 
+- package build-local `build_info.json` with the actual Torch/CUDA/CXX ABI,
+  Python, compiler/CMake configuration and SHA-256 of both dispatcher DSOs;
 - added four MXFP8 tile configurations and interval scheduling for compact
   Qwen3.5-0.8B projections, with checkpoint-weight paired comparisons against
   independently autotuned FlashInfer CUTLASS and b12x; see
@@ -34,8 +36,18 @@
 
 - initialize allocating packed-quantizer scale padding inside the producer,
   with disjoint ownership of logical scale bytes and padding;
-- document the source-build requirement for producer APIs newer than the
-  original 0.2.1 wheel and link the corresponding Mach integration evidence.
+- reject incompatible packaged Torch/CUDA/CXX ABI identities or mismatched
+  DSO hashes before loading; explicit library overrides and manual builds
+  without packaged metadata retain their existing loading behavior;
+- retain source builds against the active Torch runtime without adding Torch
+  to isolated build requirements; the producer APIs above require this source
+  version rather than the original 0.2.1 wheel.
+
+### Build qualification
+
+- built and checked a Linux CPython 3.12 wheel with Torch 2.14.0+cu130,
+  CUDA 13.0 / NVCC 13.0.88 and CXX11 ABI enabled; both packaged DSO hashes
+  match their build identities and contain SM120 device code.
 
 ## 0.2.1 - 2026-08-24
 
