@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mxfp6-sm120"
-version = "0.2.1"
+version = "0.3.0"
 description = "Native SM120 W6A8 GEMM with packed MXFP6 weights for PyTorch"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -29,4 +29,4 @@ package-dir = {"" = "python"}
 where = ["python"]
 
 [tool.setuptools.package-data]
-mxfp6 = ["*.so", "*.txt", "metadata.json", "mxfp8_dispatch.json"]
+mxfp6 = ["*.so", "*.txt", "metadata.json", "build_info.json", "mxfp8_dispatch.json"]

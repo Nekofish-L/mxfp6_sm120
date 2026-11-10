@@ -3,9 +3,36 @@
 from __future__ import annotations
 
 import os
+import hashlib
+import json
 import threading
 from pathlib import Path
 import torch
+
+
+def _check_packaged_build(library: Path, package: Path) -> None:
+    """Reject a wheel compiled against another Torch ABI before loading it."""
+    info_path = package / "build_info.json"
+    if library.parent.resolve() != package.resolve() or not info_path.is_file():
+        return
+    info = json.loads(info_path.read_text())
+    actual = {
+        "torch_version": str(torch.__version__),
+        "torch_cuda": torch.version.cuda,
+        "cxx11_abi": bool(torch._C._GLIBCXX_USE_CXX11_ABI),
+    }
+    expected = info["runtime"]
+    differences = [f"{key}: built={expected[key]!r}, running={value!r}"
+                   for key, value in actual.items() if expected[key] != value]
+    if differences:
+        raise ImportError(
+            f"{library.name} has an incompatible packaged build: "
+            + "; ".join(differences)
+            + ". Install a wheel built for this runtime or rebuild it."
+        )
+    expected_hash = info["libraries"][library.name]["sha256"]
+    if hashlib.sha256(library.read_bytes()).hexdigest() != expected_hash:
+        raise ImportError(f"{library.name} does not match its packaged build_info.json")
 
 
 class _LibraryLoader:
@@ -39,6 +66,10 @@ class _LibraryLoader:
                 raise ImportError(
                     f"{self.name}_torch.so was not found. Install the wheel or build the CMake target. Searched:\n  {searched}"
                 )
+            # Explicit source/manual paths deliberately retain their existing
+            # behavior, even if the chosen path happens to be inside package.
+            if not override:
+                _check_packaged_build(library, package)
             torch.ops.load_library(str(library))
             self.path = library.resolve()
             return self.path

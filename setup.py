@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import runpy
 import shlex
 import shutil
 import subprocess
@@ -21,7 +22,7 @@ class CMakeExtension(Extension):
 
 class CMakeBuild(build_ext):
     def build_extension(self, ext: Extension) -> None:
-        output_dir = Path(self.get_ext_fullpath(ext.name)).resolve().parent
+        output_dir = (Path(self.build_lib) / ext.name.rsplit(".", 1)[0].replace(".", os.sep)).resolve()
         build_dir = Path(self.build_temp).resolve() / ext.name.replace(".", "_")
         output_dir.mkdir(parents=True, exist_ok=True)
         build_dir.mkdir(parents=True, exist_ok=True)
@@ -57,6 +58,10 @@ class CMakeBuild(build_ext):
             ],
             cwd=ROOT,
         )
+        # Keep build-specific identities next to the wheel's actual DSOs, never
+        # in python/mxfp6 (which is also used for source/manual installations).
+        writer = runpy.run_path(str(ROOT / "scripts" / "write_build_info.py"))
+        writer["write_build_info"](output_dir, build_dir, configure)
 
 
 setup(

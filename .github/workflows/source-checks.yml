@@ -68,6 +68,10 @@ jobs:
           PY
       - name: Check whitespace
         run: git diff --check HEAD^ HEAD
+      - name: Test wheel identity and loader compatibility
+        run: |
+          python -m pip install --disable-pip-version-check "setuptools>=64" wheel
+          python -m unittest discover -s tests -p test_build_identity.py
       - name: Build source distribution through PEP 517
         if: matrix.python-version == '3.12'
         run: |
