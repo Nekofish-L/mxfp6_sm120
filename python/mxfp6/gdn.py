@@ -7,8 +7,36 @@ from triton.experimental.gluon.language import BlockedLayout, SliceLayout
 
 
 @gluon.jit
+def _rn_mul(x, y):
+    return tl.inline_asm_elementwise(
+        'mul.rn.f32 $0, $1, $2;', constraints='=f,f,f',
+        args=[x, y], dtype=tl.float32, is_pure=True, pack=1)
+
+
+@gluon.jit
+def _rn_fma(x, y, z):
+    return tl.inline_asm_elementwise(
+        'fma.rn.f32 $0, $1, $2, $3;', constraints='=f,f,f,f',
+        args=[x, y, z], dtype=tl.float32, is_pure=True, pack=1)
+
+
+@gluon.jit
+def _m4_square_sum(x):
+    # Preserve the row axis and the qualified local4 RN multiply/FMA order.
+    tl.static_assert(x.shape[0] == 1 and x.shape[1] == 128)
+    x02, x13 = tl.split(tl.reshape(x, (1, 32, 2, 2)))
+    x0, x2 = tl.split(x02)
+    x1, x3 = tl.split(x13)
+    local = _rn_fma(x0, x0, _rn_mul(x1, x1))
+    local = _rn_fma(x2, x2, local)
+    local = _rn_fma(x3, x3, local)
+    return tl.convert_layout(tl.sum(local, 1), tl.SliceLayout(1, x.type.layout))
+
+
+@gluon.jit
 def _producer(X, Z, W, Q, S, Y, M: tl.constexpr, ZS: tl.constexpr,
-              EPS, R: tl.constexpr, WRITE_ROUNDED: tl.constexpr):
+              EPS, R: tl.constexpr, WRITE_ROUNDED: tl.constexpr,
+              M4_ORDER: tl.constexpr = False):
     # Freeze the original vLLM reduction tree. The automatic Triton layout
     # changes to 16 values/lane once FP8 conversion is fused (instead of 8),
     # changing rounding at M16/24/32 even though the source arithmetic matches.
@@ -19,7 +47,11 @@ def _producer(X, Z, W, Q, S, Y, M: tl.constexpr, ZS: tl.constexpr,
     x = tl.load(X + heads[:, None] * 128 + cols[None, :], heads[:, None] < M * 24, 0).to(tl.float32)
     z = tl.load(Z + (heads[:, None] // 24) * ZS + (heads[:, None] % 24) * 128 + cols[None, :], heads[:, None] < M * 24, 0).to(tl.float32)
     w = tl.load(W + cols).to(tl.float32)
-    var = tl.sum(x * x, 1) / 128
+    if M4_ORDER:
+        tl.static_assert(M == 4 and R == 1 and ZS == 8192)
+        var = _m4_square_sum(x) / 128
+    else:
+        var = tl.sum(x * x, 1) / 128
     y = ((x * tl.rsqrt(var + EPS)[:, None]) * w[None, :]) * (z * (1. / (1. + tl.exp(-z))))
     y = y.to(tl.bfloat16).to(tl.float32)
     if WRITE_ROUNDED:
@@ -79,5 +111,7 @@ def gated_norm_mxfp8(x, z, w, eps=1.e-6, *, rounded_out=None):
     r = min(tr.next_power_of_2(tr.cdiv(m * 24, 2 * props.multi_processor_count)), 4)
     with torch.cuda.device(x.device):
         _producer[(tr.cdiv(m * 24, r),)](x, z, w, q, scales, rounded_out,
-            m, z.stride(0), eps, r, rounded_out is not None, num_warps=1)
+            m, z.stride(0), eps, r, rounded_out is not None,
+            M4_ORDER=(m == 4 and r == 1 and z.stride(0) == 8192
+                      and w.dtype == torch.bfloat16 and eps == 1.e-6), num_warps=1)
     return q.view(torch.uint8), scales
