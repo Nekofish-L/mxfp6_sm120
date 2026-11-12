@@ -9,6 +9,15 @@ import unittest
 SOURCE = Path(__file__).parents[1] / 'python/mxfp6/gdn.py'
 
 
+def canonical_ast_sha(node):
+    """Ignore only Python 3.12's empty type-parameter schema extension."""
+    node = copy.deepcopy(node)
+    for child in ast.walk(node):
+        if getattr(child, 'type_params', None) == []:
+            child._fields = tuple(f for f in child._fields if f != 'type_params')
+    return hashlib.sha256(ast.dump(node).encode()).hexdigest()
+
+
 class TestM4ProducerOrder(unittest.TestCase):
     def setUp(self):
         self.tree = ast.parse(SOURCE.read_text())
@@ -27,18 +36,30 @@ class TestM4ProducerOrder(unittest.TestCase):
                      if isinstance(n, ast.If) and isinstance(n.test, ast.Name)
                      and n.test.id == 'M4_ORDER')
         kernel.body[index:index + 1] = kernel.body[index].orelse
-        self.assertEqual(hashlib.sha256(ast.dump(kernel).encode()).hexdigest(),
-                         '0b915e1232a6ae768f26874b1fadbafa467b806174dc50d5ec41945b27539557')
+        self.assertEqual(canonical_ast_sha(kernel),
+                         '6332e52cd9ad1b88d521282f8d7505fde9bc5bc69fe54dfb2d95c7c9f411c221')
 
     def test_local4_helpers_match_qualified_prototype_ast(self):
         expected = {
-            '_rn_mul': '23697220800a625a0be3182c79c33f450939d1a6c95b3d8b0db407b1febf8104',
-            '_rn_fma': 'fdff6e4092f66216015cb8f9e9db4e078b4150f457f57192373b9699f5020fd4',
-            '_m4_square_sum': '5550dcb252550144d9d3471c1961c7fd5296a8fe77b42a89ee0859a44d8e7684',
+            '_rn_mul': '4dda3bad9e40583e7fddfe2a44f936d7c5e1a8522749e1cec86a3cd249abe1ff',
+            '_rn_fma': '3da2bf47519aeb61342baa223e1726c15666e915f6dbc5ba40a40b18041ae7fa',
+            '_m4_square_sum': '09521dfba0b137722f0664f41a3524b45807b09d6927aa7f9bb55cdef6ec42a6',
         }
         for name, digest in expected.items():
             with self.subTest(helper=name):
-                self.assertEqual(hashlib.sha256(ast.dump(self.function(name)).encode()).hexdigest(), digest)
+                self.assertEqual(canonical_ast_sha(self.function(name)), digest)
+
+    def test_only_empty_schema_field_is_ignored(self):
+        plain = ast.parse('def f(): return 1').body[0]
+        extended = copy.deepcopy(plain)
+        if 'type_params' not in extended._fields:
+            extended._fields += ('type_params',)
+        extended.type_params = []
+        self.assertEqual(canonical_ast_sha(plain), canonical_ast_sha(extended))
+        extended.type_params = [ast.Name(id='T', ctx=ast.Load())]
+        self.assertNotEqual(canonical_ast_sha(plain), canonical_ast_sha(extended))
+        changed = ast.parse('def f(): return 2').body[0]
+        self.assertNotEqual(canonical_ast_sha(plain), canonical_ast_sha(changed))
 
     def test_real_frontend_selector_is_finite(self):
         value = next(n.value for n in ast.walk(self.function('gated_norm_mxfp8'))
