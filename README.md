@@ -74,7 +74,7 @@ python3 -m pip install --no-deps dist/mxfp6_sm120-*.whl
 
 For an existing clone, run `git submodule update --init third_party/cutlass`. The wheel script applies the checked-in CUTLASS runtime patches and builds both extensions. `MAX_JOBS` defaults to 2. See [development and compatibility](docs/development.md) for ABI, build and upgrade policies.
 
-The prepared Mach 0.3 stack pins native v0.3.0 source [`eb61051`](https://github.com/Nekofish-L/mxfp6_sm120/commit/eb61051b24790d133f50730240641f388bfddc36). See [Mach runtime versions](https://github.com/troycheng/vllm-mach/blob/main/docs/installation.md#runtime-versions) for the matching serving stack.
+See [Mach runtime versions](https://github.com/troycheng/vllm-mach/blob/main/docs/installation.md#runtime-versions) for the matching serving stack and pinned native source revision.
 
 ## Python API
 
