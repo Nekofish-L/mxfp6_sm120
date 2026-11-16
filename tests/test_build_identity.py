@@ -200,7 +200,10 @@ else:
                 self.assertEqual(hashlib.sha256(archive.read("mxfp6/" + name)).hexdigest(),
                                  info["libraries"][name]["sha256"])
             metadata = next(n for n in archive.namelist() if n.endswith(".dist-info/METADATA"))
-            self.assertIn("Version: 0.3.0", archive.read(metadata).decode())
+            expected_version = re.search(
+                r'^version = "([^"]+)"$', (ROOT / "pyproject.toml").read_text(),
+                re.MULTILINE).group(1)
+            self.assertIn(f"Version: {expected_version}", archive.read(metadata).decode())
         self.assertFalse((source / "python/mxfp6/build_info.json").exists())
         self.assertFalse(list((source / "python/mxfp6").glob("*.so")))
 

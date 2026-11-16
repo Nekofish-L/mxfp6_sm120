@@ -1,6 +1,14 @@
 # Changelog
 
-## 0.3.0 (unreleased)
+## 0.3.1 - 2026-11-16
+
+### Changed
+
+- refreshed vLLM 0.33 serving performance data, figures, and reproduction
+  documentation for the native integration; the arithmetic and native
+  libraries are unchanged from 0.3.0.
+
+## 0.3.0 - 2026-11-12
 
 ### Added
 
