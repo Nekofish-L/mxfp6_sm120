@@ -166,7 +166,8 @@
       "baseline_sources": [
         "reference_community-rest-v1_2B_COMMUNITY033_REFERENCE"
       ],
-      "scope": ""
+      "scope": "",
+      "display_name": "Qwen3.5-2B \u00b7 MXFP8"
     },
     {
       "id": "qwen35-4b",
@@ -239,7 +240,72 @@
       },
       "baseline_sources": [
         "reference_4B_COMMUNITY033_VS_R15_V1"
-      ]
+      ],
+      "display_name": "Qwen3.5-4B \u00b7 MXFP8"
+    },
+    {
+      "id": "qwen35-4b-block-fp8",
+      "title": "Qwen3.5-4B block-FP8",
+      "display_name": "Qwen3.5-4B \u00b7 block-FP8",
+      "profile": "Block-FP8 / FP32 SSM / BF16 KV / full head / n64 + ordered + SiLU + FA2",
+      "tp": 1,
+      "date": "November 2026",
+      "configuration_status": "accepted",
+      "guide": "fp8-profile.md",
+      "source": "block_fp8",
+      "baseline_sources": [
+        "reference_4B_COMMUNITY033_VS_R15_V1"
+      ],
+      "selected_label": "Mach",
+      "series": [
+        [
+          "Community FP8",
+          "baseline_tps",
+          "fp8",
+          ""
+        ],
+        [
+          "Mach block-FP8",
+          "selected_tps",
+          "full",
+          ""
+        ]
+      ],
+      "points": [
+        {
+          "c": 4,
+          "baseline_tps": 688.2841275147127,
+          "selected_tps": 764.4945367600864,
+          "gain_pct": 11.072521680916502,
+          "selected_source_measurement": "block-combo-r40-v1"
+        },
+        {
+          "c": 16,
+          "baseline_tps": 2046.4092284938868,
+          "selected_tps": 2145.3246620462646,
+          "gain_pct": 4.833609630717772,
+          "selected_source_measurement": "block-combo-r40-v1"
+        },
+        {
+          "c": 32,
+          "baseline_tps": 2884.6078606358565,
+          "selected_tps": 3008.3151191547995,
+          "gain_pct": 4.2885294811501495,
+          "selected_source_measurement": "block-runtime-m-r51-prep-v1/final-review-v1"
+        },
+        {
+          "c": 64,
+          "baseline_tps": 3407.8708124772265,
+          "selected_tps": 3671.6455370560147,
+          "gain_pct": 7.740162086339386,
+          "selected_source_measurement": "block-runtime-m-r51-prep-v1/final-review-v1"
+        }
+      ],
+      "anchor_aliases": [
+        "block-fp8-migration-status"
+      ],
+      "precision_comparison": "block_fp8",
+      "precision_note": "Fixed-gold precision against BF16, averaged across 256 queries and 10,479 tokens at M32 and M64. The comparison uses the previously qualified block-FP8 profile. Repeated current-profile runs produced identical values."
     },
     {
       "id": "qwen38-27b",
@@ -331,7 +397,12 @@
         "ref_DENSE_FP8",
         "ref_DENSE_NVFP4"
       ],
-      "scope": ""
+      "scope": "",
+      "display_name": "Qwen3.8-27B Dense \u00b7 MXFP6",
+      "series_sources": {
+        "selected_tps": "dense_full",
+        "fp32_head_on_tps": "dense_current"
+      }
     },
     {
       "id": "qwen35-35b-a3b",
@@ -340,7 +411,7 @@
       "tp": 2,
       "date": "November 2026",
       "configuration_status": "accepted",
-      "guide": "installation.md",
+      "guide": "qwen35-moe.md",
       "source": "moe_current",
       "selected_label": "FP32",
       "fidelity_key": "moe",
@@ -429,7 +500,12 @@
         "ref_MOE_FP8",
         "ref_MOE_NVFP4"
       ],
-      "scope": "Selected FP32 SSM is unchanged. FP16 FULL uses the accepted [four-point serving aggregate](data/evidence-vllm033/moe_full_final.json)."
+      "scope": "",
+      "display_name": "Qwen3.5-35B-A3B MoE \u00b7 MXFP6",
+      "series_sources": {
+        "selected_tps": "moe_current",
+        "full_tps": "moe_full_final"
+      }
     }
   ],
   "sources": {
@@ -545,6 +621,11 @@
       "url": "data/evidence-vllm033/moe_full_final.json",
       "sha256": "0df4bcffe66f948e1ca7ade6e118560cde06c0eb079657c495eb87000baa71d0",
       "original_source_sha256": "c27a6555f3c172d224344ffae84fd7b17fee758580a4ac675ad2566ca32892a8",
+      "kind": "published aggregate"
+    },
+    "block_fp8": {
+      "url": "data/evidence-vllm033/block_fp8.json",
+      "sha256": "47e10b0b3a9e54d230eed024d0bbec1c758bc2e480f79c4f68a0c3d20fe8c01e",
       "kind": "published aggregate"
     }
   },
@@ -690,6 +771,25 @@
       "binding": "data/evidence-vllm033/precision-aggregate.json",
       "FP8_NVFP4": "actual community0.33 stock measurements; frozen historical BF16 anchor; current checkpoints independently frozen, historical checkpoint byte identity not claimed",
       "default_FULL": "accepted source-scoped current evidence; shortM4/long remain separately bound"
+    },
+    "block_fp8": {
+      "points": [
+        {
+          "M": 32,
+          "reference_mae": 0.05297690314515511,
+          "mach_mae": 0.05275541985122039
+        },
+        {
+          "M": 64,
+          "reference_mae": 0.05236208103593479,
+          "mach_mae": 0.05155465306589856
+        }
+      ],
+      "source": "block_fp8",
+      "reference_label": "Previous qualified profile",
+      "candidate_label": "Mach block-FP8",
+      "gold_tokens": 10479,
+      "queries": 256
     }
   },
   "native_fp32_configurations": {
@@ -823,7 +923,5 @@
     }
   },
   "evidence_protocol": "data/evidence-vllm033/README.md",
-  "block_status": "Block-FP8 preserves c32 throughput (\u22120.13%) and improves c64 by 0.90% versus vLLM 0.29. The comparison covers 2,400 requests across 10 measurement windows.",
-  "migration_status_note": "MoE FP16 FULL preserves throughput at c4 and c16, and improves c24 by 2.93% and c32 by 1.79% versus vLLM 0.29. 4B MXFP8 with BF16 state improves at c24 and c32. The retained 2B FP32 configuration with headgraph OFF preserves c16 throughput.",
   "migration_status_evidence": "data/evidence-vllm033/migration-status.json"
 }
