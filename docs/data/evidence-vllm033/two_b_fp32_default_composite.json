@@ -1,0 +1,111 @@
+{
+  "evidence_id": "two_b_fp32_default_composite",
+  "kind": "published aggregate; original raw is not bundled",
+  "original_source_sha256": "59dd95fff736013f52b6c8f4944782026fc06f59fadc60b93288dc65dfddb5ac",
+  "runtime": {
+    "vllm": "0.33.0",
+    "torch": "2.14.0+cu130",
+    "triton": "3.8.0"
+  },
+  "points": [
+    {
+      "case": "greedy",
+      "concurrency": 4,
+      "old_tokens_s": 1775.4441298716476,
+      "new_tokens_s": 1801.7568001638388,
+      "gain_pct": 1.482033134666616,
+      "aa_resolution_pct": 0.0993771743494909,
+      "paired_gain_pct": [
+        1.4760232597764489,
+        1.488040550391756
+      ],
+      "decision": "improvement",
+      "source": "two_fp32_original",
+      "measurement_version": "R27",
+      "acceptance": "accepted_reuse"
+    },
+    {
+      "case": "greedy",
+      "concurrency": 16,
+      "old_tokens_s": 5036.90874790985,
+      "new_tokens_s": 5070.799670084635,
+      "gain_pct": 0.672851621321291,
+      "aa_resolution_pct": 0.09624613023430095,
+      "paired_gain_pct": [
+        0.7153312316533045,
+        0.6304733028931864
+      ],
+      "decision": "improvement",
+      "source": "two_fp32_original",
+      "measurement_version": "R27",
+      "acceptance": "accepted_reuse"
+    },
+    {
+      "case": "greedy",
+      "concurrency": 24,
+      "old_tokens_s": 6583.95692004137,
+      "new_tokens_s": 6571.653710997126,
+      "gain_pct": -0.1868664876404802,
+      "aa_resolution_pct": 0.1483419283044185,
+      "paired_gain_pct": [
+        0.2131564706874478,
+        -0.5869230200965969
+      ],
+      "decision": "tied_or_unresolved",
+      "source": "two_fp32_c24_final",
+      "measurement_version": "R42",
+      "acceptance": "no_confirmed_regression"
+    },
+    {
+      "case": "greedy",
+      "concurrency": 32,
+      "old_tokens_s": 7478.195722677416,
+      "new_tokens_s": 7544.903752685461,
+      "gain_pct": 0.8920337536199474,
+      "aa_resolution_pct": 0.1489476073166296,
+      "paired_gain_pct": [
+        0.790132653912945,
+        0.9937789019569543
+      ],
+      "decision": "improvement",
+      "source": "two_fp32_original",
+      "measurement_version": "R27",
+      "acceptance": "accepted_reuse"
+    },
+    {
+      "case": "greedy",
+      "concurrency": 48,
+      "old_tokens_s": 8819.111605075213,
+      "new_tokens_s": 8839.024815326582,
+      "gain_pct": 0.2257961021823185,
+      "aa_resolution_pct": 0.025935464546322784,
+      "paired_gain_pct": [
+        0.08385077784003325,
+        0.3679481587496092
+      ],
+      "decision": "improvement",
+      "source": "two_fp32_original",
+      "measurement_version": "R27",
+      "acceptance": "accepted_reuse"
+    },
+    {
+      "case": "greedy",
+      "concurrency": 64,
+      "old_tokens_s": 9660.046196506391,
+      "new_tokens_s": 9721.132158204908,
+      "gain_pct": 0.632356827864955,
+      "aa_resolution_pct": 0.024074709458188348,
+      "paired_gain_pct": [
+        0.6449460158171272,
+        0.6197490157766383
+      ],
+      "decision": "improvement",
+      "source": "two_fp32_original",
+      "measurement_version": "R27",
+      "acceptance": "accepted_reuse"
+    }
+  ],
+  "source_identity": {},
+  "measurement_artifact_hashes": {},
+  "configuration": "2B default MXFP8 FP32 SSM/BF16 KV/hybrid head/headgraph ON"
+}

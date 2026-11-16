@@ -1,0 +1,13 @@
+{
+  "evidence_id": "verified_complete",
+  "kind": "published aggregate; original raw is not bundled",
+  "original_source_sha256": "475aa48b811f520e3505e6d77a2fd3a8b0f4d462668c3874bbaea6cad5935d87",
+  "runtime": {
+    "vllm": "0.33.0",
+    "torch": "2.14.0+cu130",
+    "triton": "3.8.0"
+  },
+  "points": [],
+  "source_identity": {},
+  "measurement_artifact_hashes": {}
+}

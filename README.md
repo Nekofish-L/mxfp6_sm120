@@ -11,47 +11,36 @@
 
 The package provides Dense GEMM, Qwen3.5 routed MoE, activation producers and CUDA Graph workspaces. [vLLM Mach](https://github.com/troycheng/vllm-mach) supplies checkpoint loading, model profiles and complete serving integration.
 
-## Model serving performance
+## Serving performance
 
-**3,000 input / 1,000 output tokens · output tokens/s · text-only, non-speculative inference.** End-to-end serving with [vLLM Mach](https://github.com/troycheng/vllm-mach) on one (TP1) or two (TP2) 32 GiB RTX 5090 GPUs.
+**vLLM 0.33.0 · 3,000 input / 1,000 output tokens · output tokens/s · RTX 5090.**
 
-| Model / profile | GPUs | Throughput gain vs FP8 | Details |
-|---|---|---:|---|
-| Qwen3.5-2B · MXFP8 · FP32 SSM / BF16 KV | 1 · TP1 | FP32 +29.46% to +34.60%; BF16 optional +36.34% to +41.74% | [Data](docs/performance.md#qwen35-2b) |
-| Qwen3.5-4B · MXFP8 · FP32 SSM / FP8 KV | 1 · TP1 | FP32 +32.13% to +43.05%; BF16 optional +39.36% to +57.91% | [Data](docs/performance.md#qwen35-4b) |
-| Qwen3.5-4B block-FP8 · Block-FP8 · all four features | 1 · TP1 | +5.97% to +9.03% | [Data](docs/performance.md#qwen35-4b-block-fp8) |
-| Qwen3.8-27B Dense · MXFP6 default / full | 2 · TP2 | default +30.41% to +43.69%; full +42.18% to +55.40% | [Data](docs/performance.md#qwen38-27b) |
-| Qwen3.5-35B-A3B MoE · MXFP6 default / full | 2 · TP2 | default +48.34% to +67.01%; full +61.34% to +79.32% | [Data](docs/performance.md#qwen35-35b-a3b) |
-
-MXFP8 defaults to **FP32 SSM**, with **BF16 KV on 2B** and **FP8 KV on 4B**. The optional BF16 SSM curves use `--ssm-dtype bfloat16` with ordered GDN. The six greedy points are c4/16/24/32/48/64, measured on October 14 against historical block-FP8 references.
-
-MXFP6 **default** uses FP32 recurrent state and the BF16 head; **full** adds FP16 state and NVFP4 candidate search with BF16 refinement. The launcher enables hybrid head by default; pass `--no-hybrid-head` to reproduce the measured historical default.
+MXFP8 uses BF16 KV on 2B and FP8 KV on 4B, with FP32 recurrent state by default; BF16 is optional on 2B and 4B. Native MXFP6 uses FP32 state by default; `--fp16-ssm` selects FP16 state. The hybrid head is enabled by default; `--no-hybrid-head` selects the complete head.
 
 ### Qwen3.5-2B · MXFP8
 
-![2B FP8 and MXFP8 champion throughput](docs/assets/qwen35-2b-throughput.svg)
+![Qwen3.5-2B · MXFP8 throughput](docs/assets/qwen35-2b-vllm033-throughput.svg)
 
 ### Qwen3.5-4B · MXFP8
 
-![4B FP8 and MXFP8 champion throughput](docs/assets/qwen35-4b-throughput.svg)
+![Qwen3.5-4B · MXFP8 throughput](docs/assets/qwen35-4b-vllm033-throughput.svg)
 
-### Qwen3.8-27B Dense · FP8, NVFP4 and MXFP6
+### Qwen3.5-4B · block-FP8
 
-![27B FP8, NVFP4 and MXFP6 throughput](docs/assets/qwen38-27b-throughput.svg)
+See the [block-FP8 migration results](docs/performance.md#block-fp8-migration-status).
 
-![27B precision against BF16](docs/assets/qwen38-27b-precision.svg)
+### Qwen3.8-27B Dense · MXFP6
 
-### Qwen3.5-35B-A3B MoE · FP8, NVFP4 and MXFP6
+![Qwen3.8-27B Dense · MXFP6 throughput](docs/assets/qwen38-27b-vllm033-throughput.svg)
 
-![35B-A3B FP8, NVFP4 and MXFP6 throughput](docs/assets/qwen35-35b-a3b-throughput.svg)
+### Qwen3.5-35B-A3B MoE · MXFP6
 
-![35B-A3B precision against BF16](docs/assets/qwen35-35b-a3b-precision.svg)
+![Qwen3.5-35B-A3B MoE · MXFP6 throughput](docs/assets/qwen35-35b-a3b-vllm033-throughput.svg)
 
-[Detailed service data and methodology](docs/performance.md) · [Machine-readable data](docs/data/model-performance.json)
+[Performance and precision](docs/performance.md) · [Historical vLLM 0.29 FP8/NVFP4 comparisons](https://github.com/troycheng/vllm-mach/blob/main/docs/performance-vllm029.md)
 
-The [October 15 random-sampling and best-path recheck](https://github.com/troycheng/vllm-mach/blob/main/docs/best-path-recheck-20261015.md) reports sampling gains separately from these greedy curves.
+Dense retains FP32/head ON and FP16 FULL. MoE recommends FP32/head ON with headgraph OFF. [Published aggregate evidence](docs/data/evidence-vllm033/README.md) records the configurations, measurements and source hashes.
 
-See [kernel benchmarks](docs/benchmarks.md) for GEMM and MoE operator timings, and the [Qwen3.8-27B study](docs/qwen38-27b.md) for memory capacity and precision results.
 
 ## Install
 
@@ -67,7 +56,7 @@ python3 -m pip install --no-deps dist/mxfp6_sm120-*.whl
 
 For an existing clone, run `git submodule update --init third_party/cutlass`. The wheel script applies the checked-in CUTLASS runtime patches and builds both extensions. `MAX_JOBS` defaults to 2. See [development and compatibility](docs/development.md) for ABI, build and upgrade policies.
 
-Build from `main` to use the current producer and dual-activation APIs.
+The prepared Mach 0.3 stack pins native v0.3.0 source [`eb61051`](https://github.com/Nekofish-L/mxfp6_sm120/commit/eb61051b24790d133f50730240641f388bfddc36). See [Mach runtime versions](https://github.com/troycheng/vllm-mach/blob/main/docs/installation.md#runtime-versions) for the matching serving stack.
 
 ## Python API
 
