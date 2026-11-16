@@ -1,0 +1,36 @@
+{
+  "evidence_id": "two_fp32_derived_ci95",
+  "kind": "published aggregate; original raw is not bundled",
+  "original_source_sha256": "d72960ceaa5cb17657caf95d6fdd59e996922984be956ea645b5abf06ff322f5",
+  "runtime": {
+    "vllm": "0.33.0",
+    "torch": "2.14.0+cu130",
+    "triton": "3.8.0"
+  },
+  "points": [
+    {
+      "M": 32,
+      "mae": 0.05475347206803788,
+      "ci95": [
+        0.05121465946564609,
+        0.05840872351312753
+      ],
+      "queries": 256,
+      "tokens": 10479,
+      "accepted_mean_exactly_reproduced": true
+    },
+    {
+      "M": 64,
+      "mae": 0.05654993337845335,
+      "ci95": [
+        0.05283986235973051,
+        0.06042480761684267
+      ],
+      "queries": 256,
+      "tokens": 10479,
+      "accepted_mean_exactly_reproduced": true
+    }
+  ],
+  "source_identity": {},
+  "measurement_artifact_hashes": {}
+}

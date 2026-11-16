@@ -1,0 +1,829 @@
+{
+  "schema_version": 3,
+  "publication_status": "accepted",
+  "asset_suffix": "-vllm033",
+  "runtime": {
+    "vllm": "0.33.0",
+    "torch": "2.14.0+cu130",
+    "triton": "3.8.0"
+  },
+  "unit": "output tokens/s",
+  "workload": {
+    "input_tokens": 3000,
+    "output_tokens": 1000
+  },
+  "models": [
+    {
+      "id": "qwen35-2b",
+      "title": "Qwen3.5-2B",
+      "profile": "MXFP8 / FP32 SSM default; BF16 SSM optional / BF16 KV / headgraph ON",
+      "tp": 1,
+      "date": "November 2026",
+      "configuration_status": "accepted",
+      "guide": "mxfp8-2b-champion.md",
+      "source": "two_b_fp32_default_composite",
+      "kv_dtype": "BF16",
+      "series": [
+        [
+          "Community FP8",
+          "baseline_tps",
+          "fp8",
+          ""
+        ],
+        [
+          "MXFP8 FP32 (default)",
+          "selected_tps",
+          "full",
+          ""
+        ],
+        [
+          "MXFP8 BF16 (optional)",
+          "bf16_tps",
+          "default",
+          ""
+        ]
+      ],
+      "points": [
+        {
+          "c": 4,
+          "baseline_tps": 1240.0603764827474,
+          "selected_tps": 1801.7568001638388,
+          "gain_pct": 45.29589319467351,
+          "fp32_tps": 1801.7568001638388,
+          "fp32_source": "two_fp32_original",
+          "fp32_measurement_version": "R27",
+          "fp32_acceptance": "accepted_reuse",
+          "fp32_vs_community_pct": 45.29589319467351,
+          "bf16_tps": 1884.6908472251384,
+          "bf16_gain_pct": 51.98379715758619,
+          "bf16_source": "two_b_bf16_final",
+          "selected_source": "two_fp32_original",
+          "selected_measurement_version": "R27"
+        },
+        {
+          "c": 16,
+          "baseline_tps": 3699.6951089713375,
+          "selected_tps": 5070.799670084635,
+          "gain_pct": 37.05993387910604,
+          "fp32_tps": 5070.799670084635,
+          "fp32_source": "two_fp32_original",
+          "fp32_measurement_version": "R27",
+          "fp32_acceptance": "accepted_reuse",
+          "fp32_vs_community_pct": 37.05993387910604,
+          "bf16_tps": 5381.750108171228,
+          "bf16_gain_pct": 45.464692350488555,
+          "bf16_source": "two_b_bf16_final",
+          "selected_source": "two_fp32_original",
+          "selected_measurement_version": "R27"
+        },
+        {
+          "c": 24,
+          "baseline_tps": 4926.732476924875,
+          "selected_tps": 6571.653710997126,
+          "gain_pct": 33.38767107360705,
+          "fp32_tps": 6571.653710997126,
+          "fp32_source": "two_fp32_c24_final",
+          "fp32_measurement_version": "R42",
+          "fp32_acceptance": "no_confirmed_regression",
+          "fp32_vs_community_pct": 33.38767107360705,
+          "bf16_tps": 7018.893903666378,
+          "bf16_gain_pct": 42.46549688947936,
+          "bf16_source": "two_b_bf16_final",
+          "selected_source": "two_fp32_c24_final",
+          "selected_measurement_version": "R42"
+        },
+        {
+          "c": 32,
+          "baseline_tps": 5702.37015299876,
+          "selected_tps": 7544.903752685461,
+          "gain_pct": 32.31171513335993,
+          "fp32_tps": 7544.903752685461,
+          "fp32_source": "two_fp32_original",
+          "fp32_measurement_version": "R27",
+          "fp32_acceptance": "accepted_reuse",
+          "fp32_vs_community_pct": 32.31171513335993,
+          "bf16_tps": 8007.861387802112,
+          "bf16_gain_pct": 40.430403024450136,
+          "bf16_source": "two_b_bf16_final",
+          "selected_source": "two_fp32_original",
+          "selected_measurement_version": "R27"
+        },
+        {
+          "c": 48,
+          "baseline_tps": 6732.986621272492,
+          "selected_tps": 8839.024815326582,
+          "gain_pct": 31.279405596918618,
+          "fp32_tps": 8839.024815326582,
+          "fp32_source": "two_fp32_original",
+          "fp32_measurement_version": "R27",
+          "fp32_acceptance": "accepted_reuse",
+          "fp32_vs_community_pct": 31.279405596918618,
+          "bf16_tps": 9395.59605232483,
+          "bf16_gain_pct": 39.54574070650867,
+          "bf16_source": "two_b_bf16_final",
+          "selected_source": "two_fp32_original",
+          "selected_measurement_version": "R27"
+        },
+        {
+          "c": 64,
+          "baseline_tps": 7422.138300268583,
+          "selected_tps": 9721.132158204908,
+          "gain_pct": 30.974818373475088,
+          "fp32_tps": 9721.132158204908,
+          "fp32_source": "two_fp32_original",
+          "fp32_measurement_version": "R27",
+          "fp32_acceptance": "accepted_reuse",
+          "fp32_vs_community_pct": 30.974818373475088,
+          "bf16_tps": 10334.423907443545,
+          "bf16_gain_pct": 39.23782459119059,
+          "bf16_source": "two_b_bf16_final",
+          "selected_source": "two_fp32_original",
+          "selected_measurement_version": "R27"
+        }
+      ],
+      "series_sources": {
+        "selected_tps": "two_b_fp32_default_composite",
+        "fp32_tps": "two_b_fp32_default_composite",
+        "bf16_tps": "two_b_bf16_final"
+      },
+      "mxfp8": true,
+      "selected_label": "FP32",
+      "overview_series": [
+        [
+          "FP32 default",
+          "selected_tps"
+        ],
+        [
+          "BF16 optional",
+          "bf16_tps"
+        ]
+      ],
+      "measurement_provenance": {
+        "title": "Qwen3.5-2B (FP32 default; BF16 optional)",
+        "profile": "Default FP32 SSM + headgraph ON; optional BF16 SSM + headgraph ON / BF16 KV / hybrid head",
+        "date": "BF16 final R42; FP32 accepted R27 five-point reuse + final R42 c24; staging R43"
+      },
+      "baseline_sources": [
+        "reference_community-rest-v1_2B_COMMUNITY033_REFERENCE"
+      ],
+      "scope": ""
+    },
+    {
+      "id": "qwen35-4b",
+      "title": "Qwen3.5-4B",
+      "profile": "MXFP8 FP32 SSM / FP8 KV / hybrid head",
+      "tp": 1,
+      "date": "November 2026",
+      "configuration_status": "accepted",
+      "guide": "mxfp8-champion.md",
+      "source": "four_fp32",
+      "mxfp8": true,
+      "kv_dtype": "FP8",
+      "series": [
+        [
+          "Community FP8 vLLM0.33 (BF16 KV)",
+          "baseline_tps",
+          "fp8",
+          ""
+        ],
+        [
+          "MXFP8 FP32 SSM / FP8 KV",
+          "selected_tps",
+          "full",
+          ""
+        ]
+      ],
+      "points": [
+        {
+          "c": 4,
+          "baseline_tps": 688.2841275147127,
+          "selected_tps": 956.3485960685645,
+          "gain_pct": 38.946774716684374
+        },
+        {
+          "c": 16,
+          "baseline_tps": 2046.4092284938868,
+          "selected_tps": 2684.509536837804,
+          "gain_pct": 31.181461628451768
+        },
+        {
+          "c": 24,
+          "baseline_tps": 2564.4674419254943,
+          "selected_tps": 3384.2498018739316,
+          "gain_pct": 31.966963063992537
+        },
+        {
+          "c": 32,
+          "baseline_tps": 2884.6078606358565,
+          "selected_tps": 3820.595064547884,
+          "gain_pct": 32.4476410358844
+        },
+        {
+          "c": 48,
+          "baseline_tps": 3211.3365556422814,
+          "selected_tps": 4297.350324167296,
+          "gain_pct": 33.81812369111239
+        },
+        {
+          "c": 64,
+          "baseline_tps": 3407.8708124772265,
+          "selected_tps": 4796.723432127845,
+          "gain_pct": 40.754262590166746
+        }
+      ],
+      "selected_label": "FP32",
+      "measurement_provenance": {
+        "title": "Qwen3.5-4B",
+        "profile": "MXFP8 FP32 SSM / FP8 KV / hybrid head",
+        "date": "R15 complete AA+ABBA; accepted reuse"
+      },
+      "baseline_sources": [
+        "reference_4B_COMMUNITY033_VS_R15_V1"
+      ]
+    },
+    {
+      "id": "qwen38-27b",
+      "title": "Qwen3.8-27B Dense",
+      "profile": "MXFP6 / FP32 SSM or FP16 FULL / BF16 KV / head ON",
+      "tp": 2,
+      "date": "November 2026",
+      "configuration_status": "accepted",
+      "guide": "installation.md",
+      "source": "dense_full",
+      "series": [
+        [
+          "Community FP8",
+          "baseline_tps",
+          "fp8",
+          ""
+        ],
+        [
+          "Community NVFP4",
+          "nvfp4_tps",
+          "nvfp4",
+          "//"
+        ],
+        [
+          "MXFP6 / FP32 SSM",
+          "fp32_head_on_tps",
+          "default",
+          ""
+        ],
+        [
+          "MXFP6 / FP16 SSM",
+          "selected_tps",
+          "full",
+          ""
+        ]
+      ],
+      "points": [
+        {
+          "c": 4,
+          "baseline_tps": 271.47060223817107,
+          "nvfp4_tps": 366.87826942275643,
+          "selected_tps": 427.43078813338053,
+          "gain_pct": 57.4501196849226,
+          "default_tps": 395.6160735418579,
+          "fp32_head_on_tps": 418.3683676292912
+        },
+        {
+          "c": 16,
+          "baseline_tps": 798.1771512414617,
+          "nvfp4_tps": 1111.6796083600614,
+          "selected_tps": 1173.9804884089494,
+          "gain_pct": 47.082697942803044,
+          "default_tps": 1080.4188943700644,
+          "fp32_head_on_tps": 1121.7756385845587
+        },
+        {
+          "c": 24,
+          "baseline_tps": 994.2394073595872,
+          "nvfp4_tps": 1363.6405310761918,
+          "selected_tps": 1506.693575878654,
+          "gain_pct": 51.54233122583596,
+          "default_tps": 1392.3353254740373,
+          "fp32_head_on_tps": 1437.432947471769
+        },
+        {
+          "c": 32,
+          "baseline_tps": 1131.8126986145803,
+          "nvfp4_tps": 1531.5182487792017,
+          "selected_tps": 1727.7782690283425,
+          "gain_pct": 52.655847663068876,
+          "default_tps": 1575.0678832643212,
+          "fp32_head_on_tps": 1617.248348896726
+        }
+      ],
+      "fidelity_key": "dense",
+      "selected_label": "FP16",
+      "precision_labels": {
+        "fp8": "FP8",
+        "nvfp4": "NVFP4",
+        "default": "MXFP6 / FP32 SSM",
+        "full": "MXFP6 / FP16 SSM"
+      },
+      "measurement_provenance": {
+        "title": "Qwen3.8-27B Dense",
+        "profile": "MXFP6 FULL / FP16 SSM / BF16 KV / head ON",
+        "date": "R36 complete AA+ABBA; final native installed reuse"
+      },
+      "baseline_sources": [
+        "ref_DENSE_FP8",
+        "ref_DENSE_NVFP4"
+      ],
+      "scope": ""
+    },
+    {
+      "id": "qwen35-35b-a3b",
+      "title": "Qwen3.5-35B-A3B MoE",
+      "profile": "MXFP6 / FP32 SSM / BF16 KV / head ON / headgraph OFF",
+      "tp": 2,
+      "date": "November 2026",
+      "configuration_status": "accepted",
+      "guide": "installation.md",
+      "source": "moe_current",
+      "selected_label": "FP32",
+      "fidelity_key": "moe",
+      "precision_labels": {
+        "fp8": "FP8",
+        "nvfp4": "NVFP4",
+        "default": "MXFP6 / FP32 SSM",
+        "full": "MXFP6 / FP16 SSM"
+      },
+      "series": [
+        [
+          "Community FP8",
+          "baseline_tps",
+          "fp8",
+          ""
+        ],
+        [
+          "Community NVFP4",
+          "nvfp4_tps",
+          "nvfp4",
+          "//"
+        ],
+        [
+          "MXFP6 / FP32 SSM",
+          "selected_tps",
+          "default",
+          ""
+        ],
+        [
+          "MXFP6 / FP16 SSM",
+          "full_tps",
+          "full",
+          ""
+        ]
+      ],
+      "points": [
+        {
+          "c": 4,
+          "baseline_tps": 739.6924904240643,
+          "nvfp4_tps": 734.548573260033,
+          "selected_tps": 1196.0102721171068,
+          "full_tps": 1183.9195472570134,
+          "default_tps": 1126.4183687889245,
+          "gain_pct": 61.69020067128657,
+          "nvfp4_gain_pct": 62.82248930238063
+        },
+        {
+          "c": 16,
+          "baseline_tps": 1647.343089579072,
+          "nvfp4_tps": 1650.0800143216543,
+          "selected_tps": 2474.875056254275,
+          "full_tps": 2527.7441218505205,
+          "default_tps": 2389.0865082335836,
+          "gain_pct": 50.2343423121806,
+          "nvfp4_gain_pct": 49.98515434245125
+        },
+        {
+          "c": 24,
+          "baseline_tps": 1956.6824695868227,
+          "nvfp4_tps": 1969.033911563142,
+          "selected_tps": 2901.025183592719,
+          "full_tps": 3007.233999309867,
+          "default_tps": 2829.648085731174,
+          "gain_pct": 48.26244056887297,
+          "nvfp4_gain_pct": 47.33241345191988
+        },
+        {
+          "c": 32,
+          "baseline_tps": 2186.1348368337813,
+          "nvfp4_tps": 2172.675730810957,
+          "selected_tps": 3257.7897792950293,
+          "full_tps": 3362.910100064205,
+          "default_tps": 3189.627384220993,
+          "gain_pct": 49.02053269565685,
+          "nvfp4_gain_pct": 49.94367236196131
+        }
+      ],
+      "selection_evidence": "data/evidence-vllm033/moe_current.json",
+      "full_series_status": "FP16 FULL accepted: c4/c16 no confirmed regression; c24/c32 improved versus original OLD.",
+      "measurement_provenance": {
+        "title": "Qwen3.5-35B-A3B MoE",
+        "profile": "MXFP6 / FP32 SSM / BF16 KV / head ON",
+        "date": "November 2026"
+      },
+      "baseline_sources": [
+        "ref_MOE_FP8",
+        "ref_MOE_NVFP4"
+      ],
+      "scope": "Selected FP32 SSM is unchanged. FP16 FULL uses the accepted [four-point serving aggregate](data/evidence-vllm033/moe_full_final.json)."
+    }
+  ],
+  "sources": {
+    "four_fp32": {
+      "url": "data/evidence-vllm033/four_fp32.json",
+      "sha256": "09a20cfb19755639bb6970953493ee2da1427adf4e657578e7bda26a9c58ca16",
+      "original_source_sha256": "a825531f2177608f58c4fa718bf6a605786f7f5b8a6a66253f0d168a004288e1",
+      "kind": "published aggregate"
+    },
+    "dense_full": {
+      "url": "data/evidence-vllm033/dense_full.json",
+      "sha256": "6af7bc17b06d9a8497a630eb1b48eba8153e0ec52280618ebdaa07a6c8c907ad",
+      "original_source_sha256": "0b956d8806fd676d019ffff88b7c60e5fb1524b8b5bf7c215f21d0a8db9fa295",
+      "kind": "published aggregate"
+    },
+    "verified_complete": {
+      "url": "data/evidence-vllm033/verified_complete.json",
+      "sha256": "39d3a6c94d5310656a8973763c007b582e6489d7a96ffcd1f479b23e63b45e5f",
+      "original_source_sha256": "475aa48b811f520e3505e6d77a2fd3a8b0f4d462668c3874bbaea6cad5935d87",
+      "kind": "published aggregate"
+    },
+    "two_b_bf16_final": {
+      "url": "data/evidence-vllm033/two_b_bf16_final.json",
+      "sha256": "4e3b5bd8969368e14df6af6d37474a4c010aaae2c7ee9afbf36fa81901d726df",
+      "original_source_sha256": "07ec770764c86b82d695793e43531a2be4b283daaee6c8b07192c1caec16221b",
+      "kind": "published aggregate"
+    },
+    "two_fp32_original": {
+      "url": "data/evidence-vllm033/two_fp32_original.json",
+      "sha256": "f70db2f6e51be1825d4ef96b2957792f52fb6480211f4e585836f877683b0740",
+      "original_source_sha256": "c366629bb02539003817de94dbfe2ca5506f036816f0cf9776acdb6f3c63320b",
+      "kind": "published aggregate"
+    },
+    "two_fp32_c24_final": {
+      "url": "data/evidence-vllm033/two_fp32_c24_final.json",
+      "sha256": "5943370f022191f9f971c323c5ef031870567974ad14ff3ca91f706d9c7274ab",
+      "original_source_sha256": "171659bbede97670495d07173b58acefc8600aed116fa749103e62f0e95365af",
+      "kind": "published aggregate"
+    },
+    "two_fp32_derived_ci95": {
+      "url": "data/evidence-vllm033/two_fp32_derived_ci95.json",
+      "sha256": "52997b2fb0d403c00137cea37e161e283e224e182df03cbd50fc46137542a856",
+      "original_source_sha256": "d72960ceaa5cb17657caf95d6fdd59e996922984be956ea645b5abf06ff322f5",
+      "kind": "published aggregate"
+    },
+    "dense_current": {
+      "url": "data/evidence-vllm033/dense_current.json",
+      "sha256": "dfe8d0717f8596762d9bb33a53a832e2f316b0b13c880a240dc5cba06b0e2c8b",
+      "original_source_sha256": "3ad2517927d14a4928ea3d34c8136aff7fbf423620675e3f9a0d9e7cecd3c0f4",
+      "kind": "published aggregate"
+    },
+    "dense_default": {
+      "url": "data/evidence-vllm033/dense_default.json",
+      "sha256": "c19519ec2c4bc72b1636d14d9544ecfff51ef450362e569c4a810ba171479a44",
+      "original_source_sha256": "ed1ac4915a65671d9a9d58a7537f539aaf25c8224105ac9ff78e63c6eb87ec5e",
+      "kind": "published aggregate"
+    },
+    "moe_current": {
+      "url": "data/evidence-vllm033/moe_current.json",
+      "sha256": "79619e8405ad6b67c4276cbed4f9d359c6a032a28334711eefde7fd9a3325a0c",
+      "original_source_sha256": "98a0e5d039c61cdf4b48c1019e04c036aa529cd44bd79ca8842525f6de13c967",
+      "kind": "published aggregate"
+    },
+    "moe_default": {
+      "url": "data/evidence-vllm033/moe_default.json",
+      "sha256": "e57e00e50836ce45e08f0276ca3073f606a1b07d8a2a55d9814a9e66eacc1475",
+      "original_source_sha256": "a72384c8de182bb03ed8a427d8144a84b71ce7084792567f750144b6650a5ea0",
+      "kind": "published aggregate"
+    },
+    "two_b_fp32_default_composite": {
+      "url": "data/evidence-vllm033/two_b_fp32_default_composite.json",
+      "sha256": "10a5acccb90767314555afef3515dd44bdc41a266fa7242af9c369adadf21448",
+      "original_source_sha256": "59dd95fff736013f52b6c8f4944782026fc06f59fadc60b93288dc65dfddb5ac",
+      "kind": "published aggregate"
+    },
+    "ref_DENSE_FP8": {
+      "url": "data/evidence-vllm033/ref_DENSE_FP8.json",
+      "original_source_sha256": "d4c2d9fbbb94e97564609f23ecb31e7744a310f634c6bd88b54bd4045f2f75d2",
+      "sha256": "495f29d5f40285f4310590a9667ebb9be57ff6c09f7d2acc69b55512e4f2b438",
+      "kind": "published aggregate"
+    },
+    "ref_DENSE_NVFP4": {
+      "url": "data/evidence-vllm033/ref_DENSE_NVFP4.json",
+      "original_source_sha256": "e6187fab9e050eb95b17a5a361206bf34a977f9b4c2108f8e14408366f94b432",
+      "sha256": "1665b93c64eb20437436ebf6c1641837607f3dcccba6d56e4346087060ff3479",
+      "kind": "published aggregate"
+    },
+    "ref_MOE_FP8": {
+      "url": "data/evidence-vllm033/ref_MOE_FP8.json",
+      "original_source_sha256": "1ce5b2c771d24920578a9db5616f175b548fc472d9e555c724f457fa9db1fe50",
+      "sha256": "7fb8a34ccd4906667a187398f5e062a199926e7671c08d5a754416744739bb63",
+      "kind": "published aggregate"
+    },
+    "ref_MOE_NVFP4": {
+      "url": "data/evidence-vllm033/ref_MOE_NVFP4.json",
+      "original_source_sha256": "578f847f9d2506dd8247fde8c478d22fc4bfb187e9c39b22bde50398a7a527a4",
+      "sha256": "743592aad2b5a7a4aa48915fef6cc7d70c08ebe286fca386f99a6771b3896544",
+      "kind": "published aggregate"
+    },
+    "reference_4B_COMMUNITY033_VS_R15_V1": {
+      "url": "data/evidence-vllm033/reference_4B_COMMUNITY033_VS_R15_V1.json",
+      "original_source_sha256": "38646d538eace88c83bc8df8c7f366376fd54ce55a1654306a9e7a615207664d",
+      "sha256": "5016175a06e1a3cc52294596300bd04994cf118fc3be7ff42cea8b37b9d032c9",
+      "kind": "published aggregate"
+    },
+    "reference_community-rest-v1_2B_COMMUNITY033_REFERENCE": {
+      "url": "data/evidence-vllm033/reference_community-rest-v1_2B_COMMUNITY033_REFERENCE.json",
+      "original_source_sha256": "aaad63c66cf210d6c8e179e8c17a377ce83f0213c4fc9d239ecab33d751b36ff",
+      "sha256": "36b9e61793c97be33533728e67cc4535e3b8c8a1b078a265e38c3fa0ca46e3c9",
+      "kind": "published aggregate"
+    },
+    "moe_full_final": {
+      "url": "data/evidence-vllm033/moe_full_final.json",
+      "sha256": "0df4bcffe66f948e1ca7ade6e118560cde06c0eb079657c495eb87000baa71d0",
+      "original_source_sha256": "c27a6555f3c172d224344ffae84fd7b17fee758580a4ac675ad2566ca32892a8",
+      "kind": "published aggregate"
+    }
+  },
+  "fidelity": {
+    "mxfp8": {
+      "4b": {
+        "points": [
+          {
+            "M": 32,
+            "float32": {
+              "mae": 0.05108014034687515,
+              "ci95": [
+                0.04710083749776421,
+                0.05522138576630359
+              ]
+            },
+            "bfloat16": {
+              "mae": 0.052193172950846564,
+              "ci95": [
+                0.048052893827728135,
+                0.05662474190087854
+              ]
+            }
+          },
+          {
+            "M": 64,
+            "float32": {
+              "mae": 0.05823072301898384,
+              "ci95": [
+                0.053442507649085105,
+                0.06320038551154664
+              ]
+            },
+            "bfloat16": {
+              "mae": 0.05855234745680974,
+              "ci95": [
+                0.053720989479213874,
+                0.06368866685521393
+              ]
+            }
+          }
+        ]
+      },
+      "2b": {
+        "points": [
+          {
+            "M": 32,
+            "float32": {
+              "mae": 0.05475347206803788,
+              "ci95": [
+                0.05121465946564609,
+                0.05840872351312753
+              ],
+              "ci95_provenance": "derived-from-existing-R20; 2B_FP32_DERIVED_CI95.json"
+            },
+            "bfloat16": {
+              "mae": 0.05625743079114805,
+              "ci95": [
+                0.05256818283137239,
+                0.059925146307495014
+              ]
+            }
+          },
+          {
+            "M": 64,
+            "float32": {
+              "mae": 0.05654993337845335,
+              "ci95": [
+                0.05283986235973051,
+                0.06042480761684267
+              ],
+              "ci95_provenance": "derived-from-existing-R20; 2B_FP32_DERIVED_CI95.json"
+            },
+            "bfloat16": {
+              "mae": 0.055353750902742055,
+              "ci95": [
+                0.051722190817190615,
+                0.059028533910135156
+              ]
+            }
+          }
+        ],
+        "reference_scope": "Original M32 BF16 anchor at BOTH physical M32/M64, unchanged original protocol",
+        "source_binding": {
+          "float32": "Accepted R20 raw records and original BF16 M32 anchor; source hashes and exact grouped-mean check in 2B_FP32_DERIVED_CI95.json",
+          "bfloat16": "bf16-r21/independent/2B_M32_INDEPENDENT.json and 2B_M64_INDEPENDENT.json; accepted candidate MAE/CI95"
+        }
+      }
+    },
+    "native": {
+      "dense": {
+        "fp8": 0.051037791488485446,
+        "nvfp4": 0.17169249624855176,
+        "default": 0.09123608093373468,
+        "full": 0.0881462643755338
+      },
+      "moe": {
+        "fp8": 0.055907410023461716,
+        "nvfp4": 0.2286366197125984,
+        "default": 0.07437159081227117,
+        "full": 0.07399248189340436
+      }
+    },
+    "native_ci95": {
+      "dense": {
+        "fp8": [
+          0.04569729099706094,
+          0.05669328939906932
+        ],
+        "nvfp4": [
+          0.15556447890757383,
+          0.1887281137959198
+        ],
+        "default": [
+          0.0835329620190306,
+          0.09917320866223743
+        ],
+        "full": [
+          0.08073036270762816,
+          0.0957963923398171
+        ]
+      },
+      "moe": {
+        "fp8": [
+          0.05157149615938665,
+          0.060486123002481705
+        ],
+        "nvfp4": [
+          0.2130268011735001,
+          0.24467431124222297
+        ],
+        "default": [
+          0.06872008311165145,
+          0.08022820435133046
+        ],
+        "full": [
+          0.06845144934999098,
+          0.079709711366525
+        ]
+      }
+    },
+    "native_source_scope": {
+      "binding": "data/evidence-vllm033/precision-aggregate.json",
+      "FP8_NVFP4": "actual community0.33 stock measurements; frozen historical BF16 anchor; current checkpoints independently frozen, historical checkpoint byte identity not claimed",
+      "default_FULL": "accepted source-scoped current evidence; shortM4/long remain separately bound"
+    }
+  },
+  "native_fp32_configurations": {
+    "dense_current": {
+      "configuration": "Dense FP32 current hybridheadON originalOLD\u2192R42",
+      "SSM": "float32",
+      "head": "ON",
+      "source": "dense_current",
+      "points": [
+        {
+          "c": 4,
+          "tokens_per_s": 418.3683676292912,
+          "original_migration_gain_pct": 1.1436745508768276,
+          "decision": "improvement"
+        },
+        {
+          "c": 16,
+          "tokens_per_s": 1121.7756385845587,
+          "original_migration_gain_pct": 1.3034427013695948,
+          "decision": "improvement"
+        },
+        {
+          "c": 24,
+          "tokens_per_s": 1437.432947471769,
+          "original_migration_gain_pct": 0.6305389775248749,
+          "decision": "improvement"
+        },
+        {
+          "c": 32,
+          "tokens_per_s": 1617.248348896726,
+          "original_migration_gain_pct": 0.48463174907684703,
+          "decision": "improvement"
+        }
+      ]
+    },
+    "dense_default": {
+      "configuration": "Dense FP32 historical default hybridheadOFF originalOLD\u2192R42",
+      "SSM": "float32",
+      "head": "OFF",
+      "source": "dense_default",
+      "points": [
+        {
+          "c": 4,
+          "tokens_per_s": 395.6160735418579,
+          "original_migration_gain_pct": 1.0106245151371596,
+          "decision": "improvement"
+        },
+        {
+          "c": 16,
+          "tokens_per_s": 1080.4188943700644,
+          "original_migration_gain_pct": 1.1729380374591036,
+          "decision": "improvement"
+        },
+        {
+          "c": 24,
+          "tokens_per_s": 1392.3353254740373,
+          "original_migration_gain_pct": 0.4315003441007992,
+          "decision": "improvement"
+        },
+        {
+          "c": 32,
+          "tokens_per_s": 1575.0678832643212,
+          "original_migration_gain_pct": 0.4681764182587367,
+          "decision": "improvement"
+        }
+      ]
+    },
+    "moe_current": {
+      "configuration": "MoE FP32 current hybridheadON originalOLD\u2192R42",
+      "SSM": "float32",
+      "head": "ON",
+      "source": "moe_current",
+      "points": [
+        {
+          "c": 4,
+          "tokens_per_s": 1196.0102721171068,
+          "original_migration_gain_pct": 2.1547576928708345,
+          "decision": "tied_or_unresolved"
+        },
+        {
+          "c": 16,
+          "tokens_per_s": 2474.875056254275,
+          "original_migration_gain_pct": 5.830280599837656,
+          "decision": "improvement"
+        },
+        {
+          "c": 24,
+          "tokens_per_s": 2901.025183592719,
+          "original_migration_gain_pct": 2.0850121432209656,
+          "decision": "improvement"
+        },
+        {
+          "c": 32,
+          "tokens_per_s": 3257.7897792950293,
+          "original_migration_gain_pct": 2.325619334408646,
+          "decision": "improvement"
+        }
+      ]
+    },
+    "moe_default": {
+      "configuration": "MoE FP32 retaineddefault hybridheadOFF originalOLD\u2192R42",
+      "SSM": "float32",
+      "head": "OFF",
+      "source": "moe_default",
+      "points": [
+        {
+          "c": 4,
+          "tokens_per_s": 1126.4183687889245,
+          "original_migration_gain_pct": 3.7932551753339983,
+          "decision": "tied_or_unresolved"
+        },
+        {
+          "c": 16,
+          "tokens_per_s": 2389.0865082335836,
+          "original_migration_gain_pct": 5.269917665786039,
+          "decision": "improvement"
+        },
+        {
+          "c": 24,
+          "tokens_per_s": 2829.648085731174,
+          "original_migration_gain_pct": 1.949692515424073,
+          "decision": "improvement"
+        },
+        {
+          "c": 32,
+          "tokens_per_s": 3189.627384220993,
+          "original_migration_gain_pct": 1.958331064864427,
+          "decision": "improvement"
+        }
+      ]
+    }
+  },
+  "evidence_protocol": "data/evidence-vllm033/README.md",
+  "block_status": "Block-FP8 preserves c32 throughput (\u22120.13%) and improves c64 by 0.90% versus vLLM 0.29. The comparison covers 2,400 requests across 10 measurement windows.",
+  "migration_status_note": "MoE FP16 FULL preserves throughput at c4 and c16, and improves c24 by 2.93% and c32 by 1.79% versus vLLM 0.29. 4B MXFP8 with BF16 state improves at c24 and c32. The retained 2B FP32 configuration with headgraph OFF preserves c16 throughput.",
+  "migration_status_evidence": "data/evidence-vllm033/migration-status.json"
+}

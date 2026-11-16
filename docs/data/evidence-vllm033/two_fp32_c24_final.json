@@ -1,0 +1,140 @@
+{
+  "evidence_id": "two_fp32_c24_final",
+  "kind": "published aggregate; original raw is not bundled",
+  "original_source_sha256": "171659bbede97670495d07173b58acefc8600aed116fa749103e62f0e95365af",
+  "runtime": {
+    "vllm": "0.33.0",
+    "torch": "2.14.0+cu130",
+    "triton": "3.8.0"
+  },
+  "points": [
+    {
+      "case": "greedy",
+      "concurrency": 24,
+      "old_tokens_s": 6583.95692004137,
+      "new_tokens_s": 6571.653710997126,
+      "gain_pct": -0.1868664876404802,
+      "aa_resolution_pct": 0.1483419283044185,
+      "paired_gain_pct": [
+        0.2131564706874478,
+        -0.5869230200965969
+      ],
+      "decision": "tied_or_unresolved",
+      "windows": [
+        {
+          "completed": 120,
+          "requested": 120,
+          "duration_s": 18.27278827491682,
+          "prompt_tokens": 360000,
+          "completion_tokens": 120000,
+          "request_throughput_per_s": 6.56714225517103,
+          "output_throughput_tokens_per_s": 6567.14225517103,
+          "total_throughput_tokens_per_s": 26268.56902068412,
+          "mean_ttft_ms": 190.47627961360072,
+          "p99_ttft_ms": 744.2430532025173,
+          "mean_tpot_ms": 3.45863392347396,
+          "p99_tpot_ms": 3.56623354924701,
+          "mean_itl_ms": 3.45887486620173,
+          "p99_itl_ms": 22.474581317510495,
+          "mean_latency_ms": 3645.6515691640866,
+          "p99_latency_ms": 4261.938311194535
+        },
+        {
+          "completed": 120,
+          "requested": 120,
+          "duration_s": 18.299934751004912,
+          "prompt_tokens": 360000,
+          "completion_tokens": 120000,
+          "request_throughput_per_s": 6.557400429715215,
+          "output_throughput_tokens_per_s": 6557.400429715215,
+          "total_throughput_tokens_per_s": 26229.60171886086,
+          "mean_ttft_ms": 184.45196223037783,
+          "p99_ttft_ms": 753.9617489068769,
+          "mean_tpot_ms": 3.4700999558659102,
+          "p99_tpot_ms": 3.574492838734796,
+          "mean_itl_ms": 3.4701967600622425,
+          "p99_itl_ms": 22.697838518070057,
+          "mean_latency_ms": 3651.0818181404225,
+          "p99_latency_ms": 4266.870551526081
+        },
+        {
+          "completed": 120,
+          "requested": 120,
+          "duration_s": 18.261010226095095,
+          "prompt_tokens": 360000,
+          "completion_tokens": 120000,
+          "request_throughput_per_s": 6.571377953040039,
+          "output_throughput_tokens_per_s": 6571.377953040039,
+          "total_throughput_tokens_per_s": 26285.511812160155,
+          "mean_ttft_ms": 182.3416347896758,
+          "p99_ttft_ms": 746.0173899598885,
+          "mean_tpot_ms": 3.4645194742743306,
+          "p99_tpot_ms": 3.56534825950475,
+          "mean_itl_ms": 3.464557195125037,
+          "p99_itl_ms": 21.96206096326932,
+          "mean_latency_ms": 3643.3965895897322,
+          "p99_latency_ms": 4270.590853795875
+        },
+        {
+          "completed": 120,
+          "requested": 120,
+          "duration_s": 18.259477698942646,
+          "prompt_tokens": 360000,
+          "completion_tokens": 120000,
+          "request_throughput_per_s": 6.571929492098717,
+          "output_throughput_tokens_per_s": 6571.929492098718,
+          "total_throughput_tokens_per_s": 26287.71796839487,
+          "mean_ttft_ms": 181.66537815801954,
+          "p99_ttft_ms": 742.3391841200646,
+          "mean_tpot_ms": 3.464882664325862,
+          "p99_tpot_ms": 3.564741707983072,
+          "mean_itl_ms": 3.4649257803067752,
+          "p99_itl_ms": 21.901405879762017,
+          "mean_latency_ms": 3643.083159819556,
+          "p99_latency_ms": 4272.238412072184
+        },
+        {
+          "completed": 120,
+          "requested": 120,
+          "duration_s": 18.152308620978147,
+          "prompt_tokens": 360000,
+          "completion_tokens": 120000,
+          "request_throughput_per_s": 6.610729384653539,
+          "output_throughput_tokens_per_s": 6610.7293846535395,
+          "total_throughput_tokens_per_s": 26442.917538614158,
+          "mean_ttft_ms": 184.4272871259212,
+          "p99_ttft_ms": 728.0075134395157,
+          "mean_tpot_ms": 3.4405829367355802,
+          "p99_tpot_ms": 3.5368343565223355,
+          "mean_itl_ms": 3.440822595027451,
+          "p99_itl_ms": 21.436260198242962,
+          "mean_latency_ms": 3621.569640924766,
+          "p99_latency_ms": 4215.26714242762
+        }
+      ],
+      "window_count": 5,
+      "scored_requests": 600
+    }
+  ],
+  "source_identity": {
+    "lock_sha256": "43584c9acf1f4f52353187122ec35b10476209ae35eabe5995bd44837637ff19"
+  },
+  "measurement_artifact_hashes": {
+    "A0": {
+      "job_sha256": "b165d971c5136356a540e62b1b4c81408eb6a41c5524aae411a371cc3e6e309d",
+      "image": "sha256:fecc9035866d6c7cf6bcc1501629be208698a0b3b35ad9af01de77fb54ba4a81"
+    },
+    "B0": {
+      "job_sha256": "5d029433192b5153b15e1115bac38980fdf419a9a0342cefa4046aeda7326b27",
+      "image": "sha256:80f829bf12a197616aef048036492d99a6f46533e044b19facf981db9cfb71ab"
+    },
+    "B1": {
+      "job_sha256": "693a31eb91f76239e8d3fd544c2b33f4b492982c7d01e45bb8d6b536706e47c8",
+      "image": "sha256:80f829bf12a197616aef048036492d99a6f46533e044b19facf981db9cfb71ab"
+    },
+    "A1": {
+      "job_sha256": "df2e9e121f412c0426ad3d221a88f60a46b3d0c6a4cd27547d38dc09c9fdf5c4",
+      "image": "sha256:fecc9035866d6c7cf6bcc1501629be208698a0b3b35ad9af01de77fb54ba4a81"
+    }
+  }
+}

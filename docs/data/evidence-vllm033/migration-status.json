@@ -1,0 +1,216 @@
+{
+  "remaining_migration_configurations": [
+    {
+      "model": "MoE FP16 FULL",
+      "configuration": "FP16 SSM / hybrid head ON / headgraph OFF",
+      "performance_accepted": true,
+      "original_source_sha256": "c27a6555f3c172d224344ffae84fd7b17fee758580a4ac675ad2566ca32892a8",
+      "measurement_id": "moe-final-product-r52-v1/formal-r53-continuation-v1",
+      "points": [
+        {
+          "case": "greedy",
+          "concurrency": 4,
+          "old_tokens_s": 1184.6905472638982,
+          "new_tokens_s": 1183.9195472570134,
+          "gain_pct": -0.06508028688719802,
+          "aa_resolution_pct": 0.16141280022621274,
+          "paired_gain_pct": [
+            3.424091535942342,
+            -3.4110908215282176
+          ],
+          "decision": "tied_or_unresolved"
+        },
+        {
+          "case": "greedy",
+          "concurrency": 16,
+          "old_tokens_s": 2497.504663959839,
+          "new_tokens_s": 2527.7441218505205,
+          "gain_pct": 1.2107868436464164,
+          "aa_resolution_pct": 0.4161574499212173,
+          "paired_gain_pct": [
+            2.373943898576436,
+            0.0680510838274806
+          ],
+          "decision": "tied_or_unresolved"
+        },
+        {
+          "case": "greedy",
+          "concurrency": 24,
+          "old_tokens_s": 2921.7480650655416,
+          "new_tokens_s": 3007.233999309867,
+          "gain_pct": 2.9258489212829586,
+          "aa_resolution_pct": 0.9287566826190696,
+          "paired_gain_pct": [
+            2.24790937706294,
+            3.6043087191220735
+          ],
+          "decision": "improvement"
+        },
+        {
+          "case": "greedy",
+          "concurrency": 32,
+          "old_tokens_s": 3303.9127981256975,
+          "new_tokens_s": 3362.910100064205,
+          "gain_pct": 1.7856797543802205,
+          "aa_resolution_pct": 0.12572436814864973,
+          "paired_gain_pct": [
+            1.4970439616031062,
+            2.0746827044581417
+          ],
+          "decision": "improvement"
+        }
+      ],
+      "business_disposition": "c4 accepted no confirmed regression from original R49; c16 accepted no confirmed regression; c24/c32 accepted improvements. MoE FP16 FULL throughput preservation accepted.",
+      "point_dispositions": {
+        "4": "accepted_no_confirmed_regression; tied original score, no gain claim; full paired spread retained",
+        "16": "accepted_no_confirmed_regression",
+        "24": "accepted_improvement",
+        "32": "accepted_improvement"
+      },
+      "history": {
+        "measurement_id": "moe-full-r43-final-v1",
+        "original_source_sha256": "53663072c86d10fd7ff62bf5bb98789de3735633f0c42fa8e4c393f6104b82bd"
+      },
+      "point_sources": {
+        "4": {
+          "measurement_id": "moe-full-r49-final-v1",
+          "abba_sha256": "f252a6eb676d89cc161a04403446086f8af3fcaac041fbac648e03b2be252fd2",
+          "review_sha256": "a13a8d6bb033b30b73609309a8d454e413b3e4949a1fdc7fe332ebec16a98a4b"
+        },
+        "16": {
+          "measurement_id": "moe-final-product-r52-v1/formal-r53-continuation-v1",
+          "abba_sha256": "c27a6555f3c172d224344ffae84fd7b17fee758580a4ac675ad2566ca32892a8",
+          "review_sha256": "4f340a01294fbc0d8743e6153a411915aa9624d8fd8582f0538ef2c03d45ecea"
+        },
+        "24": {
+          "measurement_id": "moe-final-product-r52-v1/formal-r53-continuation-v1",
+          "abba_sha256": "c27a6555f3c172d224344ffae84fd7b17fee758580a4ac675ad2566ca32892a8",
+          "review_sha256": "4f340a01294fbc0d8743e6153a411915aa9624d8fd8582f0538ef2c03d45ecea"
+        },
+        "32": {
+          "measurement_id": "moe-final-product-r52-v1/formal-r53-continuation-v1",
+          "abba_sha256": "c27a6555f3c172d224344ffae84fd7b17fee758580a4ac675ad2566ca32892a8",
+          "review_sha256": "4f340a01294fbc0d8743e6153a411915aa9624d8fd8582f0538ef2c03d45ecea"
+        }
+      }
+    },
+    {
+      "model": "4B MXFP8 BF16",
+      "configuration": "BF16 SSM / FP8 KV / head ON / headgraph OFF",
+      "performance_accepted": true,
+      "original_source_sha256": "d691db2d040ea68f6b5d167cb865876183c46fc688ecbcc6485263336b1c6d8a",
+      "measurement_id": "fourb-pinned-reset-r42-v1/formal-r48-v1",
+      "points": [
+        {
+          "case": "greedy",
+          "concurrency": 24,
+          "old_tokens_s": 3663.1931700714063,
+          "new_tokens_s": 3796.0568160581042,
+          "gain_pct": 3.626989891557053,
+          "aa_resolution_pct": 0.3651781764422046,
+          "paired_gain_pct": [
+            3.9186383582388906,
+            3.335410123087823
+          ],
+          "decision": "improvement"
+        },
+        {
+          "case": "greedy",
+          "concurrency": 32,
+          "old_tokens_s": 4173.024188662134,
+          "new_tokens_s": 4324.998607675495,
+          "gain_pct": 3.6418293338980945,
+          "aa_resolution_pct": 0.5560907543644689,
+          "paired_gain_pct": [
+            4.033630423017431,
+            3.2505274513722204
+          ],
+          "decision": "improvement"
+        }
+      ],
+      "business_disposition": "both_high2_improvement",
+      "history": {
+        "measurement_id": "fourb-bf16-final-r42-high2-v1",
+        "original_source_sha256": "42949e318b383aeb475352b099490141f35d7dc997f291f5e2a7596df5a4876d"
+      }
+    },
+    {
+      "model": "2B retained FP32",
+      "configuration": "FP32 SSM / BF16 KV / head ON / headgraph OFF",
+      "performance_accepted": true,
+      "original_source_sha256": "2e5df9ef2b9037907d49c452d4e8c832e88563417f249ccfb51f51a7832317be",
+      "measurement_id": "twob-head-scale-r48-v1/formal-r50-v1",
+      "points": [
+        {
+          "case": "greedy",
+          "concurrency": 16,
+          "old_tokens_s": 4852.520391854767,
+          "new_tokens_s": 4851.409670843095,
+          "gain_pct": -0.022889569171846702,
+          "aa_resolution_pct": 0.028297833856649746,
+          "paired_gain_pct": [
+            1.0435248100167493,
+            -1.0662854415580347
+          ],
+          "decision": "tied_or_unresolved"
+        }
+      ],
+      "business_disposition": "accepted_no_confirmed_regression",
+      "new_gain_claim": false,
+      "history": {
+        "measurement_id": "remaining-fp32-final-prep-v1/2b-graph_off",
+        "original_source_sha256": "22e317af16f17c75b93eb7aef247ca8eff6f25c68f3796315f5465597c355427"
+      }
+    }
+  ],
+  "Block_latest": {
+    "model": "Qwen3.5-4B block-FP8",
+    "configuration": "FP32 SSM / BF16 KV / full head / R51 selected Block path",
+    "source_commit": "0ee3a7458318df3aaccea8bbb4275e3ac8809d28",
+    "image": "sha256:a47734a422bbb860ff7cb20a4bb8a92a97ac090ddd5d18efa59f5db33c01661b",
+    "measurement_id": "block-runtime-m-r51-prep-v1/final-review-v1",
+    "original_source_sha256": "0c912d8de6ec1b32fbb4bb38f9fc459a076e0e5fd666167fc92dc9a6b168e075",
+    "performance_accepted": true,
+    "business_disposition": "R51_HIGH2_ACCEPTED_NO_CONFIRMED_REGRESSION",
+    "requests": 2400,
+    "windows": 10,
+    "verified_raw_entries": 120,
+    "points": [
+      {
+        "case": "greedy",
+        "concurrency": 32,
+        "old_tokens_s": 3012.3518692546763,
+        "new_tokens_s": 3008.3151191547995,
+        "gain_pct": -0.13400659269182658,
+        "aa_resolution_pct": 0.16636512191874342,
+        "paired_gain_pct": [
+          -1.288144943069225,
+          1.049099755575611
+        ],
+        "decision": "tied_or_unresolved"
+      },
+      {
+        "case": "greedy",
+        "concurrency": 64,
+        "old_tokens_s": 3638.8694279100378,
+        "new_tokens_s": 3671.6455370560147,
+        "gain_pct": 0.9007223203609582,
+        "aa_resolution_pct": 0.00245892046194518,
+        "paired_gain_pct": [
+          0.6981463515675745,
+          1.1033462294499197
+        ],
+        "decision": "improvement"
+      }
+    ],
+    "history": {
+      "measurement_id": "original0.29-to-R45-final",
+      "original_source_sha256": "9ef5f2bd3ce6bc1d72af4c7fc3fe3bc92541698a0b2272b69d99126b2a057e7b",
+      "source_commit": "e888f2d658b063da9e0276718554776ff3886f5f"
+    }
+  },
+  "comparison_runtime": {
+    "OLD": "vLLM0.29",
+    "NEW": "vLLM0.33"
+  }
+}

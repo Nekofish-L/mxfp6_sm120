@@ -1,0 +1,4703 @@
+{
+  "statistic": "M32 unweighted mean of256 query token logprob MAEs versus original model-specific BF16;10479tokens",
+  "bootstrap": {
+    "seed": 20260910,
+    "replicates": 20000,
+    "unit": "query",
+    "method": "unchanged collect_native_comparison.bootstrap; existing saved CI reproduced exactly"
+  },
+  "values": {
+    "mxfp8": {
+      "4b": {
+        "points": [
+          {
+            "M": 32,
+            "float32": {
+              "mae": 0.05108014034687515,
+              "ci95": [
+                0.04710083749776421,
+                0.05522138576630359
+              ]
+            },
+            "bfloat16": {
+              "mae": 0.052193172950846564,
+              "ci95": [
+                0.048052893827728135,
+                0.05662474190087854
+              ]
+            }
+          },
+          {
+            "M": 64,
+            "float32": {
+              "mae": 0.05823072301898384,
+              "ci95": [
+                0.053442507649085105,
+                0.06320038551154664
+              ]
+            },
+            "bfloat16": {
+              "mae": 0.05855234745680974,
+              "ci95": [
+                0.053720989479213874,
+                0.06368866685521393
+              ]
+            }
+          }
+        ]
+      },
+      "2b": {
+        "points": [
+          {
+            "M": 32,
+            "float32": {
+              "mae": 0.05475347206803788,
+              "ci95": [
+                0.05121465946564609,
+                0.05840872351312753
+              ],
+              "ci95_provenance": "derived-from-existing-R20; 2B_FP32_DERIVED_CI95.json"
+            },
+            "bfloat16": {
+              "mae": 0.05625743079114805,
+              "ci95": [
+                0.05256818283137239,
+                0.059925146307495014
+              ]
+            }
+          },
+          {
+            "M": 64,
+            "float32": {
+              "mae": 0.05654993337845335,
+              "ci95": [
+                0.05283986235973051,
+                0.06042480761684267
+              ],
+              "ci95_provenance": "derived-from-existing-R20; 2B_FP32_DERIVED_CI95.json"
+            },
+            "bfloat16": {
+              "mae": 0.055353750902742055,
+              "ci95": [
+                0.051722190817190615,
+                0.059028533910135156
+              ]
+            }
+          }
+        ],
+        "reference_scope": "Original M32 BF16 anchor at BOTH physical M32/M64, unchanged original protocol",
+        "source_binding": {
+          "float32": "Accepted R20 raw records and original BF16 M32 anchor; source hashes and exact grouped-mean check in 2B_FP32_DERIVED_CI95.json",
+          "bfloat16": "bf16-r21/independent/2B_M32_INDEPENDENT.json and 2B_M64_INDEPENDENT.json; accepted candidate MAE/CI95"
+        }
+      }
+    },
+    "native": {
+      "dense": {
+        "fp8": 0.051037791488485446,
+        "nvfp4": 0.17169249624855176,
+        "default": 0.09123608093373468,
+        "full": 0.0881462643755338
+      },
+      "moe": {
+        "fp8": 0.055907410023461716,
+        "nvfp4": 0.2286366197125984,
+        "default": 0.07437159081227117,
+        "full": 0.07399248189340436
+      }
+    },
+    "native_ci95": {
+      "dense": {
+        "fp8": [
+          0.04569729099706094,
+          0.05669328939906932
+        ],
+        "nvfp4": [
+          0.15556447890757383,
+          0.1887281137959198
+        ],
+        "default": [
+          0.0835329620190306,
+          0.09917320866223743
+        ],
+        "full": [
+          0.08073036270762816,
+          0.0957963923398171
+        ]
+      },
+      "moe": {
+        "fp8": [
+          0.05157149615938665,
+          0.060486123002481705
+        ],
+        "nvfp4": [
+          0.2130268011735001,
+          0.24467431124222297
+        ],
+        "default": [
+          0.06872008311165145,
+          0.08022820435133046
+        ],
+        "full": [
+          0.06845144934999098,
+          0.079709711366525
+        ]
+      }
+    },
+    "native_source_scope": {
+      "binding": "precision-aggregate.json",
+      "FP8_NVFP4": "actual community0.33 stock measurements; frozen historical BF16 anchor; current checkpoints independently frozen, historical checkpoint byte identity not claimed",
+      "default_FULL": "accepted source-scoped current evidence; shortM4/long remain separately bound"
+    }
+  },
+  "native_columns": {
+    "dense": {
+      "fp8": {
+        "mae": 0.051037791488485446,
+        "ci95": [
+          0.04569729099706094,
+          0.05669328939906932
+        ],
+        "scope": "vLLM0.33/Torch2.14/FI0.7.2.post1 unpatched buildbase; current community0.33 result against frozen original BF16 anchor",
+        "checkpoint_comparison_caveat": "Original historical precision preserved; same model-name string alone does not prove historical weights equal this independently frozen checkpoint. No new BF16 generation."
+      },
+      "nvfp4": {
+        "mae": 0.17169249624855176,
+        "ci95": [
+          0.15556447890757383,
+          0.1887281137959198
+        ],
+        "scope": "vLLM0.33/Torch2.14/FI0.7.2.post1 unpatched buildbase; current community0.33 result against frozen original BF16 anchor",
+        "checkpoint_comparison_caveat": "Original historical precision preserved; same model-name string alone does not prove historical weights equal this independently frozen checkpoint. No new BF16 generation."
+      },
+      "default": {
+        "mae": 0.09123608093373468,
+        "ci95": [
+          0.0835329620190306,
+          0.09917320866223743
+        ],
+        "scope": "source-scoped accepted current native short M32; reused by final formal curve"
+      },
+      "full": {
+        "mae": 0.0881462643755338,
+        "ci95": [
+          0.08073036270762816,
+          0.0957963923398171
+        ],
+        "scope": "source-scoped accepted current native short M32; reused by final formal curve"
+      }
+    },
+    "moe": {
+      "fp8": {
+        "mae": 0.055907410023461716,
+        "ci95": [
+          0.05157149615938665,
+          0.060486123002481705
+        ],
+        "scope": "vLLM0.33/Torch2.14/FI0.7.2.post1 unpatched buildbase; current community0.33 result against frozen original BF16 anchor",
+        "checkpoint_comparison_caveat": "Original historical precision preserved; same model-name string alone does not prove historical weights equal this independently frozen checkpoint. No new BF16 generation."
+      },
+      "nvfp4": {
+        "mae": 0.2286366197125984,
+        "ci95": [
+          0.2130268011735001,
+          0.24467431124222297
+        ],
+        "scope": "vLLM0.33/Torch2.14/FI0.7.2.post1 unpatched buildbase; current community0.33 result against frozen original BF16 anchor",
+        "checkpoint_comparison_caveat": "Original historical precision preserved; same model-name string alone does not prove historical weights equal this independently frozen checkpoint. No new BF16 generation."
+      },
+      "default": {
+        "mae": 0.07437159081227117,
+        "ci95": [
+          0.06872008311165145,
+          0.08022820435133046
+        ],
+        "scope": "source-scoped accepted current native short M32; reused by final formal curve"
+      },
+      "full": {
+        "mae": 0.07399248189340436,
+        "ci95": [
+          0.06845144934999098,
+          0.079709711366525
+        ],
+        "scope": "source-scoped accepted current native short M32; reused by final formal curve"
+      }
+    }
+  },
+  "source_hashes": [
+    {
+      "evidence_id": "four_short",
+      "sha256": "b8eed7056e7e9a862208d8b02f8b2ea286e284f98b795739de93d5afc72b274c"
+    },
+    {
+      "evidence_id": "bf16_short",
+      "sha256": "d696f810f5b405c3bcc30a354ab2e6c159663e572a1bfc9206896d1eb2450b2d"
+    },
+    {
+      "evidence_id": "2b_bf16_32",
+      "sha256": "189a733fa552325e758fa735a6f8a8b640a1c6a893b9cdb92062dd50c769d327"
+    },
+    {
+      "evidence_id": "two_fp32_short_32",
+      "sha256": "12747b0807c7be7298d679bd5f8f30fb9670d42b227db46221339c79ca1de97a"
+    },
+    {
+      "evidence_id": "2b_bf16_64",
+      "sha256": "082837d175e190178276e2f5117887b226cac11b966c6196648e47dccc05d0c8"
+    },
+    {
+      "evidence_id": "two_fp32_short_64",
+      "sha256": "dd8b33ee5ae3afdccf0e5dd802e7ac9e6b5970944f4e60c2f79f096ec3cf3de8"
+    },
+    {
+      "evidence_id": "4b_bf16_32",
+      "sha256": "d4d6e491336661b8d36c13e6cae1723a77919eade98893ac1046ecaeabd373a0"
+    },
+    {
+      "evidence_id": "4b_bf16_64",
+      "sha256": "3989328ac83d1af0851b3074e17609501c76e886b597ee2e998f03b67db66ff4"
+    },
+    {
+      "evidence_id": "long_2b_float32",
+      "sha256": "2b364c62bd4b30b2fbd38be1be31cbc3bf79548974fb831fa28a1f022728942d"
+    },
+    {
+      "evidence_id": "long_2b_bfloat16",
+      "sha256": "f9041cf57bfe9f332a8cba758e5e4f48ca22d8ee21744fc1710b394abaf2f5da"
+    },
+    {
+      "evidence_id": "long_4b_float32",
+      "sha256": "fda7a8a0511301e327be52f8a25bfb2db0491e5bc7e840aeb55291efae93b258"
+    },
+    {
+      "evidence_id": "long_4b_bfloat16",
+      "sha256": "c19296876bd80b1c4d8e23875ecbcc657ef24adbc7bac0e4657129f74b246dd4"
+    },
+    {
+      "evidence_id": "long_dense_full",
+      "sha256": "459c9a2d0bd0535583a7e67589442aeaf5724af9d7119075ee7e6ac2b7b859b7"
+    },
+    {
+      "evidence_id": "long_dense_default",
+      "sha256": "0963b95e835b31fd8b097301334d8af8ad9987c4cf2bfa532fc0d3fc68a23c1e"
+    },
+    {
+      "evidence_id": "long_moe_default",
+      "sha256": "686d74c15487499c47a9d05e0ace4537bcfac32257e66accc720c717bb124dc1"
+    },
+    {
+      "evidence_id": "long_moe_full",
+      "sha256": "a495636cb70d0a1b0246af0c7b9041e5d83c7b769e504f2e8c648298d9744f1b"
+    },
+    {
+      "evidence_id": "precision_dense_full_M4",
+      "sha256": "1d3e1d7cf5f93bc029c140dad945776e07d7ad14e322fa6172c3ea8dce59a87b"
+    },
+    {
+      "evidence_id": "precision_dense_M4_closure",
+      "sha256": "e1667dbf34690dd5b370522fa1ee897eb5056a6fcaa8cad79d74008bbdebe29c"
+    },
+    {
+      "evidence_id": "precision_dense_M32",
+      "sha256": "214b7991475dd68e31b37d512158d2b8e1ea2dd18e55f4e0bece9c34749bbfcf"
+    },
+    {
+      "evidence_id": "precision_moe_full_M32",
+      "sha256": "9e7c37612237964d1247a8929257e55b24b90ee83aa8e12849e068882f110a94"
+    },
+    {
+      "evidence_id": "precision_moe_full_M4",
+      "sha256": "31ab130ec30122121847af554590d44faef3e9d2d0601784667f8dabac8af429"
+    }
+  ],
+  "binding_sha256": "07b02b8fb6bb6ee9a6c472ab549e7c74461d5e9193982c8252685a6371631b2d",
+  "scope": "FP8/NVFP4: actual community0.33 stock checkpoints; default/FULL: accepted native source-scoped evidence. Same frozen256query/M32/BF16-anchor/scorer. Preserve checkpoint-byte-identity caveat; no new BF16 generation.",
+  "raw_query_vectors_included": false,
+  "long": {
+    "2b_float32": {
+      "source": "long_2b_float32",
+      "data": {
+        "accepted": true,
+        "classification": "query_primary_and_long_tail_MAE_preserved",
+        "decision_basis": "Frozen query-balanced MAE and long-tail MAE both improve against the same original BF16 anchor. No CI-based pass or new maximum-error threshold. Secondary token-weighted, Top1 and outlier changes are retained; this is not all-value FP32-roundoff equivalence.",
+        "coverage": {
+          "queries": 64,
+          "scored_tokens": 330328,
+          "physical_shape_mismatches": 0,
+          "shape_or_peer_offset_mismatches": 0,
+          "repeat": "Original four cohorts replayed once; no added long repeat."
+        },
+        "identity": {
+          "commit": "d46ccc135a6410cb94fd16d75561cd8e2a100631",
+          "image": "sha256:c397d44a305aa934035cb9d6c9820084329688ae53d6c453ca7b61e4af316531",
+          "job_sha256": "3c4887a29e59d7837c4913482e2f380de3ff4a48a96baa0a214c7b0a702639ae",
+          "new_records_sha256": "baecf4c4b450b5c4538b978a49fa825b9dc0fa7a178ea77cfb54b9fa5ba3067d",
+          "old_records_sha256": "0db256c87cc22f3cba03b461b01f38e9234e751fb3a146ed38dbfb77d00530c2",
+          "original_BF16_anchor_sha256": "2de3b9a483074b4742fd1190923165bcbd47e79eac06f54d6fbe834a8ec814e3"
+        },
+        "metrics": {
+          "all": {
+            "old": {
+              "query_mae": 0.04366879084042242,
+              "token_mae": 0.04440600072626225,
+              "token_p99_abs": 0.3653794813156124,
+              "max_abs": 1.6867756843566895,
+              "query_top1": 0.9765475295541849,
+              "token_top1": 0.975778620038265
+            },
+            "new": {
+              "query_mae": 0.043659296948482446,
+              "token_mae": 0.044439747853968016,
+              "token_p99_abs": 0.36483981609344274,
+              "max_abs": 1.808307409286499,
+              "query_top1": 0.9762613543837151,
+              "token_top1": 0.9757211014506794
+            },
+            "query_mae_change_pct": -0.021740679687387576,
+            "token_mae_change_pct": 0.07599677330503152
+          },
+          "1-64": {
+            "old": {
+              "query_mae": 0.03803763680016902,
+              "token_mae": 0.03803763680016902,
+              "token_p99_abs": 0.5030526876449587,
+              "max_abs": 1.1587970852851868,
+              "query_top1": 0.980712890625,
+              "token_top1": 0.980712890625
+            },
+            "new": {
+              "query_mae": 0.03724517637967127,
+              "token_mae": 0.03724517637967127,
+              "token_p99_abs": 0.47648191154003144,
+              "max_abs": 1.1587970852851868,
+              "query_top1": 0.97998046875,
+              "token_top1": 0.97998046875
+            },
+            "query_mae_change_pct": -2.083358713005612,
+            "token_mae_change_pct": -2.083358713005612
+          },
+          "65-256": {
+            "old": {
+              "query_mae": 0.0411548939379114,
+              "token_mae": 0.0411548939379114,
+              "token_p99_abs": 0.3850597554445263,
+              "max_abs": 0.8816161155700684,
+              "query_top1": 0.9790852864583334,
+              "token_top1": 0.9790852864583334
+            },
+            "new": {
+              "query_mae": 0.041915788421045506,
+              "token_mae": 0.041915788421045506,
+              "token_p99_abs": 0.3905004096031186,
+              "max_abs": 0.9799036979675293,
+              "query_top1": 0.9813639322916666,
+              "token_top1": 0.9813639322916666
+            },
+            "query_mae_change_pct": 1.8488554102023436,
+            "token_mae_change_pct": 1.8488554102023436
+          },
+          "257-512": {
+            "old": {
+              "query_mae": 0.04407095139891934,
+              "token_mae": 0.04407095139891934,
+              "token_p99_abs": 0.3832403182983399,
+              "max_abs": 1.0840122699737549,
+              "query_top1": 0.975830078125,
+              "token_top1": 0.975830078125
+            },
+            "new": {
+              "query_mae": 0.044032900428103414,
+              "token_mae": 0.044032900428103414,
+              "token_p99_abs": 0.3763441383838654,
+              "max_abs": 0.9612207412719727,
+              "query_top1": 0.976318359375,
+              "token_top1": 0.976318359375
+            },
+            "query_mae_change_pct": -0.08634025272451495,
+            "token_mae_change_pct": -0.08634025272451495
+          },
+          "513-1024": {
+            "old": {
+              "query_mae": 0.045194152465862156,
+              "token_mae": 0.045194152465862156,
+              "token_p99_abs": 0.3833005225658413,
+              "max_abs": 1.1574490070343018,
+              "query_top1": 0.977325439453125,
+              "token_top1": 0.977325439453125
+            },
+            "new": {
+              "query_mae": 0.04527170952217388,
+              "token_mae": 0.04527170952217388,
+              "token_p99_abs": 0.37609321117400935,
+              "max_abs": 1.0752067565917969,
+              "query_top1": 0.976104736328125,
+              "token_top1": 0.976104736328125
+            },
+            "query_mae_change_pct": 0.1716086088135116,
+            "token_mae_change_pct": 0.1716086088135116
+          },
+          "1025-1536": {
+            "old": {
+              "query_mae": 0.046862624930995474,
+              "token_mae": 0.047808438095432323,
+              "token_p99_abs": 0.39393317699432495,
+              "max_abs": 1.2197890281677246,
+              "query_top1": 0.9757013359533148,
+              "token_top1": 0.9750910918457093
+            },
+            "new": {
+              "query_mae": 0.04682174510884665,
+              "token_mae": 0.047810337590550415,
+              "token_p99_abs": 0.3995343625545504,
+              "max_abs": 1.3587422370910645,
+              "query_top1": 0.9760414772188133,
+              "token_top1": 0.9753737906772207
+            },
+            "query_mae_change_pct": -0.08723331697492176,
+            "token_mae_change_pct": 0.003973137784374359
+          },
+          "1537-2048": {
+            "old": {
+              "query_mae": 0.04625337757513272,
+              "token_mae": 0.04722863406242174,
+              "token_p99_abs": 0.37842929124832136,
+              "max_abs": 1.1372572183609009,
+              "query_top1": 0.9725418687352461,
+              "token_top1": 0.9720778355324536
+            },
+            "new": {
+              "query_mae": 0.04602698190433006,
+              "token_mae": 0.047016934615669886,
+              "token_p99_abs": 0.373219985961914,
+              "max_abs": 1.288578748703003,
+              "query_top1": 0.9729007573702846,
+              "token_top1": 0.9722777555644408
+            },
+            "query_mae_change_pct": -0.48946840786904255,
+            "token_mae_change_pct": -0.44824384815375096
+          },
+          "2049-4096": {
+            "old": {
+              "query_mae": 0.04360419381979177,
+              "token_mae": 0.045056866795134,
+              "token_p99_abs": 0.36192650079727173,
+              "max_abs": 1.6867756843566895,
+              "query_top1": 0.9760822309126462,
+              "token_top1": 0.9750130506364695
+            },
+            "new": {
+              "query_mae": 0.043533092003224895,
+              "token_mae": 0.045195816059188924,
+              "token_p99_abs": 0.3595793557167053,
+              "max_abs": 1.808307409286499,
+              "query_top1": 0.9759678447856627,
+              "token_top1": 0.974741998955949
+            },
+            "query_mae_change_pct": -0.16306187625145796,
+            "token_mae_change_pct": 0.30838643238710883
+          },
+          "4097-7168": {
+            "old": {
+              "query_mae": 0.04141871087997902,
+              "token_mae": 0.042352723640851554,
+              "token_p99_abs": 0.34065803527832034,
+              "max_abs": 1.260807991027832,
+              "query_top1": 0.9778169264891372,
+              "token_top1": 0.9767158285913367
+            },
+            "new": {
+              "query_mae": 0.04129887578434435,
+              "token_mae": 0.042309927048676026,
+              "token_p99_abs": 0.3407233846187592,
+              "max_abs": 1.5137982368469238,
+              "query_top1": 0.9775619955789606,
+              "token_top1": 0.9767158285913367
+            },
+            "query_mae_change_pct": -0.28932599081105126,
+            "token_mae_change_pct": -0.10104802831204518
+          }
+        },
+        "scope": "Precision acceptance for original 2B FP32 production long only; formal ABBA may now run, performance not yet accepted."
+      }
+    },
+    "2b_bfloat16": {
+      "source": "long_2b_bfloat16",
+      "data": {
+        "passed": true,
+        "acceptance": "Original long fidelity metrics improve; no bytewise whole-model equivalence claim",
+        "queries": 64,
+        "tokens": 330328,
+        "independently_recomputed": {
+          "old": {
+            "all": {
+              "query_balanced_mae": 0.05315458900571181,
+              "query_balanced_top1_agreement": 0.9709694235181205,
+              "token_p99_abs": 0.4559784579277034
+            },
+            "4097-7168": {
+              "query_balanced_mae": 0.06011121813144542,
+              "query_balanced_top1_agreement": 0.966228811934419,
+              "token_p99_abs": 0.49982923030853277
+            }
+          },
+          "new": {
+            "all": {
+              "query_balanced_mae": 0.05301276079876422,
+              "query_balanced_top1_agreement": 0.9710159534887217,
+              "token_p99_abs": 0.4550803971290568
+            },
+            "4097-7168": {
+              "query_balanced_mae": 0.05997057310154542,
+              "query_balanced_top1_agreement": 0.9667254775256541,
+              "token_p99_abs": 0.4973910260200506
+            }
+          }
+        },
+        "repeat_scope": "No added repeat; original long contract replays four cohorts once. Short-gold repeat0 is a separate result.",
+        "anchor_unchanged": true
+      }
+    },
+    "4b_float32": {
+      "source": "long_4b_float32",
+      "data": {
+        "scope": "Original Oct20 model-specific BF16 trajectory and records remain primary; no natural generation/task-accuracy result for new replay and no inferred acceptance tolerance. Historical old quant arms are original saved runs, not a fresh latest029 replay.",
+        "bootstrap": {
+          "unit": "query",
+          "seed": 20261020,
+          "replicates": 2000,
+          "source": "original source identity retained by SHA-256",
+          "sha256": "da81cc63d12d156a7a9147e69940351a79b35d182d6ab48c49ba5e01267d4b67"
+        },
+        "anchor": {
+          "generation_sha256": "c1c8928b1b502823f8fd567ac690c45b55131793cbe0dbf0fde6775d657ace25",
+          "prompts_sha256": "bc7ebb7b90e044db4a6ddbc4afda5d7c151bfea9ffc088dfa172c554cfc0a709",
+          "records_sha256": "1176acf50104f049c50c76c8f5b9b41cd445a9e878ff77c294a455ecf4669376",
+          "queries": 64,
+          "gold_tokens": 190251,
+          "reference_completed_queries": 57
+        },
+        "complete": true,
+        "arms": {
+          "float32": {
+            "old_records_sha256": "369b454938ecadd024eb815d7adeddcf5a36721f198c7663e02ab222f013b68c",
+            "new_records_sha256": "114fe249bf6b2ccb28303cdbfdfa2c0b7a5d6ecd300e2c4b12cd51a9e4381f22",
+            "new_complete": {
+              "complete": true,
+              "queries": 64,
+              "tokens": 190251,
+              "elapsed_s": 381.6545624732971
+            },
+            "old_vs_original_BF16": {
+              "all": {
+                "queries": 64,
+                "tokens": 190251,
+                "query_balanced_mae": 0.03251690755610993,
+                "query_balanced_rmse": 0.0825848659357759,
+                "token_p99_abs": 0.36394447088241577,
+                "query_balanced_signed_nll_difference": 0.00416271918508517,
+                "query_balanced_top1_agreement": 0.9822546921481214
+              },
+              "1-64": {
+                "queries": 64,
+                "tokens": 4096,
+                "query_balanced_mae": 0.025185813356388143,
+                "query_balanced_rmse": 0.08132763026219438,
+                "token_p99_abs": 0.3555081367492682,
+                "query_balanced_signed_nll_difference": 0.0015896191835162964,
+                "query_balanced_top1_agreement": 0.98828125
+              },
+              "65-256": {
+                "queries": 64,
+                "tokens": 12288,
+                "query_balanced_mae": 0.030729851781664187,
+                "query_balanced_rmse": 0.08346386573654616,
+                "token_p99_abs": 0.36935733437538115,
+                "query_balanced_signed_nll_difference": 0.003958976331354681,
+                "query_balanced_top1_agreement": 0.9833170572916666
+              },
+              "257-512": {
+                "queries": 64,
+                "tokens": 16384,
+                "query_balanced_mae": 0.028250456486276908,
+                "query_balanced_rmse": 0.07906243926775766,
+                "token_p99_abs": 0.35577341914176946,
+                "query_balanced_signed_nll_difference": 0.00284174247289308,
+                "query_balanced_top1_agreement": 0.98681640625
+              },
+              "513-1024": {
+                "queries": 64,
+                "tokens": 31151,
+                "query_balanced_mae": 0.03450328529968695,
+                "query_balanced_rmse": 0.08600989737201419,
+                "token_p99_abs": 0.37491703033447266,
+                "query_balanced_signed_nll_difference": 0.004195039661074598,
+                "query_balanced_top1_agreement": 0.9810635772010331
+              },
+              "1025-1536": {
+                "queries": 54,
+                "tokens": 23480,
+                "query_balanced_mae": 0.03392051032476614,
+                "query_balanced_rmse": 0.08230382238731945,
+                "token_p99_abs": 0.36138872385025006,
+                "query_balanced_signed_nll_difference": 0.003335003212084067,
+                "query_balanced_top1_agreement": 0.9814907362480234
+              },
+              "1537-2048": {
+                "queries": 38,
+                "tokens": 17999,
+                "query_balanced_mae": 0.04016802796205754,
+                "query_balanced_rmse": 0.08939434395600586,
+                "token_p99_abs": 0.37766749858856213,
+                "query_balanced_signed_nll_difference": 0.005687647002898988,
+                "query_balanced_top1_agreement": 0.9772630786104098
+              },
+              "2049-4096": {
+                "queries": 32,
+                "tokens": 49723,
+                "query_balanced_mae": 0.03705942417348375,
+                "query_balanced_rmse": 0.08456648822365986,
+                "token_p99_abs": 0.360380573272705,
+                "query_balanced_signed_nll_difference": 0.004720240620065046,
+                "query_balanced_top1_agreement": 0.9787515094060737
+              },
+              "4097-7168": {
+                "queries": 17,
+                "tokens": 35130,
+                "query_balanced_mae": 0.03622306563470915,
+                "query_balanced_rmse": 0.08040405669313229,
+                "token_p99_abs": 0.35336809158325183,
+                "query_balanced_signed_nll_difference": 0.004587583564718434,
+                "query_balanced_top1_agreement": 0.9778036599025753
+              },
+              "within_query_early_late": {
+                "queries": [
+                  {
+                    "id": "math-00",
+                    "tokens": 1355,
+                    "width": 256,
+                    "early_mae": 0.0297826890443095,
+                    "late_mae": 0.017457342133562287,
+                    "late_minus_early": -0.012325346910747215
+                  },
+                  {
+                    "id": "math-01",
+                    "tokens": 1465,
+                    "width": 256,
+                    "early_mae": 0.028311591144635773,
+                    "late_mae": 0.016156121215465752,
+                    "late_minus_early": -0.01215546992917002
+                  },
+                  {
+                    "id": "math-02",
+                    "tokens": 911,
+                    "width": 256,
+                    "early_mae": 0.0196272559873108,
+                    "late_mae": 0.022879613893615258,
+                    "late_minus_early": 0.0032523579063044594
+                  },
+                  {
+                    "id": "math-03",
+                    "tokens": 3346,
+                    "width": 256,
+                    "early_mae": 0.04012257354993157,
+                    "late_mae": 0.02658205713627579,
+                    "late_minus_early": -0.013540516413655779
+                  },
+                  {
+                    "id": "math-04",
+                    "tokens": 7168,
+                    "width": 256,
+                    "early_mae": 0.050839284156924514,
+                    "late_mae": 0.04092616362296117,
+                    "late_minus_early": -0.009913120533963343
+                  },
+                  {
+                    "id": "math-05",
+                    "tokens": 1636,
+                    "width": 256,
+                    "early_mae": 0.028547566090356274,
+                    "late_mae": 0.01627383141288266,
+                    "late_minus_early": -0.012273734677473613
+                  },
+                  {
+                    "id": "math-06",
+                    "tokens": 1513,
+                    "width": 256,
+                    "early_mae": 0.023264488405666695,
+                    "late_mae": 0.011526274283188531,
+                    "late_minus_early": -0.011738214122478163
+                  },
+                  {
+                    "id": "math-07",
+                    "tokens": 682,
+                    "width": 256,
+                    "early_mae": 0.0356762736701664,
+                    "late_mae": 0.015210290285024491,
+                    "late_minus_early": -0.02046598338514191
+                  },
+                  {
+                    "id": "math-08",
+                    "tokens": 1109,
+                    "width": 256,
+                    "early_mae": 0.03757899537738085,
+                    "late_mae": 0.008872534005949756,
+                    "late_minus_early": -0.028706461371431097
+                  },
+                  {
+                    "id": "math-09",
+                    "tokens": 2884,
+                    "width": 256,
+                    "early_mae": 0.04032433741878447,
+                    "late_mae": 0.018952641465806885,
+                    "late_minus_early": -0.021371695952977582
+                  },
+                  {
+                    "id": "math-10",
+                    "tokens": 5197,
+                    "width": 256,
+                    "early_mae": 0.031271817393538626,
+                    "late_mae": 0.009677775153099727,
+                    "late_minus_early": -0.0215940422404389
+                  },
+                  {
+                    "id": "math-11",
+                    "tokens": 1076,
+                    "width": 256,
+                    "early_mae": 0.012514086559524379,
+                    "late_mae": 0.0136636335137032,
+                    "late_minus_early": 0.0011495469541788206
+                  },
+                  {
+                    "id": "math-12",
+                    "tokens": 1207,
+                    "width": 256,
+                    "early_mae": 0.022302379773081193,
+                    "late_mae": 0.015192980321017568,
+                    "late_minus_early": -0.007109399452063625
+                  },
+                  {
+                    "id": "math-13",
+                    "tokens": 1165,
+                    "width": 256,
+                    "early_mae": 0.02469611164176075,
+                    "late_mae": 0.015546597591683503,
+                    "late_minus_early": -0.009149514050077245
+                  },
+                  {
+                    "id": "math-14",
+                    "tokens": 974,
+                    "width": 256,
+                    "early_mae": 0.022156595251149436,
+                    "late_mae": 0.010723361272159337,
+                    "late_minus_early": -0.011433233978990098
+                  },
+                  {
+                    "id": "math-15",
+                    "tokens": 5511,
+                    "width": 256,
+                    "early_mae": 0.028015997006508864,
+                    "late_mae": 0.016613238137834913,
+                    "late_minus_early": -0.011402758868673951
+                  },
+                  {
+                    "id": "math-16",
+                    "tokens": 1144,
+                    "width": 256,
+                    "early_mae": 0.027163069730690048,
+                    "late_mae": 0.02046261566126753,
+                    "late_minus_early": -0.006700454069422518
+                  },
+                  {
+                    "id": "math-17",
+                    "tokens": 814,
+                    "width": 256,
+                    "early_mae": 0.03302971191817236,
+                    "late_mae": 0.013287994717991303,
+                    "late_minus_early": -0.019741717200181058
+                  },
+                  {
+                    "id": "math-18",
+                    "tokens": 7168,
+                    "width": 256,
+                    "early_mae": 0.03432139518911839,
+                    "late_mae": 0.054400771306417406,
+                    "late_minus_early": 0.020079376117299014
+                  },
+                  {
+                    "id": "math-19",
+                    "tokens": 1985,
+                    "width": 256,
+                    "early_mae": 0.032896989044764985,
+                    "late_mae": 0.01895571385683975,
+                    "late_minus_early": -0.013941275187925234
+                  },
+                  {
+                    "id": "math-20",
+                    "tokens": 3639,
+                    "width": 256,
+                    "early_mae": 0.03351991741959298,
+                    "late_mae": 0.01870135487711999,
+                    "late_minus_early": -0.01481856254247299
+                  },
+                  {
+                    "id": "math-21",
+                    "tokens": 1877,
+                    "width": 256,
+                    "early_mae": 0.02005218579663881,
+                    "late_mae": 0.0034482101662830222,
+                    "late_minus_early": -0.01660397563035579
+                  },
+                  {
+                    "id": "math-22",
+                    "tokens": 7168,
+                    "width": 256,
+                    "early_mae": 0.04797476096808273,
+                    "late_mae": 0.04793937591792763,
+                    "late_minus_early": -3.538505015510118e-05
+                  },
+                  {
+                    "id": "math-23",
+                    "tokens": 1404,
+                    "width": 256,
+                    "early_mae": 0.029639053666235676,
+                    "late_mae": 0.013475539471794251,
+                    "late_minus_early": -0.016163514194441425
+                  },
+                  {
+                    "id": "math-24",
+                    "tokens": 2358,
+                    "width": 256,
+                    "early_mae": 0.034028416808297185,
+                    "late_mae": 0.021504148267885992,
+                    "late_minus_early": -0.012524268540411193
+                  },
+                  {
+                    "id": "math-25",
+                    "tokens": 5876,
+                    "width": 256,
+                    "early_mae": 0.022133879736455975,
+                    "late_mae": 0.016386509122427784,
+                    "late_minus_early": -0.005747370614028191
+                  },
+                  {
+                    "id": "math-26",
+                    "tokens": 3465,
+                    "width": 256,
+                    "early_mae": 0.052872305244000356,
+                    "late_mae": 0.013348687872646564,
+                    "late_minus_early": -0.03952361737135379
+                  },
+                  {
+                    "id": "math-27",
+                    "tokens": 1925,
+                    "width": 256,
+                    "early_mae": 0.01718151768551343,
+                    "late_mae": 0.02276216239292997,
+                    "late_minus_early": 0.005580644707416538
+                  },
+                  {
+                    "id": "math-28",
+                    "tokens": 763,
+                    "width": 256,
+                    "early_mae": 0.032423628067098836,
+                    "late_mae": 0.023805234514662987,
+                    "late_minus_early": -0.008618393552435849
+                  },
+                  {
+                    "id": "math-29",
+                    "tokens": 786,
+                    "width": 256,
+                    "early_mae": 0.025205670568359095,
+                    "late_mae": 0.02337986553222357,
+                    "late_minus_early": -0.001825805036135525
+                  },
+                  {
+                    "id": "math-30",
+                    "tokens": 3106,
+                    "width": 256,
+                    "early_mae": 0.049722098552021254,
+                    "late_mae": 0.01560819027760435,
+                    "late_minus_early": -0.034113908274416904
+                  },
+                  {
+                    "id": "math-31",
+                    "tokens": 4024,
+                    "width": 256,
+                    "early_mae": 0.01997249535174328,
+                    "late_mae": 0.02683652764829131,
+                    "late_minus_early": 0.006864032296548028
+                  },
+                  {
+                    "id": "math-32",
+                    "tokens": 7168,
+                    "width": 256,
+                    "early_mae": 0.045099590596535566,
+                    "late_mae": 0.043286636588680566,
+                    "late_minus_early": -0.001812954007855
+                  },
+                  {
+                    "id": "math-33",
+                    "tokens": 6889,
+                    "width": 256,
+                    "early_mae": 0.040579331105904615,
+                    "late_mae": 0.022687705655530938,
+                    "late_minus_early": -0.017891625450373677
+                  },
+                  {
+                    "id": "math-34",
+                    "tokens": 7168,
+                    "width": 256,
+                    "early_mae": 0.036269133050692764,
+                    "late_mae": 0.042965270566905356,
+                    "late_minus_early": 0.006696137516212591
+                  },
+                  {
+                    "id": "math-35",
+                    "tokens": 878,
+                    "width": 256,
+                    "early_mae": 0.01526891571277958,
+                    "late_mae": 0.013734241899082816,
+                    "late_minus_early": -0.001534673813696763
+                  },
+                  {
+                    "id": "math-36",
+                    "tokens": 1603,
+                    "width": 256,
+                    "early_mae": 0.04217699521286336,
+                    "late_mae": 0.012369842999351899,
+                    "late_minus_early": -0.029807152213511462
+                  },
+                  {
+                    "id": "math-37",
+                    "tokens": 6390,
+                    "width": 256,
+                    "early_mae": 0.03937021094493098,
+                    "late_mae": 0.016903363823387224,
+                    "late_minus_early": -0.02246684712154376
+                  },
+                  {
+                    "id": "math-38",
+                    "tokens": 2573,
+                    "width": 256,
+                    "early_mae": 0.01291165563114327,
+                    "late_mae": 0.014545297235724286,
+                    "late_minus_early": 0.0016336416045810154
+                  },
+                  {
+                    "id": "math-39",
+                    "tokens": 2697,
+                    "width": 256,
+                    "early_mae": 0.021384756323323678,
+                    "late_mae": 0.005639481588777057,
+                    "late_minus_early": -0.01574527473454662
+                  },
+                  {
+                    "id": "math-40",
+                    "tokens": 1064,
+                    "width": 256,
+                    "early_mae": 0.019792992337636234,
+                    "late_mae": 0.01443667483763525,
+                    "late_minus_early": -0.005356317500000984
+                  },
+                  {
+                    "id": "math-41",
+                    "tokens": 4851,
+                    "width": 256,
+                    "early_mae": 0.018538550091039552,
+                    "late_mae": 0.01007716899050215,
+                    "late_minus_early": -0.008461381100537402
+                  },
+                  {
+                    "id": "math-42",
+                    "tokens": 3426,
+                    "width": 256,
+                    "early_mae": 0.015356687948690384,
+                    "late_mae": 0.004670183844782211,
+                    "late_minus_early": -0.010686504103908173
+                  },
+                  {
+                    "id": "math-43",
+                    "tokens": 4634,
+                    "width": 256,
+                    "early_mae": 0.026588331122278624,
+                    "late_mae": 0.0179349737345518,
+                    "late_minus_early": -0.008653357387726823
+                  },
+                  {
+                    "id": "math-44",
+                    "tokens": 2301,
+                    "width": 256,
+                    "early_mae": 0.01620882229295026,
+                    "late_mae": 0.011363614272751121,
+                    "late_minus_early": -0.004845208020199138
+                  },
+                  {
+                    "id": "math-45",
+                    "tokens": 3040,
+                    "width": 256,
+                    "early_mae": 0.05154116808334902,
+                    "late_mae": 0.017679030276446794,
+                    "late_minus_early": -0.033862137806902226
+                  },
+                  {
+                    "id": "math-46",
+                    "tokens": 3954,
+                    "width": 256,
+                    "early_mae": 0.014716416150391237,
+                    "late_mae": 0.015672730423683473,
+                    "late_minus_early": 0.0009563142732922358
+                  },
+                  {
+                    "id": "math-47",
+                    "tokens": 1805,
+                    "width": 256,
+                    "early_mae": 0.018881335984337666,
+                    "late_mae": 0.01835029797679666,
+                    "late_minus_early": -0.000531038007541007
+                  },
+                  {
+                    "id": "math-48",
+                    "tokens": 1189,
+                    "width": 256,
+                    "early_mae": 0.03301657835324606,
+                    "late_mae": 0.004452006757237115,
+                    "late_minus_early": -0.028564571596008947
+                  },
+                  {
+                    "id": "math-49",
+                    "tokens": 4477,
+                    "width": 256,
+                    "early_mae": 0.03918487638914547,
+                    "late_mae": 0.01684576529243076,
+                    "late_minus_early": -0.022339111096714714
+                  },
+                  {
+                    "id": "math-50",
+                    "tokens": 7168,
+                    "width": 256,
+                    "early_mae": 0.05233658942475253,
+                    "late_mae": 0.03633858446649274,
+                    "late_minus_early": -0.015998004958259787
+                  },
+                  {
+                    "id": "math-51",
+                    "tokens": 1176,
+                    "width": 256,
+                    "early_mae": 0.020415637143671284,
+                    "late_mae": 0.02200197605932555,
+                    "late_minus_early": 0.0015863389156542673
+                  },
+                  {
+                    "id": "math-52",
+                    "tokens": 2523,
+                    "width": 256,
+                    "early_mae": 0.03534364226655956,
+                    "late_mae": 0.0157934767738257,
+                    "late_minus_early": -0.019550165492733862
+                  },
+                  {
+                    "id": "math-53",
+                    "tokens": 1280,
+                    "width": 256,
+                    "early_mae": 0.024679977695582334,
+                    "late_mae": 0.024144798719599403,
+                    "late_minus_early": -0.0005351789759829306
+                  },
+                  {
+                    "id": "math-54",
+                    "tokens": 4390,
+                    "width": 256,
+                    "early_mae": 0.026561275235375714,
+                    "late_mae": 0.015010605530310944,
+                    "late_minus_early": -0.01155066970506477
+                  },
+                  {
+                    "id": "math-55",
+                    "tokens": 1466,
+                    "width": 256,
+                    "early_mae": 0.018685848558343238,
+                    "late_mae": 0.015939906722279018,
+                    "late_minus_early": -0.0027459418360642196
+                  },
+                  {
+                    "id": "math-56",
+                    "tokens": 7168,
+                    "width": 256,
+                    "early_mae": 0.03879447459150334,
+                    "late_mae": 0.04465144065909993,
+                    "late_minus_early": 0.005856966067596586
+                  },
+                  {
+                    "id": "math-57",
+                    "tokens": 2291,
+                    "width": 256,
+                    "early_mae": 0.017322700259004065,
+                    "late_mae": 0.00500726978504018,
+                    "late_minus_early": -0.012315430473963884
+                  },
+                  {
+                    "id": "math-58",
+                    "tokens": 923,
+                    "width": 256,
+                    "early_mae": 0.015314363054286823,
+                    "late_mae": 0.013812224323446587,
+                    "late_minus_early": -0.0015021387308402356
+                  },
+                  {
+                    "id": "math-59",
+                    "tokens": 1401,
+                    "width": 256,
+                    "early_mae": 0.019587048559216447,
+                    "late_mae": 0.01841440371842687,
+                    "late_minus_early": -0.0011726448407895773
+                  },
+                  {
+                    "id": "math-60",
+                    "tokens": 1394,
+                    "width": 256,
+                    "early_mae": 0.02989110597085004,
+                    "late_mae": 0.013281865601055126,
+                    "late_minus_early": -0.016609240369794914
+                  },
+                  {
+                    "id": "math-61",
+                    "tokens": 881,
+                    "width": 256,
+                    "early_mae": 0.01912113715999006,
+                    "late_mae": 0.024730645755878383,
+                    "late_minus_early": 0.005609508595888324
+                  },
+                  {
+                    "id": "math-62",
+                    "tokens": 6371,
+                    "width": 256,
+                    "early_mae": 0.04089318315232052,
+                    "late_mae": 0.02480574729066684,
+                    "late_minus_early": -0.016087435861653676
+                  },
+                  {
+                    "id": "math-63",
+                    "tokens": 1011,
+                    "width": 256,
+                    "early_mae": 0.025003430601581472,
+                    "late_mae": 0.019171441327760053,
+                    "late_minus_early": -0.00583198927382142
+                  }
+                ],
+                "late_minus_early": {
+                  "queries": 64,
+                  "mean": -0.010167654198063784,
+                  "ci95": [
+                    -0.012930077141405198,
+                    -0.007375870510505139
+                  ]
+                },
+                "definition": "Per query first/last min(256,floor(length/2)) tokens; require >=128 output tokens"
+              }
+            },
+            "new_vs_original_BF16": {
+              "all": {
+                "queries": 64,
+                "tokens": 190251,
+                "query_balanced_mae": 0.032421461280695826,
+                "query_balanced_rmse": 0.08224130812229606,
+                "token_p99_abs": 0.3654388189315796,
+                "query_balanced_signed_nll_difference": 0.0039195963009429164,
+                "query_balanced_top1_agreement": 0.9830849519829995
+              },
+              "1-64": {
+                "queries": 64,
+                "tokens": 4096,
+                "query_balanced_mae": 0.024504160622011953,
+                "query_balanced_rmse": 0.07609226888231531,
+                "token_p99_abs": 0.3611129105091104,
+                "query_balanced_signed_nll_difference": 0.0018487946171791819,
+                "query_balanced_top1_agreement": 0.9892578125
+              },
+              "65-256": {
+                "queries": 64,
+                "tokens": 12288,
+                "query_balanced_mae": 0.030593664333634585,
+                "query_balanced_rmse": 0.08379298779746125,
+                "token_p99_abs": 0.3746641671657557,
+                "query_balanced_signed_nll_difference": 0.001976912983284154,
+                "query_balanced_top1_agreement": 0.9837239583333334
+              },
+              "257-512": {
+                "queries": 64,
+                "tokens": 16384,
+                "query_balanced_mae": 0.02803512878849182,
+                "query_balanced_rmse": 0.0763439227039401,
+                "token_p99_abs": 0.35109889090061197,
+                "query_balanced_signed_nll_difference": 0.002737931077335913,
+                "query_balanced_top1_agreement": 0.9876708984375
+              },
+              "513-1024": {
+                "queries": 64,
+                "tokens": 31151,
+                "query_balanced_mae": 0.03452840531101153,
+                "query_balanced_rmse": 0.085502528142736,
+                "token_p99_abs": 0.37368345260620117,
+                "query_balanced_signed_nll_difference": 0.004484266267358687,
+                "query_balanced_top1_agreement": 0.9828046729908162
+              },
+              "1025-1536": {
+                "queries": 54,
+                "tokens": 23480,
+                "query_balanced_mae": 0.03423079592799299,
+                "query_balanced_rmse": 0.08398991696952968,
+                "token_p99_abs": 0.37127422094345064,
+                "query_balanced_signed_nll_difference": 0.004260887598799294,
+                "query_balanced_top1_agreement": 0.9812499675805169
+              },
+              "1537-2048": {
+                "queries": 38,
+                "tokens": 17999,
+                "query_balanced_mae": 0.04002051357700933,
+                "query_balanced_rmse": 0.08908368445426552,
+                "token_p99_abs": 0.3848054933547975,
+                "query_balanced_signed_nll_difference": 0.005413451035537566,
+                "query_balanced_top1_agreement": 0.9781418967259746
+              },
+              "2049-4096": {
+                "queries": 32,
+                "tokens": 49723,
+                "query_balanced_mae": 0.03703665655244635,
+                "query_balanced_rmse": 0.08453112476167453,
+                "token_p99_abs": 0.36512874841690046,
+                "query_balanced_signed_nll_difference": 0.004664504339160801,
+                "query_balanced_top1_agreement": 0.9790365874375095
+              },
+              "4097-7168": {
+                "queries": 17,
+                "tokens": 35130,
+                "query_balanced_mae": 0.035752195180132826,
+                "query_balanced_rmse": 0.07939811900795607,
+                "token_p99_abs": 0.3493989062309265,
+                "query_balanced_signed_nll_difference": 0.004202112694393333,
+                "query_balanced_top1_agreement": 0.9775736797865937
+              },
+              "within_query_early_late": {
+                "queries": [
+                  {
+                    "id": "math-00",
+                    "tokens": 1355,
+                    "width": 256,
+                    "early_mae": 0.03287065202778422,
+                    "late_mae": 0.01601457428883532,
+                    "late_minus_early": -0.0168560777389489
+                  },
+                  {
+                    "id": "math-01",
+                    "tokens": 1465,
+                    "width": 256,
+                    "early_mae": 0.03714779452664457,
+                    "late_mae": 0.015226258427212175,
+                    "late_minus_early": -0.021921536099432398
+                  },
+                  {
+                    "id": "math-02",
+                    "tokens": 911,
+                    "width": 256,
+                    "early_mae": 0.019470829359842318,
+                    "late_mae": 0.022385022955148576,
+                    "late_minus_early": 0.002914193595306258
+                  },
+                  {
+                    "id": "math-03",
+                    "tokens": 3346,
+                    "width": 256,
+                    "early_mae": 0.04004056702865427,
+                    "late_mae": 0.025158648130542416,
+                    "late_minus_early": -0.014881918898111857
+                  },
+                  {
+                    "id": "math-04",
+                    "tokens": 7168,
+                    "width": 256,
+                    "early_mae": 0.04567599955356805,
+                    "late_mae": 0.043353427626875995,
+                    "late_minus_early": -0.002322571926692052
+                  },
+                  {
+                    "id": "math-05",
+                    "tokens": 1636,
+                    "width": 256,
+                    "early_mae": 0.025855694735669982,
+                    "late_mae": 0.018667832330713813,
+                    "late_minus_early": -0.007187862404956169
+                  },
+                  {
+                    "id": "math-06",
+                    "tokens": 1513,
+                    "width": 256,
+                    "early_mae": 0.022472774649072685,
+                    "late_mae": 0.009024933675076424,
+                    "late_minus_early": -0.013447840973996261
+                  },
+                  {
+                    "id": "math-07",
+                    "tokens": 682,
+                    "width": 256,
+                    "early_mae": 0.04175142584463068,
+                    "late_mae": 0.012257289944296423,
+                    "late_minus_early": -0.029494135900334256
+                  },
+                  {
+                    "id": "math-08",
+                    "tokens": 1109,
+                    "width": 256,
+                    "early_mae": 0.03065703711238299,
+                    "late_mae": 0.009139769974465917,
+                    "late_minus_early": -0.021517267137917073
+                  },
+                  {
+                    "id": "math-09",
+                    "tokens": 2884,
+                    "width": 256,
+                    "early_mae": 0.040112383641910526,
+                    "late_mae": 0.019263680934893473,
+                    "late_minus_early": -0.020848702707017053
+                  },
+                  {
+                    "id": "math-10",
+                    "tokens": 5197,
+                    "width": 256,
+                    "early_mae": 0.0256773468058534,
+                    "late_mae": 0.008113915438626856,
+                    "late_minus_early": -0.017563431367226545
+                  },
+                  {
+                    "id": "math-11",
+                    "tokens": 1076,
+                    "width": 256,
+                    "early_mae": 0.014343637062606246,
+                    "late_mae": 0.01149479481350002,
+                    "late_minus_early": -0.002848842249106226
+                  },
+                  {
+                    "id": "math-12",
+                    "tokens": 1207,
+                    "width": 256,
+                    "early_mae": 0.021571393883793727,
+                    "late_mae": 0.016212278198984992,
+                    "late_minus_early": -0.005359115684808735
+                  },
+                  {
+                    "id": "math-13",
+                    "tokens": 1165,
+                    "width": 256,
+                    "early_mae": 0.02820035598614959,
+                    "late_mae": 0.01442881560211487,
+                    "late_minus_early": -0.01377154038403472
+                  },
+                  {
+                    "id": "math-14",
+                    "tokens": 974,
+                    "width": 256,
+                    "early_mae": 0.02907102543635498,
+                    "late_mae": 0.012022136872107542,
+                    "late_minus_early": -0.01704888856424744
+                  },
+                  {
+                    "id": "math-15",
+                    "tokens": 5511,
+                    "width": 256,
+                    "early_mae": 0.03254872258629121,
+                    "late_mae": 0.015694889252078903,
+                    "late_minus_early": -0.01685383333421231
+                  },
+                  {
+                    "id": "math-16",
+                    "tokens": 1144,
+                    "width": 256,
+                    "early_mae": 0.026012584011522094,
+                    "late_mae": 0.02100382851140256,
+                    "late_minus_early": -0.005008755500119533
+                  },
+                  {
+                    "id": "math-17",
+                    "tokens": 814,
+                    "width": 256,
+                    "early_mae": 0.033766246640523856,
+                    "late_mae": 0.015549789031941347,
+                    "late_minus_early": -0.01821645760858251
+                  },
+                  {
+                    "id": "math-18",
+                    "tokens": 7168,
+                    "width": 256,
+                    "early_mae": 0.037855299532181724,
+                    "late_mae": 0.04896506456071484,
+                    "late_minus_early": 0.011109765028533114
+                  },
+                  {
+                    "id": "math-19",
+                    "tokens": 1985,
+                    "width": 256,
+                    "early_mae": 0.02756046629092604,
+                    "late_mae": 0.01707224057692594,
+                    "late_minus_early": -0.010488225714000099
+                  },
+                  {
+                    "id": "math-20",
+                    "tokens": 3639,
+                    "width": 256,
+                    "early_mae": 0.035355144656449955,
+                    "late_mae": 0.01960811444381627,
+                    "late_minus_early": -0.015747030212633684
+                  },
+                  {
+                    "id": "math-21",
+                    "tokens": 1877,
+                    "width": 256,
+                    "early_mae": 0.017064709284613344,
+                    "late_mae": 0.005616880217689552,
+                    "late_minus_early": -0.011447829066923793
+                  },
+                  {
+                    "id": "math-22",
+                    "tokens": 7168,
+                    "width": 256,
+                    "early_mae": 0.052409956953698406,
+                    "late_mae": 0.042700706523198684,
+                    "late_minus_early": -0.009709250430499722
+                  },
+                  {
+                    "id": "math-23",
+                    "tokens": 1404,
+                    "width": 256,
+                    "early_mae": 0.02777799350169985,
+                    "late_mae": 0.01258539711375406,
+                    "late_minus_early": -0.01519259638794579
+                  },
+                  {
+                    "id": "math-24",
+                    "tokens": 2358,
+                    "width": 256,
+                    "early_mae": 0.024441457777775594,
+                    "late_mae": 0.020322313177402518,
+                    "late_minus_early": -0.004119144600373076
+                  },
+                  {
+                    "id": "math-25",
+                    "tokens": 5876,
+                    "width": 256,
+                    "early_mae": 0.024729643645461957,
+                    "late_mae": 0.019587944425671633,
+                    "late_minus_early": -0.005141699219790324
+                  },
+                  {
+                    "id": "math-26",
+                    "tokens": 3465,
+                    "width": 256,
+                    "early_mae": 0.04136243080196855,
+                    "late_mae": 0.016158419517320194,
+                    "late_minus_early": -0.02520401128464836
+                  },
+                  {
+                    "id": "math-27",
+                    "tokens": 1925,
+                    "width": 256,
+                    "early_mae": 0.01889820718109214,
+                    "late_mae": 0.022677581451602924,
+                    "late_minus_early": 0.0037793742705107825
+                  },
+                  {
+                    "id": "math-28",
+                    "tokens": 763,
+                    "width": 256,
+                    "early_mae": 0.02917097644368702,
+                    "late_mae": 0.020868674981250668,
+                    "late_minus_early": -0.008302301462436351
+                  },
+                  {
+                    "id": "math-29",
+                    "tokens": 786,
+                    "width": 256,
+                    "early_mae": 0.024229921652496073,
+                    "late_mae": 0.019597692590532373,
+                    "late_minus_early": -0.0046322290619637
+                  },
+                  {
+                    "id": "math-30",
+                    "tokens": 3106,
+                    "width": 256,
+                    "early_mae": 0.05790227172279039,
+                    "late_mae": 0.014961564128061211,
+                    "late_minus_early": -0.04294070759472918
+                  },
+                  {
+                    "id": "math-31",
+                    "tokens": 4024,
+                    "width": 256,
+                    "early_mae": 0.018483451268393125,
+                    "late_mae": 0.026883031674655056,
+                    "late_minus_early": 0.00839958040626193
+                  },
+                  {
+                    "id": "math-32",
+                    "tokens": 7168,
+                    "width": 256,
+                    "early_mae": 0.0468542710239524,
+                    "late_mae": 0.0428852117942162,
+                    "late_minus_early": -0.003969059229736199
+                  },
+                  {
+                    "id": "math-33",
+                    "tokens": 6889,
+                    "width": 256,
+                    "early_mae": 0.038587412321421155,
+                    "late_mae": 0.026829890739005463,
+                    "late_minus_early": -0.011757521582415692
+                  },
+                  {
+                    "id": "math-34",
+                    "tokens": 7168,
+                    "width": 256,
+                    "early_mae": 0.035307728889954815,
+                    "late_mae": 0.03974685832494121,
+                    "late_minus_early": 0.004439129434986394
+                  },
+                  {
+                    "id": "math-35",
+                    "tokens": 878,
+                    "width": 256,
+                    "early_mae": 0.014756287765140735,
+                    "late_mae": 0.011254918317055523,
+                    "late_minus_early": -0.003501369448085212
+                  },
+                  {
+                    "id": "math-36",
+                    "tokens": 1603,
+                    "width": 256,
+                    "early_mae": 0.06033510205575268,
+                    "late_mae": 0.011193980846501833,
+                    "late_minus_early": -0.04914112120925085
+                  },
+                  {
+                    "id": "math-37",
+                    "tokens": 6390,
+                    "width": 256,
+                    "early_mae": 0.038170889334924935,
+                    "late_mae": 0.015907141668462327,
+                    "late_minus_early": -0.022263747666462608
+                  },
+                  {
+                    "id": "math-38",
+                    "tokens": 2573,
+                    "width": 256,
+                    "early_mae": 0.011327080844578674,
+                    "late_mae": 0.01588087300357549,
+                    "late_minus_early": 0.004553792158996817
+                  },
+                  {
+                    "id": "math-39",
+                    "tokens": 2697,
+                    "width": 256,
+                    "early_mae": 0.019774802643560796,
+                    "late_mae": 0.0070839525195443565,
+                    "late_minus_early": -0.01269085012401644
+                  },
+                  {
+                    "id": "math-40",
+                    "tokens": 1064,
+                    "width": 256,
+                    "early_mae": 0.020459565124671314,
+                    "late_mae": 0.016262470267684515,
+                    "late_minus_early": -0.004197094856986799
+                  },
+                  {
+                    "id": "math-41",
+                    "tokens": 4851,
+                    "width": 256,
+                    "early_mae": 0.0166549926997496,
+                    "late_mae": 0.011004524539714039,
+                    "late_minus_early": -0.00565046816003556
+                  },
+                  {
+                    "id": "math-42",
+                    "tokens": 3426,
+                    "width": 256,
+                    "early_mae": 0.015985819532624707,
+                    "late_mae": 0.005034592153959183,
+                    "late_minus_early": -0.010951227378665523
+                  },
+                  {
+                    "id": "math-43",
+                    "tokens": 4634,
+                    "width": 256,
+                    "early_mae": 0.023571019896873158,
+                    "late_mae": 0.01598385596191304,
+                    "late_minus_early": -0.007587163934960117
+                  },
+                  {
+                    "id": "math-44",
+                    "tokens": 2301,
+                    "width": 256,
+                    "early_mae": 0.018912468106930425,
+                    "late_mae": 0.010209578603436104,
+                    "late_minus_early": -0.008702889503494321
+                  },
+                  {
+                    "id": "math-45",
+                    "tokens": 3040,
+                    "width": 256,
+                    "early_mae": 0.042544365663679,
+                    "late_mae": 0.019324015590223814,
+                    "late_minus_early": -0.023220350073455187
+                  },
+                  {
+                    "id": "math-46",
+                    "tokens": 3954,
+                    "width": 256,
+                    "early_mae": 0.011207872141771158,
+                    "late_mae": 0.020303511434700522,
+                    "late_minus_early": 0.009095639292929364
+                  },
+                  {
+                    "id": "math-47",
+                    "tokens": 1805,
+                    "width": 256,
+                    "early_mae": 0.019047894251378872,
+                    "late_mae": 0.01857708406250308,
+                    "late_minus_early": -0.00047081018887579207
+                  },
+                  {
+                    "id": "math-48",
+                    "tokens": 1189,
+                    "width": 256,
+                    "early_mae": 0.03127586247321243,
+                    "late_mae": 0.005756254021267282,
+                    "late_minus_early": -0.025519608451945147
+                  },
+                  {
+                    "id": "math-49",
+                    "tokens": 4477,
+                    "width": 256,
+                    "early_mae": 0.03951365315763766,
+                    "late_mae": 0.011885431171743205,
+                    "late_minus_early": -0.027628221985894458
+                  },
+                  {
+                    "id": "math-50",
+                    "tokens": 7168,
+                    "width": 256,
+                    "early_mae": 0.04665840389358089,
+                    "late_mae": 0.03863753302309436,
+                    "late_minus_early": -0.00802087087048653
+                  },
+                  {
+                    "id": "math-51",
+                    "tokens": 1176,
+                    "width": 256,
+                    "early_mae": 0.01875721213329018,
+                    "late_mae": 0.025122392301027835,
+                    "late_minus_early": 0.006365180167737655
+                  },
+                  {
+                    "id": "math-52",
+                    "tokens": 2523,
+                    "width": 256,
+                    "early_mae": 0.02769353683703299,
+                    "late_mae": 0.01400672311368556,
+                    "late_minus_early": -0.01368681372334743
+                  },
+                  {
+                    "id": "math-53",
+                    "tokens": 1280,
+                    "width": 256,
+                    "early_mae": 0.02167840661694584,
+                    "late_mae": 0.02380351279073331,
+                    "late_minus_early": 0.002125106173787472
+                  },
+                  {
+                    "id": "math-54",
+                    "tokens": 4390,
+                    "width": 256,
+                    "early_mae": 0.02386484577933068,
+                    "late_mae": 0.01307364942079553,
+                    "late_minus_early": -0.010791196358535149
+                  },
+                  {
+                    "id": "math-55",
+                    "tokens": 1466,
+                    "width": 256,
+                    "early_mae": 0.017389959131255628,
+                    "late_mae": 0.017579856809693373,
+                    "late_minus_early": 0.00018989767843774485
+                  },
+                  {
+                    "id": "math-56",
+                    "tokens": 7168,
+                    "width": 256,
+                    "early_mae": 0.04388085913214512,
+                    "late_mae": 0.05371525974398941,
+                    "late_minus_early": 0.00983440061184429
+                  },
+                  {
+                    "id": "math-57",
+                    "tokens": 2291,
+                    "width": 256,
+                    "early_mae": 0.019149811671313466,
+                    "late_mae": 0.00466077279743754,
+                    "late_minus_early": -0.014489038873875926
+                  },
+                  {
+                    "id": "math-58",
+                    "tokens": 923,
+                    "width": 256,
+                    "early_mae": 0.015079903035652015,
+                    "late_mae": 0.01794373835211807,
+                    "late_minus_early": 0.002863835316466057
+                  },
+                  {
+                    "id": "math-59",
+                    "tokens": 1401,
+                    "width": 256,
+                    "early_mae": 0.016399525109480756,
+                    "late_mae": 0.022723300972196048,
+                    "late_minus_early": 0.006323775862715292
+                  },
+                  {
+                    "id": "math-60",
+                    "tokens": 1394,
+                    "width": 256,
+                    "early_mae": 0.03310936070637885,
+                    "late_mae": 0.013440162035267905,
+                    "late_minus_early": -0.019669198671110943
+                  },
+                  {
+                    "id": "math-61",
+                    "tokens": 881,
+                    "width": 256,
+                    "early_mae": 0.02371289401889118,
+                    "late_mae": 0.022153353821960153,
+                    "late_minus_early": -0.0015595401969310252
+                  },
+                  {
+                    "id": "math-62",
+                    "tokens": 6371,
+                    "width": 256,
+                    "early_mae": 0.03993472060718395,
+                    "late_mae": 0.02566467904801903,
+                    "late_minus_early": -0.01427004155916492
+                  },
+                  {
+                    "id": "math-63",
+                    "tokens": 1011,
+                    "width": 256,
+                    "early_mae": 0.024477529759865613,
+                    "late_mae": 0.023933442864096655,
+                    "late_minus_early": -0.0005440868957689582
+                  }
+                ],
+                "late_minus_early": {
+                  "queries": 64,
+                  "mean": -0.009786912882198058,
+                  "ci95": [
+                    -0.012701178545908087,
+                    -0.006807210299967849
+                  ]
+                },
+                "definition": "Per query first/last min(256,floor(length/2)) tokens; require >=128 output tokens"
+              }
+            },
+            "paired_new_minus_old": {
+              "all": {
+                "mae": {
+                  "queries": 64,
+                  "mean": -9.544627541409795e-05,
+                  "ci95": [
+                    -0.0005607050440208861,
+                    0.00036313982211290977
+                  ]
+                },
+                "mse": {
+                  "queries": 64,
+                  "mean": -5.6627319963637445e-05,
+                  "ci95": [
+                    -0.00026571673274507863,
+                    0.00014372241056390898
+                  ]
+                },
+                "signed_nll_difference": {
+                  "queries": 64,
+                  "mean": -0.0002431228841422529,
+                  "ci95": [
+                    -0.0006500274900374117,
+                    0.00016953468894193813
+                  ]
+                },
+                "top1_agreement": {
+                  "queries": 64,
+                  "mean": 0.0008302598348781005,
+                  "ci95": [
+                    0.00020925181279568645,
+                    0.0014763843292393826
+                  ]
+                }
+              },
+              "1-64": {
+                "mae": {
+                  "queries": 64,
+                  "mean": -0.0006816527343761914,
+                  "ci95": [
+                    -0.0021806690166455713,
+                    0.0007506225737309851
+                  ]
+                },
+                "mse": {
+                  "queries": 64,
+                  "mean": -0.0008241500604056247,
+                  "ci95": [
+                    -0.0018852118569584238,
+                    0.00015882262365890905
+                  ]
+                },
+                "signed_nll_difference": {
+                  "queries": 64,
+                  "mean": 0.0002591754336628855,
+                  "ci95": [
+                    -0.0012720608392320708,
+                    0.0018592572781013586
+                  ]
+                },
+                "top1_agreement": {
+                  "queries": 64,
+                  "mean": 0.0009765625,
+                  "ci95": [
+                    -0.001708984375,
+                    0.003662109375
+                  ]
+                }
+              },
+              "65-256": {
+                "mae": {
+                  "queries": 64,
+                  "mean": -0.00013618744802960277,
+                  "ci95": [
+                    -0.0014428821941059845,
+                    0.0012284670563989385
+                  ]
+                },
+                "mse": {
+                  "queries": 64,
+                  "mean": 5.504792033728408e-05,
+                  "ci95": [
+                    -0.0006377782820601725,
+                    0.0008362754097221549
+                  ]
+                },
+                "signed_nll_difference": {
+                  "queries": 64,
+                  "mean": -0.001982063348070527,
+                  "ci95": [
+                    -0.0032955331986619122,
+                    -0.0006579549904453137
+                  ]
+                },
+                "top1_agreement": {
+                  "queries": 64,
+                  "mean": 0.0004069010416666661,
+                  "ci95": [
+                    -0.0018717447916666644,
+                    0.0026875813802083237
+                  ]
+                }
+              },
+              "257-512": {
+                "mae": {
+                  "queries": 64,
+                  "mean": -0.0002153276977850901,
+                  "ci95": [
+                    -0.0012505028898343155,
+                    0.0008986049800023908
+                  ]
+                },
+                "mse": {
+                  "queries": 64,
+                  "mean": -0.00042247476914268904,
+                  "ci95": [
+                    -0.0009790262239543232,
+                    0.00014953654099941259
+                  ]
+                },
+                "signed_nll_difference": {
+                  "queries": 64,
+                  "mean": -0.00010381139555716698,
+                  "ci95": [
+                    -0.0012234274086794109,
+                    0.0009676123746504377
+                  ]
+                },
+                "top1_agreement": {
+                  "queries": 64,
+                  "mean": 0.0008544921875,
+                  "ci95": [
+                    -0.00079345703125,
+                    0.0025634765625
+                  ]
+                }
+              },
+              "513-1024": {
+                "mae": {
+                  "queries": 64,
+                  "mean": 2.5120011324576968e-05,
+                  "ci95": [
+                    -0.0007120935989395098,
+                    0.0008131960866268989
+                  ]
+                },
+                "mse": {
+                  "queries": 64,
+                  "mean": -8.702012714505149e-05,
+                  "ci95": [
+                    -0.0004679290892211303,
+                    0.00030964727341299344
+                  ]
+                },
+                "signed_nll_difference": {
+                  "queries": 64,
+                  "mean": 0.00028922660628408946,
+                  "ci95": [
+                    -0.0006260066911027571,
+                    0.0012928621380263767
+                  ]
+                },
+                "top1_agreement": {
+                  "queries": 64,
+                  "mean": 0.0017410957897831623,
+                  "ci95": [
+                    0.0005046887241115933,
+                    0.003073510773576271
+                  ]
+                }
+              },
+              "1025-1536": {
+                "mae": {
+                  "queries": 54,
+                  "mean": 0.0003102856032268486,
+                  "ci95": [
+                    -0.0005088795209870437,
+                    0.0011057264429274326
+                  ]
+                },
+                "mse": {
+                  "queries": 54,
+                  "mean": 0.0002803869729850625,
+                  "ci95": [
+                    -0.00015540281013502028,
+                    0.0007036317588300464
+                  ]
+                },
+                "signed_nll_difference": {
+                  "queries": 54,
+                  "mean": 0.0009258843867152272,
+                  "ci95": [
+                    -9.880319023835141e-05,
+                    0.001870314972400832
+                  ]
+                },
+                "top1_agreement": {
+                  "queries": 54,
+                  "mean": -0.00024076866750656056,
+                  "ci95": [
+                    -0.002087308219485021,
+                    0.0015660472962190416
+                  ]
+                }
+              },
+              "1537-2048": {
+                "mae": {
+                  "queries": 38,
+                  "mean": -0.00014751438504821183,
+                  "ci95": [
+                    -0.001280843459835711,
+                    0.0008655552342259144
+                  ]
+                },
+                "mse": {
+                  "queries": 38,
+                  "mean": -5.544589537753085e-05,
+                  "ci95": [
+                    -0.0005500298588368634,
+                    0.00035982314493465125
+                  ]
+                },
+                "signed_nll_difference": {
+                  "queries": 38,
+                  "mean": -0.0002741959673614228,
+                  "ci95": [
+                    -0.001480981814375889,
+                    0.000864380335755632
+                  ]
+                },
+                "top1_agreement": {
+                  "queries": 38,
+                  "mean": 0.0008788181155647717,
+                  "ci95": [
+                    -0.0010507251817757112,
+                    0.00298613719451214
+                  ]
+                }
+              },
+              "2049-4096": {
+                "mae": {
+                  "queries": 32,
+                  "mean": -2.27676210374025e-05,
+                  "ci95": [
+                    -0.000956018171479629,
+                    0.0006809375688460321
+                  ]
+                },
+                "mse": {
+                  "queries": 32,
+                  "mean": -5.9798770086178425e-06,
+                  "ci95": [
+                    -0.0005147396023082905,
+                    0.000389937834904936
+                  ]
+                },
+                "signed_nll_difference": {
+                  "queries": 32,
+                  "mean": -5.5736280904245146e-05,
+                  "ci95": [
+                    -0.0007082433521225116,
+                    0.0005653194394402485
+                  ]
+                },
+                "top1_agreement": {
+                  "queries": 32,
+                  "mean": 0.000285078031435803,
+                  "ci95": [
+                    -0.0009216571270549646,
+                    0.001485102335141498
+                  ]
+                }
+              },
+              "4097-7168": {
+                "mae": {
+                  "queries": 17,
+                  "mean": -0.0004708704545763205,
+                  "ci95": [
+                    -0.0012126070990628721,
+                    0.0002491943315071428
+                  ]
+                },
+                "mse": {
+                  "queries": 17,
+                  "mean": -0.00016075103071087662,
+                  "ci95": [
+                    -0.0005054236254341738,
+                    0.00016875917079461498
+                  ]
+                },
+                "signed_nll_difference": {
+                  "queries": 17,
+                  "mean": -0.0003854708703251007,
+                  "ci95": [
+                    -0.0010178277504853195,
+                    0.0002574705703553996
+                  ]
+                },
+                "top1_agreement": {
+                  "queries": 17,
+                  "mean": -0.00022998011598164477,
+                  "ci95": [
+                    -0.0026058267072047417,
+                    0.0016069074864292286
+                  ]
+                }
+              }
+            },
+            "direct_new_vs_old": {
+              "all": {
+                "queries": 64,
+                "tokens": 190251,
+                "query_balanced_mae": 0.028707217704418295,
+                "query_balanced_rmse": 0.07206028467825755,
+                "token_p99_abs": 0.3258899450302124,
+                "query_balanced_signed_nll_difference": -0.00024312288414225298,
+                "query_balanced_top1_agreement": 0.9845596346972884
+              },
+              "1-64": {
+                "queries": 64,
+                "tokens": 4096,
+                "query_balanced_mae": 0.020687948867266936,
+                "query_balanced_rmse": 0.06533574138623771,
+                "token_p99_abs": 0.2977147161960607,
+                "query_balanced_signed_nll_difference": 0.0002591754336628855,
+                "query_balanced_top1_agreement": 0.9912109375
+              },
+              "65-256": {
+                "queries": 64,
+                "tokens": 12288,
+                "query_balanced_mae": 0.027368582717233136,
+                "query_balanced_rmse": 0.07374799858320964,
+                "token_p99_abs": 0.34224995136260883,
+                "query_balanced_signed_nll_difference": -0.001982063348070527,
+                "query_balanced_top1_agreement": 0.9853515625
+              },
+              "257-512": {
+                "queries": 64,
+                "tokens": 16384,
+                "query_balanced_mae": 0.025396962585159895,
+                "query_balanced_rmse": 0.06878556090367241,
+                "token_p99_abs": 0.31286285758018495,
+                "query_balanced_signed_nll_difference": -0.00010381139555716698,
+                "query_balanced_top1_agreement": 0.987548828125
+              },
+              "513-1024": {
+                "queries": 64,
+                "tokens": 31151,
+                "query_balanced_mae": 0.030221492519087494,
+                "query_balanced_rmse": 0.07468549786692591,
+                "token_p99_abs": 0.3336714506149292,
+                "query_balanced_signed_nll_difference": 0.00028922660628408946,
+                "query_balanced_top1_agreement": 0.9842203611234879
+              },
+              "1025-1536": {
+                "queries": 54,
+                "tokens": 23480,
+                "query_balanced_mae": 0.030045873547759516,
+                "query_balanced_rmse": 0.07210594330815047,
+                "token_p99_abs": 0.324480597972869,
+                "query_balanced_signed_nll_difference": 0.0009258843867152272,
+                "query_balanced_top1_agreement": 0.9840883398475669
+              },
+              "1537-2048": {
+                "queries": 38,
+                "tokens": 17999,
+                "query_balanced_mae": 0.03611997749921801,
+                "query_balanced_rmse": 0.0793743859500208,
+                "token_p99_abs": 0.3314686584472657,
+                "query_balanced_signed_nll_difference": -0.0002741959673614228,
+                "query_balanced_top1_agreement": 0.9790667963346884
+              },
+              "2049-4096": {
+                "queries": 32,
+                "tokens": 49723,
+                "query_balanced_mae": 0.03340785074444226,
+                "query_balanced_rmse": 0.07512526326792134,
+                "token_p99_abs": 0.3237433195114135,
+                "query_balanced_signed_nll_difference": -5.573628090424512e-05,
+                "query_balanced_top1_agreement": 0.9815118192643826
+              },
+              "4097-7168": {
+                "queries": 17,
+                "tokens": 35130,
+                "query_balanced_mae": 0.03274224300717242,
+                "query_balanced_rmse": 0.07301972380576466,
+                "token_p99_abs": 0.3241317868232725,
+                "query_balanced_signed_nll_difference": -0.0003854708703251006,
+                "query_balanced_top1_agreement": 0.9790126626308582
+              },
+              "within_query_early_late": {
+                "queries": [
+                  {
+                    "id": "math-00",
+                    "tokens": 1355,
+                    "width": 256,
+                    "early_mae": 0.027901051925030368,
+                    "late_mae": 0.017314766908983092,
+                    "late_minus_early": -0.010586285016047275
+                  },
+                  {
+                    "id": "math-01",
+                    "tokens": 1465,
+                    "width": 256,
+                    "early_mae": 0.02883530456615996,
+                    "late_mae": 0.01382862967321613,
+                    "late_minus_early": -0.015006674892943828
+                  },
+                  {
+                    "id": "math-02",
+                    "tokens": 911,
+                    "width": 256,
+                    "early_mae": 0.01539513433638448,
+                    "late_mae": 0.015940224272036035,
+                    "late_minus_early": 0.0005450899356515548
+                  },
+                  {
+                    "id": "math-03",
+                    "tokens": 3346,
+                    "width": 256,
+                    "early_mae": 0.026713224169442745,
+                    "late_mae": 0.020593815887175265,
+                    "late_minus_early": -0.00611940828226748
+                  },
+                  {
+                    "id": "math-04",
+                    "tokens": 7168,
+                    "width": 256,
+                    "early_mae": 0.03729330515281859,
+                    "late_mae": 0.038983593675365386,
+                    "late_minus_early": 0.0016902885225467956
+                  },
+                  {
+                    "id": "math-05",
+                    "tokens": 1636,
+                    "width": 256,
+                    "early_mae": 0.028676600703715638,
+                    "late_mae": 0.013091151088215514,
+                    "late_minus_early": -0.015585449615500124
+                  },
+                  {
+                    "id": "math-06",
+                    "tokens": 1513,
+                    "width": 256,
+                    "early_mae": 0.021406171037240657,
+                    "late_mae": 0.009808592736739369,
+                    "late_minus_early": -0.011597578300501288
+                  },
+                  {
+                    "id": "math-07",
+                    "tokens": 682,
+                    "width": 256,
+                    "early_mae": 0.03204185980269045,
+                    "late_mae": 0.011076008892544925,
+                    "late_minus_early": -0.020965850910145523
+                  },
+                  {
+                    "id": "math-08",
+                    "tokens": 1109,
+                    "width": 256,
+                    "early_mae": 0.02394076304985282,
+                    "late_mae": 0.008802033315149643,
+                    "late_minus_early": -0.015138729734703177
+                  },
+                  {
+                    "id": "math-09",
+                    "tokens": 2884,
+                    "width": 256,
+                    "early_mae": 0.0358601723762067,
+                    "late_mae": 0.016085459154175058,
+                    "late_minus_early": -0.019774713222031642
+                  },
+                  {
+                    "id": "math-10",
+                    "tokens": 5197,
+                    "width": 256,
+                    "early_mae": 0.023904807014437673,
+                    "late_mae": 0.00733257125365272,
+                    "late_minus_early": -0.016572235760784954
+                  },
+                  {
+                    "id": "math-11",
+                    "tokens": 1076,
+                    "width": 256,
+                    "early_mae": 0.011452015511675628,
+                    "late_mae": 0.012710612425247514,
+                    "late_minus_early": 0.0012585969135718855
+                  },
+                  {
+                    "id": "math-12",
+                    "tokens": 1207,
+                    "width": 256,
+                    "early_mae": 0.021748112774806067,
+                    "late_mae": 0.016999601994703545,
+                    "late_minus_early": -0.004748510780102522
+                  },
+                  {
+                    "id": "math-13",
+                    "tokens": 1165,
+                    "width": 256,
+                    "early_mae": 0.025458795549394897,
+                    "late_mae": 0.011720787006812672,
+                    "late_minus_early": -0.013738008542582225
+                  },
+                  {
+                    "id": "math-14",
+                    "tokens": 974,
+                    "width": 256,
+                    "early_mae": 0.01978891443048969,
+                    "late_mae": 0.007926528569152352,
+                    "late_minus_early": -0.011862385861337338
+                  },
+                  {
+                    "id": "math-15",
+                    "tokens": 5511,
+                    "width": 256,
+                    "early_mae": 0.023134235593065544,
+                    "late_mae": 0.015522830503128165,
+                    "late_minus_early": -0.007611405089937379
+                  },
+                  {
+                    "id": "math-16",
+                    "tokens": 1144,
+                    "width": 256,
+                    "early_mae": 0.022428837990210032,
+                    "late_mae": 0.01457975121964672,
+                    "late_minus_early": -0.007849086770563313
+                  },
+                  {
+                    "id": "math-17",
+                    "tokens": 814,
+                    "width": 256,
+                    "early_mae": 0.026695365937676158,
+                    "late_mae": 0.014815323644929351,
+                    "late_minus_early": -0.011880042292746806
+                  },
+                  {
+                    "id": "math-18",
+                    "tokens": 7168,
+                    "width": 256,
+                    "early_mae": 0.03433513949976574,
+                    "late_mae": 0.0468257008626575,
+                    "late_minus_early": 0.012490561362891756
+                  },
+                  {
+                    "id": "math-19",
+                    "tokens": 1985,
+                    "width": 256,
+                    "early_mae": 0.02953989706627652,
+                    "late_mae": 0.017864275505137445,
+                    "late_minus_early": -0.011675621561139077
+                  },
+                  {
+                    "id": "math-20",
+                    "tokens": 3639,
+                    "width": 256,
+                    "early_mae": 0.031176730462702362,
+                    "late_mae": 0.012855898180091307,
+                    "late_minus_early": -0.018320832282611055
+                  },
+                  {
+                    "id": "math-21",
+                    "tokens": 1877,
+                    "width": 256,
+                    "early_mae": 0.016044476052648804,
+                    "late_mae": 0.003813426639991402,
+                    "late_minus_early": -0.012231049412657402
+                  },
+                  {
+                    "id": "math-22",
+                    "tokens": 7168,
+                    "width": 256,
+                    "early_mae": 0.05328931886605168,
+                    "late_mae": 0.03967163745854385,
+                    "late_minus_early": -0.013617681407507826
+                  },
+                  {
+                    "id": "math-23",
+                    "tokens": 1404,
+                    "width": 256,
+                    "early_mae": 0.02041190531737161,
+                    "late_mae": 0.012059627223544644,
+                    "late_minus_early": -0.008352278093826965
+                  },
+                  {
+                    "id": "math-24",
+                    "tokens": 2358,
+                    "width": 256,
+                    "early_mae": 0.024344864866936877,
+                    "late_mae": 0.015613616453854895,
+                    "late_minus_early": -0.008731248413081982
+                  },
+                  {
+                    "id": "math-25",
+                    "tokens": 5876,
+                    "width": 256,
+                    "early_mae": 0.02319640016004018,
+                    "late_mae": 0.019471564582095424,
+                    "late_minus_early": -0.0037248355779447573
+                  },
+                  {
+                    "id": "math-26",
+                    "tokens": 3465,
+                    "width": 256,
+                    "early_mae": 0.04155050875589908,
+                    "late_mae": 0.013081891122083189,
+                    "late_minus_early": -0.02846861763381589
+                  },
+                  {
+                    "id": "math-27",
+                    "tokens": 1925,
+                    "width": 256,
+                    "early_mae": 0.01769658713477204,
+                    "late_mae": 0.01957028384797002,
+                    "late_minus_early": 0.001873696713197981
+                  },
+                  {
+                    "id": "math-28",
+                    "tokens": 763,
+                    "width": 256,
+                    "early_mae": 0.029660499868466306,
+                    "late_mae": 0.019425238243347964,
+                    "late_minus_early": -0.010235261625118341
+                  },
+                  {
+                    "id": "math-29",
+                    "tokens": 786,
+                    "width": 256,
+                    "early_mae": 0.021721947527402946,
+                    "late_mae": 0.01932569689957775,
+                    "late_minus_early": -0.002396250627825197
+                  },
+                  {
+                    "id": "math-30",
+                    "tokens": 3106,
+                    "width": 256,
+                    "early_mae": 0.06026269422535924,
+                    "late_mae": 0.016915436715272014,
+                    "late_minus_early": -0.04334725751008722
+                  },
+                  {
+                    "id": "math-31",
+                    "tokens": 4024,
+                    "width": 256,
+                    "early_mae": 0.01937278245476365,
+                    "late_mae": 0.024312593944317173,
+                    "late_minus_early": 0.004939811489553525
+                  },
+                  {
+                    "id": "math-32",
+                    "tokens": 7168,
+                    "width": 256,
+                    "early_mae": 0.04113049495433513,
+                    "late_mae": 0.041954148585903406,
+                    "late_minus_early": 0.0008236536315682774
+                  },
+                  {
+                    "id": "math-33",
+                    "tokens": 6889,
+                    "width": 256,
+                    "early_mae": 0.03885732100483663,
+                    "late_mae": 0.02082921289894507,
+                    "late_minus_early": -0.01802810810589156
+                  },
+                  {
+                    "id": "math-34",
+                    "tokens": 7168,
+                    "width": 256,
+                    "early_mae": 0.03448520613631342,
+                    "late_mae": 0.03742634997575159,
+                    "late_minus_early": 0.002941143839438165
+                  },
+                  {
+                    "id": "math-35",
+                    "tokens": 878,
+                    "width": 256,
+                    "early_mae": 0.012897219689470385,
+                    "late_mae": 0.013187322763103637,
+                    "late_minus_early": 0.00029010307363325216
+                  },
+                  {
+                    "id": "math-36",
+                    "tokens": 1603,
+                    "width": 256,
+                    "early_mae": 0.05132665198600361,
+                    "late_mae": 0.014729228056669458,
+                    "late_minus_early": -0.036597423929334155
+                  },
+                  {
+                    "id": "math-37",
+                    "tokens": 6390,
+                    "width": 256,
+                    "early_mae": 0.03636391323164276,
+                    "late_mae": 0.016942144983291163,
+                    "late_minus_early": -0.019421768248351595
+                  },
+                  {
+                    "id": "math-38",
+                    "tokens": 2573,
+                    "width": 256,
+                    "early_mae": 0.012130857513109772,
+                    "late_mae": 0.012094809519424043,
+                    "late_minus_early": -3.604799368572831e-05
+                  },
+                  {
+                    "id": "math-39",
+                    "tokens": 2697,
+                    "width": 256,
+                    "early_mae": 0.012674090293249701,
+                    "late_mae": 0.004547568354100889,
+                    "late_minus_early": -0.008126521939148812
+                  },
+                  {
+                    "id": "math-40",
+                    "tokens": 1064,
+                    "width": 256,
+                    "early_mae": 0.016817616194682472,
+                    "late_mae": 0.013766930197652433,
+                    "late_minus_early": -0.0030506859970300393
+                  },
+                  {
+                    "id": "math-41",
+                    "tokens": 4851,
+                    "width": 256,
+                    "early_mae": 0.017271882294295077,
+                    "late_mae": 0.011116302490663782,
+                    "late_minus_early": -0.006155579803631295
+                  },
+                  {
+                    "id": "math-42",
+                    "tokens": 3426,
+                    "width": 256,
+                    "early_mae": 0.01711425645315426,
+                    "late_mae": 0.0039432143968616,
+                    "late_minus_early": -0.013171042056292659
+                  },
+                  {
+                    "id": "math-43",
+                    "tokens": 4634,
+                    "width": 256,
+                    "early_mae": 0.023343423083090703,
+                    "late_mae": 0.014158106236070306,
+                    "late_minus_early": -0.009185316847020397
+                  },
+                  {
+                    "id": "math-44",
+                    "tokens": 2301,
+                    "width": 256,
+                    "early_mae": 0.018197374736267286,
+                    "late_mae": 0.010471072215004457,
+                    "late_minus_early": -0.007726302521262829
+                  },
+                  {
+                    "id": "math-45",
+                    "tokens": 3040,
+                    "width": 256,
+                    "early_mae": 0.04031147497041879,
+                    "late_mae": 0.01674572732628285,
+                    "late_minus_early": -0.023565747644135937
+                  },
+                  {
+                    "id": "math-46",
+                    "tokens": 3954,
+                    "width": 256,
+                    "early_mae": 0.009282994570894126,
+                    "late_mae": 0.015943759551885428,
+                    "late_minus_early": 0.006660764980991302
+                  },
+                  {
+                    "id": "math-47",
+                    "tokens": 1805,
+                    "width": 256,
+                    "early_mae": 0.019508460709689368,
+                    "late_mae": 0.020577259438168627,
+                    "late_minus_early": 0.0010687987284792588
+                  },
+                  {
+                    "id": "math-48",
+                    "tokens": 1189,
+                    "width": 256,
+                    "early_mae": 0.02247047415083933,
+                    "late_mae": 0.0042352191668320605,
+                    "late_minus_early": -0.01823525498400727
+                  },
+                  {
+                    "id": "math-49",
+                    "tokens": 4477,
+                    "width": 256,
+                    "early_mae": 0.03413689287065014,
+                    "late_mae": 0.014186307108783464,
+                    "late_minus_early": -0.019950585761866674
+                  },
+                  {
+                    "id": "math-50",
+                    "tokens": 7168,
+                    "width": 256,
+                    "early_mae": 0.04380705693372103,
+                    "late_mae": 0.028325709682631706,
+                    "late_minus_early": -0.015481347251089322
+                  },
+                  {
+                    "id": "math-51",
+                    "tokens": 1176,
+                    "width": 256,
+                    "early_mae": 0.015378558964344757,
+                    "late_mae": 0.01720958875437517,
+                    "late_minus_early": 0.001831029790030414
+                  },
+                  {
+                    "id": "math-52",
+                    "tokens": 2523,
+                    "width": 256,
+                    "early_mae": 0.026052726500921303,
+                    "late_mae": 0.014828379687188309,
+                    "late_minus_early": -0.011224346813732994
+                  },
+                  {
+                    "id": "math-53",
+                    "tokens": 1280,
+                    "width": 256,
+                    "early_mae": 0.01447151205880029,
+                    "late_mae": 0.021970377957461124,
+                    "late_minus_early": 0.007498865898660834
+                  },
+                  {
+                    "id": "math-54",
+                    "tokens": 4390,
+                    "width": 256,
+                    "early_mae": 0.019915418692691478,
+                    "late_mae": 0.008560548525317208,
+                    "late_minus_early": -0.01135487016737427
+                  },
+                  {
+                    "id": "math-55",
+                    "tokens": 1466,
+                    "width": 256,
+                    "early_mae": 0.014509000318980197,
+                    "late_mae": 0.012681263221645644,
+                    "late_minus_early": -0.001827737097334553
+                  },
+                  {
+                    "id": "math-56",
+                    "tokens": 7168,
+                    "width": 256,
+                    "early_mae": 0.029322757789812,
+                    "late_mae": 0.043842778441777225,
+                    "late_minus_early": 0.014520020651965226
+                  },
+                  {
+                    "id": "math-57",
+                    "tokens": 2291,
+                    "width": 256,
+                    "early_mae": 0.014156612882473718,
+                    "late_mae": 0.005787933036749293,
+                    "late_minus_early": -0.008368679845724425
+                  },
+                  {
+                    "id": "math-58",
+                    "tokens": 923,
+                    "width": 256,
+                    "early_mae": 0.01565380517825471,
+                    "late_mae": 0.013663056070467167,
+                    "late_minus_early": -0.0019907491077875428
+                  },
+                  {
+                    "id": "math-59",
+                    "tokens": 1401,
+                    "width": 256,
+                    "early_mae": 0.01636844506512633,
+                    "late_mae": 0.017293576210450273,
+                    "late_minus_early": 0.000925131145323943
+                  },
+                  {
+                    "id": "math-60",
+                    "tokens": 1394,
+                    "width": 256,
+                    "early_mae": 0.028863965983795065,
+                    "late_mae": 0.01132792620530143,
+                    "late_minus_early": -0.017536039778493634
+                  },
+                  {
+                    "id": "math-61",
+                    "tokens": 881,
+                    "width": 256,
+                    "early_mae": 0.016787094183991602,
+                    "late_mae": 0.017258247878025185,
+                    "late_minus_early": 0.00047115369403358254
+                  },
+                  {
+                    "id": "math-62",
+                    "tokens": 6371,
+                    "width": 256,
+                    "early_mae": 0.03246741033612435,
+                    "late_mae": 0.019870062785350362,
+                    "late_minus_early": -0.01259734755077399
+                  },
+                  {
+                    "id": "math-63",
+                    "tokens": 1011,
+                    "width": 256,
+                    "early_mae": 0.023345758391726673,
+                    "late_mae": 0.012780874203015158,
+                    "late_minus_early": -0.010564884188711515
+                  }
+                ],
+                "late_minus_early": {
+                  "queries": 64,
+                  "mean": -0.008820390257483657,
+                  "ci95": [
+                    -0.011340897551278442,
+                    -0.006299496705688881
+                  ]
+                },
+                "definition": "Per query first/last min(256,floor(length/2)) tokens; require >=128 output tokens"
+              }
+            },
+            "paired_within_query_late_minus_early_change": {
+              "queries": 64,
+              "mean": 0.00038074131586572635,
+              "ci95": [
+                -0.0010708530145466407,
+                0.0017070334328127398
+              ]
+            },
+            "reference_completed_only": {
+              "old": {
+                "all": {
+                  "queries": 57,
+                  "tokens": 140075,
+                  "query_balanced_mae": 0.03081005657341576,
+                  "query_balanced_rmse": 0.08134261286207926,
+                  "token_p99_abs": 0.3621394920349146,
+                  "query_balanced_signed_nll_difference": 0.004101646633700276,
+                  "query_balanced_top1_agreement": 0.9834603709770887
+                },
+                "1-64": {
+                  "queries": 57,
+                  "tokens": 3648,
+                  "query_balanced_mae": 0.02511867676737005,
+                  "query_balanced_rmse": 0.0821459417870671,
+                  "token_p99_abs": 0.3588189947605132,
+                  "query_balanced_signed_nll_difference": 0.001316122358008703,
+                  "query_balanced_top1_agreement": 0.9879385964912281
+                },
+                "65-256": {
+                  "queries": 57,
+                  "tokens": 10944,
+                  "query_balanced_mae": 0.028407708241156914,
+                  "query_balanced_rmse": 0.08089457765124836,
+                  "token_p99_abs": 0.3637211346626281,
+                  "query_balanced_signed_nll_difference": 0.0038169267243831143,
+                  "query_balanced_top1_agreement": 0.9855628654970761
+                },
+                "257-512": {
+                  "queries": 57,
+                  "tokens": 14592,
+                  "query_balanced_mae": 0.025561313271608748,
+                  "query_balanced_rmse": 0.07543668915622714,
+                  "token_p99_abs": 0.3451617908477785,
+                  "query_balanced_signed_nll_difference": 0.0029782230866771398,
+                  "query_balanced_top1_agreement": 0.9882127192982456
+                },
+                "513-1024": {
+                  "queries": 57,
+                  "tokens": 27567,
+                  "query_balanced_mae": 0.03253410930449171,
+                  "query_balanced_rmse": 0.08412323047152169,
+                  "token_p99_abs": 0.3708117008209229,
+                  "query_balanced_signed_nll_difference": 0.004384795105960009,
+                  "query_balanced_top1_agreement": 0.9821645866818617
+                },
+                "1025-1536": {
+                  "queries": 47,
+                  "tokens": 19896,
+                  "query_balanced_mae": 0.03221659940167307,
+                  "query_balanced_rmse": 0.0808245651240273,
+                  "token_p99_abs": 0.3631161153316498,
+                  "query_balanced_signed_nll_difference": 0.0031936211040436914,
+                  "query_balanced_top1_agreement": 0.9826818432424099
+                },
+                "1537-2048": {
+                  "queries": 31,
+                  "tokens": 14415,
+                  "query_balanced_mae": 0.03790514208845432,
+                  "query_balanced_rmse": 0.0882539098906935,
+                  "token_p99_abs": 0.38121470451355044,
+                  "query_balanced_signed_nll_difference": 0.005954911655522515,
+                  "query_balanced_top1_agreement": 0.9783033302321154
+                },
+                "2049-4096": {
+                  "queries": 25,
+                  "tokens": 35387,
+                  "query_balanced_mae": 0.03461934042893163,
+                  "query_balanced_rmse": 0.0828446021748272,
+                  "token_p99_abs": 0.3604351377487181,
+                  "query_balanced_signed_nll_difference": 0.004929182072318807,
+                  "query_balanced_top1_agreement": 0.9801066195397743
+                },
+                "4097-7168": {
+                  "queries": 10,
+                  "tokens": 13626,
+                  "query_balanced_mae": 0.029644246449532834,
+                  "query_balanced_rmse": 0.07287409414995699,
+                  "token_p99_abs": 0.3404979109764099,
+                  "query_balanced_signed_nll_difference": 0.003756931154385971,
+                  "query_balanced_top1_agreement": 0.9824810655843781
+                },
+                "within_query_early_late": {
+                  "queries": [
+                    {
+                      "id": "math-00",
+                      "tokens": 1355,
+                      "width": 256,
+                      "early_mae": 0.0297826890443095,
+                      "late_mae": 0.017457342133562287,
+                      "late_minus_early": -0.012325346910747215
+                    },
+                    {
+                      "id": "math-01",
+                      "tokens": 1465,
+                      "width": 256,
+                      "early_mae": 0.028311591144635773,
+                      "late_mae": 0.016156121215465752,
+                      "late_minus_early": -0.01215546992917002
+                    },
+                    {
+                      "id": "math-02",
+                      "tokens": 911,
+                      "width": 256,
+                      "early_mae": 0.0196272559873108,
+                      "late_mae": 0.022879613893615258,
+                      "late_minus_early": 0.0032523579063044594
+                    },
+                    {
+                      "id": "math-03",
+                      "tokens": 3346,
+                      "width": 256,
+                      "early_mae": 0.04012257354993157,
+                      "late_mae": 0.02658205713627579,
+                      "late_minus_early": -0.013540516413655779
+                    },
+                    {
+                      "id": "math-05",
+                      "tokens": 1636,
+                      "width": 256,
+                      "early_mae": 0.028547566090356274,
+                      "late_mae": 0.01627383141288266,
+                      "late_minus_early": -0.012273734677473613
+                    },
+                    {
+                      "id": "math-06",
+                      "tokens": 1513,
+                      "width": 256,
+                      "early_mae": 0.023264488405666695,
+                      "late_mae": 0.011526274283188531,
+                      "late_minus_early": -0.011738214122478163
+                    },
+                    {
+                      "id": "math-07",
+                      "tokens": 682,
+                      "width": 256,
+                      "early_mae": 0.0356762736701664,
+                      "late_mae": 0.015210290285024491,
+                      "late_minus_early": -0.02046598338514191
+                    },
+                    {
+                      "id": "math-08",
+                      "tokens": 1109,
+                      "width": 256,
+                      "early_mae": 0.03757899537738085,
+                      "late_mae": 0.008872534005949756,
+                      "late_minus_early": -0.028706461371431097
+                    },
+                    {
+                      "id": "math-09",
+                      "tokens": 2884,
+                      "width": 256,
+                      "early_mae": 0.04032433741878447,
+                      "late_mae": 0.018952641465806885,
+                      "late_minus_early": -0.021371695952977582
+                    },
+                    {
+                      "id": "math-10",
+                      "tokens": 5197,
+                      "width": 256,
+                      "early_mae": 0.031271817393538626,
+                      "late_mae": 0.009677775153099727,
+                      "late_minus_early": -0.0215940422404389
+                    },
+                    {
+                      "id": "math-11",
+                      "tokens": 1076,
+                      "width": 256,
+                      "early_mae": 0.012514086559524379,
+                      "late_mae": 0.0136636335137032,
+                      "late_minus_early": 0.0011495469541788206
+                    },
+                    {
+                      "id": "math-12",
+                      "tokens": 1207,
+                      "width": 256,
+                      "early_mae": 0.022302379773081193,
+                      "late_mae": 0.015192980321017568,
+                      "late_minus_early": -0.007109399452063625
+                    },
+                    {
+                      "id": "math-13",
+                      "tokens": 1165,
+                      "width": 256,
+                      "early_mae": 0.02469611164176075,
+                      "late_mae": 0.015546597591683503,
+                      "late_minus_early": -0.009149514050077245
+                    },
+                    {
+                      "id": "math-14",
+                      "tokens": 974,
+                      "width": 256,
+                      "early_mae": 0.022156595251149436,
+                      "late_mae": 0.010723361272159337,
+                      "late_minus_early": -0.011433233978990098
+                    },
+                    {
+                      "id": "math-15",
+                      "tokens": 5511,
+                      "width": 256,
+                      "early_mae": 0.028015997006508864,
+                      "late_mae": 0.016613238137834913,
+                      "late_minus_early": -0.011402758868673951
+                    },
+                    {
+                      "id": "math-16",
+                      "tokens": 1144,
+                      "width": 256,
+                      "early_mae": 0.027163069730690048,
+                      "late_mae": 0.02046261566126753,
+                      "late_minus_early": -0.006700454069422518
+                    },
+                    {
+                      "id": "math-17",
+                      "tokens": 814,
+                      "width": 256,
+                      "early_mae": 0.03302971191817236,
+                      "late_mae": 0.013287994717991303,
+                      "late_minus_early": -0.019741717200181058
+                    },
+                    {
+                      "id": "math-19",
+                      "tokens": 1985,
+                      "width": 256,
+                      "early_mae": 0.032896989044764985,
+                      "late_mae": 0.01895571385683975,
+                      "late_minus_early": -0.013941275187925234
+                    },
+                    {
+                      "id": "math-20",
+                      "tokens": 3639,
+                      "width": 256,
+                      "early_mae": 0.03351991741959298,
+                      "late_mae": 0.01870135487711999,
+                      "late_minus_early": -0.01481856254247299
+                    },
+                    {
+                      "id": "math-21",
+                      "tokens": 1877,
+                      "width": 256,
+                      "early_mae": 0.02005218579663881,
+                      "late_mae": 0.0034482101662830222,
+                      "late_minus_early": -0.01660397563035579
+                    },
+                    {
+                      "id": "math-23",
+                      "tokens": 1404,
+                      "width": 256,
+                      "early_mae": 0.029639053666235676,
+                      "late_mae": 0.013475539471794251,
+                      "late_minus_early": -0.016163514194441425
+                    },
+                    {
+                      "id": "math-24",
+                      "tokens": 2358,
+                      "width": 256,
+                      "early_mae": 0.034028416808297185,
+                      "late_mae": 0.021504148267885992,
+                      "late_minus_early": -0.012524268540411193
+                    },
+                    {
+                      "id": "math-25",
+                      "tokens": 5876,
+                      "width": 256,
+                      "early_mae": 0.022133879736455975,
+                      "late_mae": 0.016386509122427784,
+                      "late_minus_early": -0.005747370614028191
+                    },
+                    {
+                      "id": "math-26",
+                      "tokens": 3465,
+                      "width": 256,
+                      "early_mae": 0.052872305244000356,
+                      "late_mae": 0.013348687872646564,
+                      "late_minus_early": -0.03952361737135379
+                    },
+                    {
+                      "id": "math-27",
+                      "tokens": 1925,
+                      "width": 256,
+                      "early_mae": 0.01718151768551343,
+                      "late_mae": 0.02276216239292997,
+                      "late_minus_early": 0.005580644707416538
+                    },
+                    {
+                      "id": "math-28",
+                      "tokens": 763,
+                      "width": 256,
+                      "early_mae": 0.032423628067098836,
+                      "late_mae": 0.023805234514662987,
+                      "late_minus_early": -0.008618393552435849
+                    },
+                    {
+                      "id": "math-29",
+                      "tokens": 786,
+                      "width": 256,
+                      "early_mae": 0.025205670568359095,
+                      "late_mae": 0.02337986553222357,
+                      "late_minus_early": -0.001825805036135525
+                    },
+                    {
+                      "id": "math-30",
+                      "tokens": 3106,
+                      "width": 256,
+                      "early_mae": 0.049722098552021254,
+                      "late_mae": 0.01560819027760435,
+                      "late_minus_early": -0.034113908274416904
+                    },
+                    {
+                      "id": "math-31",
+                      "tokens": 4024,
+                      "width": 256,
+                      "early_mae": 0.01997249535174328,
+                      "late_mae": 0.02683652764829131,
+                      "late_minus_early": 0.006864032296548028
+                    },
+                    {
+                      "id": "math-33",
+                      "tokens": 6889,
+                      "width": 256,
+                      "early_mae": 0.040579331105904615,
+                      "late_mae": 0.022687705655530938,
+                      "late_minus_early": -0.017891625450373677
+                    },
+                    {
+                      "id": "math-35",
+                      "tokens": 878,
+                      "width": 256,
+                      "early_mae": 0.01526891571277958,
+                      "late_mae": 0.013734241899082816,
+                      "late_minus_early": -0.001534673813696763
+                    },
+                    {
+                      "id": "math-36",
+                      "tokens": 1603,
+                      "width": 256,
+                      "early_mae": 0.04217699521286336,
+                      "late_mae": 0.012369842999351899,
+                      "late_minus_early": -0.029807152213511462
+                    },
+                    {
+                      "id": "math-37",
+                      "tokens": 6390,
+                      "width": 256,
+                      "early_mae": 0.03937021094493098,
+                      "late_mae": 0.016903363823387224,
+                      "late_minus_early": -0.02246684712154376
+                    },
+                    {
+                      "id": "math-38",
+                      "tokens": 2573,
+                      "width": 256,
+                      "early_mae": 0.01291165563114327,
+                      "late_mae": 0.014545297235724286,
+                      "late_minus_early": 0.0016336416045810154
+                    },
+                    {
+                      "id": "math-39",
+                      "tokens": 2697,
+                      "width": 256,
+                      "early_mae": 0.021384756323323678,
+                      "late_mae": 0.005639481588777057,
+                      "late_minus_early": -0.01574527473454662
+                    },
+                    {
+                      "id": "math-40",
+                      "tokens": 1064,
+                      "width": 256,
+                      "early_mae": 0.019792992337636234,
+                      "late_mae": 0.01443667483763525,
+                      "late_minus_early": -0.005356317500000984
+                    },
+                    {
+                      "id": "math-41",
+                      "tokens": 4851,
+                      "width": 256,
+                      "early_mae": 0.018538550091039552,
+                      "late_mae": 0.01007716899050215,
+                      "late_minus_early": -0.008461381100537402
+                    },
+                    {
+                      "id": "math-42",
+                      "tokens": 3426,
+                      "width": 256,
+                      "early_mae": 0.015356687948690384,
+                      "late_mae": 0.004670183844782211,
+                      "late_minus_early": -0.010686504103908173
+                    },
+                    {
+                      "id": "math-43",
+                      "tokens": 4634,
+                      "width": 256,
+                      "early_mae": 0.026588331122278624,
+                      "late_mae": 0.0179349737345518,
+                      "late_minus_early": -0.008653357387726823
+                    },
+                    {
+                      "id": "math-44",
+                      "tokens": 2301,
+                      "width": 256,
+                      "early_mae": 0.01620882229295026,
+                      "late_mae": 0.011363614272751121,
+                      "late_minus_early": -0.004845208020199138
+                    },
+                    {
+                      "id": "math-45",
+                      "tokens": 3040,
+                      "width": 256,
+                      "early_mae": 0.05154116808334902,
+                      "late_mae": 0.017679030276446794,
+                      "late_minus_early": -0.033862137806902226
+                    },
+                    {
+                      "id": "math-46",
+                      "tokens": 3954,
+                      "width": 256,
+                      "early_mae": 0.014716416150391237,
+                      "late_mae": 0.015672730423683473,
+                      "late_minus_early": 0.0009563142732922358
+                    },
+                    {
+                      "id": "math-47",
+                      "tokens": 1805,
+                      "width": 256,
+                      "early_mae": 0.018881335984337666,
+                      "late_mae": 0.01835029797679666,
+                      "late_minus_early": -0.000531038007541007
+                    },
+                    {
+                      "id": "math-48",
+                      "tokens": 1189,
+                      "width": 256,
+                      "early_mae": 0.03301657835324606,
+                      "late_mae": 0.004452006757237115,
+                      "late_minus_early": -0.028564571596008947
+                    },
+                    {
+                      "id": "math-49",
+                      "tokens": 4477,
+                      "width": 256,
+                      "early_mae": 0.03918487638914547,
+                      "late_mae": 0.01684576529243076,
+                      "late_minus_early": -0.022339111096714714
+                    },
+                    {
+                      "id": "math-51",
+                      "tokens": 1176,
+                      "width": 256,
+                      "early_mae": 0.020415637143671284,
+                      "late_mae": 0.02200197605932555,
+                      "late_minus_early": 0.0015863389156542673
+                    },
+                    {
+                      "id": "math-52",
+                      "tokens": 2523,
+                      "width": 256,
+                      "early_mae": 0.03534364226655956,
+                      "late_mae": 0.0157934767738257,
+                      "late_minus_early": -0.019550165492733862
+                    },
+                    {
+                      "id": "math-53",
+                      "tokens": 1280,
+                      "width": 256,
+                      "early_mae": 0.024679977695582334,
+                      "late_mae": 0.024144798719599403,
+                      "late_minus_early": -0.0005351789759829306
+                    },
+                    {
+                      "id": "math-54",
+                      "tokens": 4390,
+                      "width": 256,
+                      "early_mae": 0.026561275235375714,
+                      "late_mae": 0.015010605530310944,
+                      "late_minus_early": -0.01155066970506477
+                    },
+                    {
+                      "id": "math-55",
+                      "tokens": 1466,
+                      "width": 256,
+                      "early_mae": 0.018685848558343238,
+                      "late_mae": 0.015939906722279018,
+                      "late_minus_early": -0.0027459418360642196
+                    },
+                    {
+                      "id": "math-57",
+                      "tokens": 2291,
+                      "width": 256,
+                      "early_mae": 0.017322700259004065,
+                      "late_mae": 0.00500726978504018,
+                      "late_minus_early": -0.012315430473963884
+                    },
+                    {
+                      "id": "math-58",
+                      "tokens": 923,
+                      "width": 256,
+                      "early_mae": 0.015314363054286823,
+                      "late_mae": 0.013812224323446587,
+                      "late_minus_early": -0.0015021387308402356
+                    },
+                    {
+                      "id": "math-59",
+                      "tokens": 1401,
+                      "width": 256,
+                      "early_mae": 0.019587048559216447,
+                      "late_mae": 0.01841440371842687,
+                      "late_minus_early": -0.0011726448407895773
+                    },
+                    {
+                      "id": "math-60",
+                      "tokens": 1394,
+                      "width": 256,
+                      "early_mae": 0.02989110597085004,
+                      "late_mae": 0.013281865601055126,
+                      "late_minus_early": -0.016609240369794914
+                    },
+                    {
+                      "id": "math-61",
+                      "tokens": 881,
+                      "width": 256,
+                      "early_mae": 0.01912113715999006,
+                      "late_mae": 0.024730645755878383,
+                      "late_minus_early": 0.005609508595888324
+                    },
+                    {
+                      "id": "math-62",
+                      "tokens": 6371,
+                      "width": 256,
+                      "early_mae": 0.04089318315232052,
+                      "late_mae": 0.02480574729066684,
+                      "late_minus_early": -0.016087435861653676
+                    },
+                    {
+                      "id": "math-63",
+                      "tokens": 1011,
+                      "width": 256,
+                      "early_mae": 0.025003430601581472,
+                      "late_mae": 0.019171441327760053,
+                      "late_minus_early": -0.00583198927382142
+                    }
+                  ],
+                  "late_minus_early": {
+                    "queries": 57,
+                    "mean": -0.011501804979420301,
+                    "ci95": [
+                      -0.014198546934996106,
+                      -0.008787346395968565
+                    ]
+                  },
+                  "definition": "Per query first/last min(256,floor(length/2)) tokens; require >=128 output tokens"
+                }
+              },
+              "new": {
+                "all": {
+                  "queries": 57,
+                  "tokens": 140075,
+                  "query_balanced_mae": 0.03069954079912178,
+                  "query_balanced_rmse": 0.0808955943529655,
+                  "token_p99_abs": 0.3643482112884524,
+                  "query_balanced_signed_nll_difference": 0.0037997691706818095,
+                  "query_balanced_top1_agreement": 0.9843656697703854
+                },
+                "1-64": {
+                  "queries": 57,
+                  "tokens": 3648,
+                  "query_balanced_mae": 0.024244349156622626,
+                  "query_balanced_rmse": 0.07499460841163655,
+                  "token_p99_abs": 0.3542511910200107,
+                  "query_balanced_signed_nll_difference": 0.0012850827284253481,
+                  "query_balanced_top1_agreement": 0.9890350877192983
+                },
+                "65-256": {
+                  "queries": 57,
+                  "tokens": 10944,
+                  "query_balanced_mae": 0.028220771076156666,
+                  "query_balanced_rmse": 0.08138523007720547,
+                  "token_p99_abs": 0.3688898646831508,
+                  "query_balanced_signed_nll_difference": 0.002197954311368257,
+                  "query_balanced_top1_agreement": 0.9861111111111112
+                },
+                "257-512": {
+                  "queries": 57,
+                  "tokens": 14592,
+                  "query_balanced_mae": 0.025043661945631,
+                  "query_balanced_rmse": 0.0717282179820372,
+                  "token_p99_abs": 0.3396399188041688,
+                  "query_balanced_signed_nll_difference": 0.0028947604665568397,
+                  "query_balanced_top1_agreement": 0.9891036184210527
+                },
+                "513-1024": {
+                  "queries": 57,
+                  "tokens": 27567,
+                  "query_balanced_mae": 0.03244895969185671,
+                  "query_balanced_rmse": 0.0833282602778251,
+                  "token_p99_abs": 0.36895769596099864,
+                  "query_balanced_signed_nll_difference": 0.004470790685264586,
+                  "query_balanced_top1_agreement": 0.9840509705510919
+                },
+                "1025-1536": {
+                  "queries": 47,
+                  "tokens": 19896,
+                  "query_balanced_mae": 0.03271140375139222,
+                  "query_balanced_rmse": 0.08304487645615621,
+                  "token_p99_abs": 0.37554967403411865,
+                  "query_balanced_signed_nll_difference": 0.004036461802817976,
+                  "query_balanced_top1_agreement": 0.9820312127520832
+                },
+                "1537-2048": {
+                  "queries": 31,
+                  "tokens": 14415,
+                  "query_balanced_mae": 0.03770707417596506,
+                  "query_balanced_rmse": 0.08741269232831962,
+                  "token_p99_abs": 0.38507806301116965,
+                  "query_balanced_signed_nll_difference": 0.005300874234597384,
+                  "query_balanced_top1_agreement": 0.9794435951802271
+                },
+                "2049-4096": {
+                  "queries": 25,
+                  "tokens": 35387,
+                  "query_balanced_mae": 0.034507039069544033,
+                  "query_balanced_rmse": 0.08257923532004138,
+                  "token_p99_abs": 0.365832405090332,
+                  "query_balanced_signed_nll_difference": 0.004731515929402199,
+                  "query_balanced_top1_agreement": 0.9808230819200122
+                },
+                "4097-7168": {
+                  "queries": 10,
+                  "tokens": 13626,
+                  "query_balanced_mae": 0.029102196055588704,
+                  "query_balanced_rmse": 0.07121923097880703,
+                  "token_p99_abs": 0.33406931161880493,
+                  "query_balanced_signed_nll_difference": 0.0032984351243303097,
+                  "query_balanced_top1_agreement": 0.981471609803876
+                },
+                "within_query_early_late": {
+                  "queries": [
+                    {
+                      "id": "math-00",
+                      "tokens": 1355,
+                      "width": 256,
+                      "early_mae": 0.03287065202778422,
+                      "late_mae": 0.01601457428883532,
+                      "late_minus_early": -0.0168560777389489
+                    },
+                    {
+                      "id": "math-01",
+                      "tokens": 1465,
+                      "width": 256,
+                      "early_mae": 0.03714779452664457,
+                      "late_mae": 0.015226258427212175,
+                      "late_minus_early": -0.021921536099432398
+                    },
+                    {
+                      "id": "math-02",
+                      "tokens": 911,
+                      "width": 256,
+                      "early_mae": 0.019470829359842318,
+                      "late_mae": 0.022385022955148576,
+                      "late_minus_early": 0.002914193595306258
+                    },
+                    {
+                      "id": "math-03",
+                      "tokens": 3346,
+                      "width": 256,
+                      "early_mae": 0.04004056702865427,
+                      "late_mae": 0.025158648130542416,
+                      "late_minus_early": -0.014881918898111857
+                    },
+                    {
+                      "id": "math-05",
+                      "tokens": 1636,
+                      "width": 256,
+                      "early_mae": 0.025855694735669982,
+                      "late_mae": 0.018667832330713813,
+                      "late_minus_early": -0.007187862404956169
+                    },
+                    {
+                      "id": "math-06",
+                      "tokens": 1513,
+                      "width": 256,
+                      "early_mae": 0.022472774649072685,
+                      "late_mae": 0.009024933675076424,
+                      "late_minus_early": -0.013447840973996261
+                    },
+                    {
+                      "id": "math-07",
+                      "tokens": 682,
+                      "width": 256,
+                      "early_mae": 0.04175142584463068,
+                      "late_mae": 0.012257289944296423,
+                      "late_minus_early": -0.029494135900334256
+                    },
+                    {
+                      "id": "math-08",
+                      "tokens": 1109,
+                      "width": 256,
+                      "early_mae": 0.03065703711238299,
+                      "late_mae": 0.009139769974465917,
+                      "late_minus_early": -0.021517267137917073
+                    },
+                    {
+                      "id": "math-09",
+                      "tokens": 2884,
+                      "width": 256,
+                      "early_mae": 0.040112383641910526,
+                      "late_mae": 0.019263680934893473,
+                      "late_minus_early": -0.020848702707017053
+                    },
+                    {
+                      "id": "math-10",
+                      "tokens": 5197,
+                      "width": 256,
+                      "early_mae": 0.0256773468058534,
+                      "late_mae": 0.008113915438626856,
+                      "late_minus_early": -0.017563431367226545
+                    },
+                    {
+                      "id": "math-11",
+                      "tokens": 1076,
+                      "width": 256,
+                      "early_mae": 0.014343637062606246,
+                      "late_mae": 0.01149479481350002,
+                      "late_minus_early": -0.002848842249106226
+                    },
+                    {
+                      "id": "math-12",
+                      "tokens": 1207,
+                      "width": 256,
+                      "early_mae": 0.021571393883793727,
+                      "late_mae": 0.016212278198984992,
+                      "late_minus_early": -0.005359115684808735
+                    },
+                    {
+                      "id": "math-13",
+                      "tokens": 1165,
+                      "width": 256,
+                      "early_mae": 0.02820035598614959,
+                      "late_mae": 0.01442881560211487,
+                      "late_minus_early": -0.01377154038403472
+                    },
+                    {
+                      "id": "math-14",
+                      "tokens": 974,
+                      "width": 256,
+                      "early_mae": 0.02907102543635498,
+                      "late_mae": 0.012022136872107542,
+                      "late_minus_early": -0.01704888856424744
+                    },
+                    {
+                      "id": "math-15",
+                      "tokens": 5511,
+                      "width": 256,
+                      "early_mae": 0.03254872258629121,
+                      "late_mae": 0.015694889252078903,
+                      "late_minus_early": -0.01685383333421231
+                    },
+                    {
+                      "id": "math-16",
+                      "tokens": 1144,
+                      "width": 256,
+                      "early_mae": 0.026012584011522094,
+                      "late_mae": 0.02100382851140256,
+                      "late_minus_early": -0.005008755500119533
+                    },
+                    {
+                      "id": "math-17",
+                      "tokens": 814,
+                      "width": 256,
+                      "early_mae": 0.033766246640523856,
+                      "late_mae": 0.015549789031941347,
+                      "late_minus_early": -0.01821645760858251
+                    },
+                    {
+                      "id": "math-19",
+                      "tokens": 1985,
+                      "width": 256,
+                      "early_mae": 0.02756046629092604,
+                      "late_mae": 0.01707224057692594,
+                      "late_minus_early": -0.010488225714000099
+                    },
+                    {
+                      "id": "math-20",
+                      "tokens": 3639,
+                      "width": 256,
+                      "early_mae": 0.035355144656449955,
+                      "late_mae": 0.01960811444381627,
+                      "late_minus_early": -0.015747030212633684
+                    },
+                    {
+                      "id": "math-21",
+                      "tokens": 1877,
+                      "width": 256,
+                      "early_mae": 0.017064709284613344,
+                      "late_mae": 0.005616880217689552,
+                      "late_minus_early": -0.011447829066923793
+                    },
+                    {
+                      "id": "math-23",
+                      "tokens": 1404,
+                      "width": 256,
+                      "early_mae": 0.02777799350169985,
+                      "late_mae": 0.01258539711375406,
+                      "late_minus_early": -0.01519259638794579
+                    },
+                    {
+                      "id": "math-24",
+                      "tokens": 2358,
+                      "width": 256,
+                      "early_mae": 0.024441457777775594,
+                      "late_mae": 0.020322313177402518,
+                      "late_minus_early": -0.004119144600373076
+                    },
+                    {
+                      "id": "math-25",
+                      "tokens": 5876,
+                      "width": 256,
+                      "early_mae": 0.024729643645461957,
+                      "late_mae": 0.019587944425671633,
+                      "late_minus_early": -0.005141699219790324
+                    },
+                    {
+                      "id": "math-26",
+                      "tokens": 3465,
+                      "width": 256,
+                      "early_mae": 0.04136243080196855,
+                      "late_mae": 0.016158419517320194,
+                      "late_minus_early": -0.02520401128464836
+                    },
+                    {
+                      "id": "math-27",
+                      "tokens": 1925,
+                      "width": 256,
+                      "early_mae": 0.01889820718109214,
+                      "late_mae": 0.022677581451602924,
+                      "late_minus_early": 0.0037793742705107825
+                    },
+                    {
+                      "id": "math-28",
+                      "tokens": 763,
+                      "width": 256,
+                      "early_mae": 0.02917097644368702,
+                      "late_mae": 0.020868674981250668,
+                      "late_minus_early": -0.008302301462436351
+                    },
+                    {
+                      "id": "math-29",
+                      "tokens": 786,
+                      "width": 256,
+                      "early_mae": 0.024229921652496073,
+                      "late_mae": 0.019597692590532373,
+                      "late_minus_early": -0.0046322290619637
+                    },
+                    {
+                      "id": "math-30",
+                      "tokens": 3106,
+                      "width": 256,
+                      "early_mae": 0.05790227172279039,
+                      "late_mae": 0.014961564128061211,
+                      "late_minus_early": -0.04294070759472918
+                    },
+                    {
+                      "id": "math-31",
+                      "tokens": 4024,
+                      "width": 256,
+                      "early_mae": 0.018483451268393125,
+                      "late_mae": 0.026883031674655056,
+                      "late_minus_early": 0.00839958040626193
+                    },
+                    {
+                      "id": "math-33",
+                      "tokens": 6889,
+                      "width": 256,
+                      "early_mae": 0.038587412321421155,
+                      "late_mae": 0.026829890739005463,
+                      "late_minus_early": -0.011757521582415692
+                    },
+                    {
+                      "id": "math-35",
+                      "tokens": 878,
+                      "width": 256,
+                      "early_mae": 0.014756287765140735,
+                      "late_mae": 0.011254918317055523,
+                      "late_minus_early": -0.003501369448085212
+                    },
+                    {
+                      "id": "math-36",
+                      "tokens": 1603,
+                      "width": 256,
+                      "early_mae": 0.06033510205575268,
+                      "late_mae": 0.011193980846501833,
+                      "late_minus_early": -0.04914112120925085
+                    },
+                    {
+                      "id": "math-37",
+                      "tokens": 6390,
+                      "width": 256,
+                      "early_mae": 0.038170889334924935,
+                      "late_mae": 0.015907141668462327,
+                      "late_minus_early": -0.022263747666462608
+                    },
+                    {
+                      "id": "math-38",
+                      "tokens": 2573,
+                      "width": 256,
+                      "early_mae": 0.011327080844578674,
+                      "late_mae": 0.01588087300357549,
+                      "late_minus_early": 0.004553792158996817
+                    },
+                    {
+                      "id": "math-39",
+                      "tokens": 2697,
+                      "width": 256,
+                      "early_mae": 0.019774802643560796,
+                      "late_mae": 0.0070839525195443565,
+                      "late_minus_early": -0.01269085012401644
+                    },
+                    {
+                      "id": "math-40",
+                      "tokens": 1064,
+                      "width": 256,
+                      "early_mae": 0.020459565124671314,
+                      "late_mae": 0.016262470267684515,
+                      "late_minus_early": -0.004197094856986799
+                    },
+                    {
+                      "id": "math-41",
+                      "tokens": 4851,
+                      "width": 256,
+                      "early_mae": 0.0166549926997496,
+                      "late_mae": 0.011004524539714039,
+                      "late_minus_early": -0.00565046816003556
+                    },
+                    {
+                      "id": "math-42",
+                      "tokens": 3426,
+                      "width": 256,
+                      "early_mae": 0.015985819532624707,
+                      "late_mae": 0.005034592153959183,
+                      "late_minus_early": -0.010951227378665523
+                    },
+                    {
+                      "id": "math-43",
+                      "tokens": 4634,
+                      "width": 256,
+                      "early_mae": 0.023571019896873158,
+                      "late_mae": 0.01598385596191304,
+                      "late_minus_early": -0.007587163934960117
+                    },
+                    {
+                      "id": "math-44",
+                      "tokens": 2301,
+                      "width": 256,
+                      "early_mae": 0.018912468106930425,
+                      "late_mae": 0.010209578603436104,
+                      "late_minus_early": -0.008702889503494321
+                    },
+                    {
+                      "id": "math-45",
+                      "tokens": 3040,
+                      "width": 256,
+                      "early_mae": 0.042544365663679,
+                      "late_mae": 0.019324015590223814,
+                      "late_minus_early": -0.023220350073455187
+                    },
+                    {
+                      "id": "math-46",
+                      "tokens": 3954,
+                      "width": 256,
+                      "early_mae": 0.011207872141771158,
+                      "late_mae": 0.020303511434700522,
+                      "late_minus_early": 0.009095639292929364
+                    },
+                    {
+                      "id": "math-47",
+                      "tokens": 1805,
+                      "width": 256,
+                      "early_mae": 0.019047894251378872,
+                      "late_mae": 0.01857708406250308,
+                      "late_minus_early": -0.00047081018887579207
+                    },
+                    {
+                      "id": "math-48",
+                      "tokens": 1189,
+                      "width": 256,
+                      "early_mae": 0.03127586247321243,
+                      "late_mae": 0.005756254021267282,
+                      "late_minus_early": -0.025519608451945147
+                    },
+                    {
+                      "id": "math-49",
+                      "tokens": 4477,
+                      "width": 256,
+                      "early_mae": 0.03951365315763766,
+                      "late_mae": 0.011885431171743205,
+                      "late_minus_early": -0.027628221985894458
+                    },
+                    {
+                      "id": "math-51",
+                      "tokens": 1176,
+                      "width": 256,
+                      "early_mae": 0.01875721213329018,
+                      "late_mae": 0.025122392301027835,
+                      "late_minus_early": 0.006365180167737655
+                    },
+                    {
+                      "id": "math-52",
+                      "tokens": 2523,
+                      "width": 256,
+                      "early_mae": 0.02769353683703299,
+                      "late_mae": 0.01400672311368556,
+                      "late_minus_early": -0.01368681372334743
+                    },
+                    {
+                      "id": "math-53",
+                      "tokens": 1280,
+                      "width": 256,
+                      "early_mae": 0.02167840661694584,
+                      "late_mae": 0.02380351279073331,
+                      "late_minus_early": 0.002125106173787472
+                    },
+                    {
+                      "id": "math-54",
+                      "tokens": 4390,
+                      "width": 256,
+                      "early_mae": 0.02386484577933068,
+                      "late_mae": 0.01307364942079553,
+                      "late_minus_early": -0.010791196358535149
+                    },
+                    {
+                      "id": "math-55",
+                      "tokens": 1466,
+                      "width": 256,
+                      "early_mae": 0.017389959131255628,
+                      "late_mae": 0.017579856809693373,
+                      "late_minus_early": 0.00018989767843774485
+                    },
+                    {
+                      "id": "math-57",
+                      "tokens": 2291,
+                      "width": 256,
+                      "early_mae": 0.019149811671313466,
+                      "late_mae": 0.00466077279743754,
+                      "late_minus_early": -0.014489038873875926
+                    },
+                    {
+                      "id": "math-58",
+                      "tokens": 923,
+                      "width": 256,
+                      "early_mae": 0.015079903035652015,
+                      "late_mae": 0.01794373835211807,
+                      "late_minus_early": 0.002863835316466057
+                    },
+                    {
+                      "id": "math-59",
+                      "tokens": 1401,
+                      "width": 256,
+                      "early_mae": 0.016399525109480756,
+                      "late_mae": 0.022723300972196048,
+                      "late_minus_early": 0.006323775862715292
+                    },
+                    {
+                      "id": "math-60",
+                      "tokens": 1394,
+                      "width": 256,
+                      "early_mae": 0.03310936070637885,
+                      "late_mae": 0.013440162035267905,
+                      "late_minus_early": -0.019669198671110943
+                    },
+                    {
+                      "id": "math-61",
+                      "tokens": 881,
+                      "width": 256,
+                      "early_mae": 0.02371289401889118,
+                      "late_mae": 0.022153353821960153,
+                      "late_minus_early": -0.0015595401969310252
+                    },
+                    {
+                      "id": "math-62",
+                      "tokens": 6371,
+                      "width": 256,
+                      "early_mae": 0.03993472060718395,
+                      "late_mae": 0.02566467904801903,
+                      "late_minus_early": -0.01427004155916492
+                    },
+                    {
+                      "id": "math-63",
+                      "tokens": 1011,
+                      "width": 256,
+                      "early_mae": 0.024477529759865613,
+                      "late_mae": 0.023933442864096655,
+                      "late_minus_early": -0.0005440868957689582
+                    }
+                  ],
+                  "late_minus_early": {
+                    "queries": 57,
+                    "mean": -0.011012701176817982,
+                    "ci95": [
+                      -0.014209315665915155,
+                      -0.008134600821957138
+                    ]
+                  },
+                  "definition": "Per query first/last min(256,floor(length/2)) tokens; require >=128 output tokens"
+                }
+              }
+            },
+            "repeat_scope": "No added repeat; original long contract replays four cohorts once. Short-gold repeat0 is a separate result."
+          }
+        }
+      }
+    },
+    "4b_bfloat16": {
+      "source": "long_4b_bfloat16",
+      "data": {
+        "metrics": {
+          "OLD": {
+            "all": {
+              "queries": 64,
+              "tokens": 190251,
+              "query_MAE": 0.03570551776980498,
+              "token_MAE": 0.04306329774488268,
+              "P99": 0.4243433475494385,
+              "max_abs": 2.090167760848999,
+              "query_Top1": 0.9807958101900677,
+              "token_Top1": 0.976310242784532
+            },
+            "4097-7168": {
+              "queries": 17,
+              "tokens": 35130,
+              "query_MAE": 0.04793769154432799,
+              "token_MAE": 0.05534942526491551,
+              "P99": 0.47938946247100767,
+              "max_abs": 1.8414592742919922,
+              "query_Top1": 0.9719456376243711,
+              "token_Top1": 0.9680330202106462
+            }
+          },
+          "R26": {
+            "all": {
+              "queries": 64,
+              "tokens": 190251,
+              "query_MAE": 0.03570551678950119,
+              "token_MAE": 0.04306329679670563,
+              "P99": 0.4243433475494385,
+              "max_abs": 2.090167760848999,
+              "query_Top1": 0.9807958101900677,
+              "token_Top1": 0.976310242784532
+            },
+            "4097-7168": {
+              "queries": 17,
+              "tokens": 35130,
+              "query_MAE": 0.047937692079359696,
+              "token_MAE": 0.05534942562408308,
+              "P99": 0.47938946247100767,
+              "max_abs": 1.8414592742919922,
+              "query_Top1": 0.9719456376243711,
+              "token_Top1": 0.9680330202106462
+            }
+          }
+        },
+        "original_anchor_SHA": "1176acf50104f049c50c76c8f5b9b41cd445a9e878ff77c294a455ecf4669376",
+        "R26_records_SHA": "4606babd31d1dde6519aa95f94ed739e30bd8e8beccade2e4bd33cd291f991f1",
+        "repeat_scope": "Original once-per-four-cohort long replay, no duplicate GPU repeat. Original threephase finite128LP is separate.",
+        "data_completeness": {
+          "64queries_190251": true,
+          "physical_shape_peer_identity": "See full reused original scorer observation_map/compare_shapes result"
+        },
+        "delta_R26_vs_OLD": {
+          "all": {
+            "query_MAE": -9.803037895328437e-10,
+            "token_MAE": -9.481770438246606e-10,
+            "P99": 0.0,
+            "max_abs": 0.0,
+            "query_Top1": 0.0,
+            "token_Top1": 0.0
+          },
+          "4097-7168": {
+            "query_MAE": 5.35031706438982e-10,
+            "token_MAE": 3.591675706848818e-10,
+            "P99": 0.0,
+            "max_abs": 0.0,
+            "query_Top1": 0.0,
+            "token_Top1": 0.0
+          }
+        },
+        "direct_R26_OLD": {
+          "changed_LP": 17444,
+          "max_abs_LP": 0.00022649765014648438,
+          "top1_ids_all_190251_equal": true,
+          "classification": "metric_equivalent_with_fp32_scale_residuals",
+          "not_bitwise_all_LP": true
+        }
+      }
+    },
+    "dense_full": {
+      "source": "long_dense_full",
+      "data": {
+        "complete": true,
+        "kind": "full-long",
+        "queries": 4,
+        "tokens": 2879,
+        "lengths": [
+          166,
+          317,
+          348,
+          2048
+        ],
+        "tail_513plus_queries": 1,
+        "original_scorer_metrics_reused": true,
+        "OLD_BF16_not_replaced": true,
+        "metrics": {
+          "old": {
+            "1-2048": {
+              "queries": 4,
+              "tokens": 2879,
+              "query_balanced_mae": 0.039264541941883176,
+              "query_balanced_rmse": 0.09467608199008745,
+              "token_mae": 0.050918729439507614,
+              "query_balanced_top1_agreement": 0.9722654369876029,
+              "token_p99_abs": 0.44939757823943843,
+              "max_abs": 1.1902837753295898
+            },
+            "1-64": {
+              "queries": 4,
+              "tokens": 256,
+              "query_balanced_mae": 0.025914471939181005,
+              "query_balanced_rmse": 0.06872600272068327,
+              "token_mae": 0.025914471939181005,
+              "query_balanced_top1_agreement": 0.98828125,
+              "token_p99_abs": 0.3668582499027252,
+              "max_abs": 0.4249117374420166
+            },
+            "65-256": {
+              "queries": 4,
+              "tokens": 678,
+              "query_balanced_mae": 0.04006746556059789,
+              "query_balanced_rmse": 0.10302167297865243,
+              "token_mae": 0.04326933961449517,
+              "query_balanced_top1_agreement": 0.9741115196078431,
+              "token_p99_abs": 0.47123378992080694,
+              "max_abs": 0.906121015548706
+            },
+            "257-512": {
+              "queries": 3,
+              "tokens": 409,
+              "query_balanced_mae": 0.029638671944428874,
+              "query_balanced_rmse": 0.0864855904862087,
+              "token_mae": 0.043377113507764194,
+              "query_balanced_top1_agreement": 0.9768455615942029,
+              "token_p99_abs": 0.4449307060241703,
+              "max_abs": 1.0192592144012451
+            },
+            "513-1024": {
+              "queries": 1,
+              "tokens": 512,
+              "query_balanced_mae": 0.05948488043375977,
+              "query_balanced_rmse": 0.10787277599787884,
+              "token_mae": 0.05948488043375977,
+              "query_balanced_top1_agreement": 0.951171875,
+              "token_p99_abs": 0.37072111129760726,
+              "max_abs": 0.5101251602172852
+            },
+            "1025-1536": {
+              "queries": 1,
+              "tokens": 512,
+              "query_balanced_mae": 0.05379474643915727,
+              "query_balanced_rmse": 0.10993244725392276,
+              "token_mae": 0.05379474643915727,
+              "query_balanced_top1_agreement": 0.96484375,
+              "token_p99_abs": 0.4561490941047659,
+              "max_abs": 1.1902837753295898
+            },
+            "1537-2048": {
+              "queries": 1,
+              "tokens": 512,
+              "query_balanced_mae": 0.06813261054233455,
+              "query_balanced_rmse": 0.13032295926844342,
+              "token_mae": 0.06813261054233455,
+              "query_balanced_top1_agreement": 0.94140625,
+              "token_p99_abs": 0.5613961076736432,
+              "max_abs": 0.7841407060623169
+            },
+            "1025-2048": {
+              "queries": 1,
+              "tokens": 1024,
+              "query_balanced_mae": 0.06096367849074591,
+              "query_balanced_rmse": 0.1205595634359234,
+              "token_mae": 0.06096367849074591,
+              "query_balanced_top1_agreement": 0.953125,
+              "token_p99_abs": 0.47372017621993995,
+              "max_abs": 1.1902837753295898
+            }
+          },
+          "new": {
+            "1-2048": {
+              "queries": 4,
+              "tokens": 2879,
+              "query_balanced_mae": 0.037763444955486766,
+              "query_balanced_rmse": 0.09023118000623562,
+              "token_mae": 0.04957107582420551,
+              "query_balanced_top1_agreement": 0.973664432083226,
+              "token_p99_abs": 0.43844692945480246,
+              "max_abs": 1.0568513870239258
+            },
+            "1-64": {
+              "queries": 4,
+              "tokens": 256,
+              "query_balanced_mae": 0.029143545393462922,
+              "query_balanced_rmse": 0.07697833996456364,
+              "token_mae": 0.029143545393462922,
+              "query_balanced_top1_agreement": 0.984375,
+              "token_p99_abs": 0.3766423761844632,
+              "max_abs": 0.4466043710708618
+            },
+            "65-256": {
+              "queries": 4,
+              "tokens": 678,
+              "query_balanced_mae": 0.035217722538659686,
+              "query_balanced_rmse": 0.08812464435408496,
+              "token_mae": 0.038185309952923935,
+              "query_balanced_top1_agreement": 0.9754136029411765,
+              "token_p99_abs": 0.36435993194580096,
+              "max_abs": 0.7038965225219727
+            },
+            "257-512": {
+              "queries": 3,
+              "tokens": 409,
+              "query_balanced_mae": 0.029173533403479605,
+              "query_balanced_rmse": 0.0811348190835022,
+              "token_mae": 0.044758582441921144,
+              "query_balanced_top1_agreement": 0.984375,
+              "token_p99_abs": 0.3950581169128421,
+              "max_abs": 0.6687567234039307
+            },
+            "513-1024": {
+              "queries": 1,
+              "tokens": 512,
+              "query_balanced_mae": 0.05572207004587404,
+              "query_balanced_rmse": 0.10334194521360168,
+              "token_mae": 0.05572207004587404,
+              "query_balanced_top1_agreement": 0.96484375,
+              "token_p99_abs": 0.3571824765205383,
+              "max_abs": 0.6406025886535645
+            },
+            "1025-1536": {
+              "queries": 1,
+              "tokens": 512,
+              "query_balanced_mae": 0.054312637508562855,
+              "query_balanced_rmse": 0.11261620649093593,
+              "token_mae": 0.054312637508562855,
+              "query_balanced_top1_agreement": 0.953125,
+              "token_p99_abs": 0.45171847939491266,
+              "max_abs": 1.0568513870239258
+            },
+            "1537-2048": {
+              "queries": 1,
+              "tokens": 512,
+              "query_balanced_mae": 0.06781388484855722,
+              "query_balanced_rmse": 0.1296277252916069,
+              "token_mae": 0.06781388484855722,
+              "query_balanced_top1_agreement": 0.943359375,
+              "token_p99_abs": 0.485295298695564,
+              "max_abs": 0.6922764778137207
+            },
+            "1025-2048": {
+              "queries": 1,
+              "tokens": 1024,
+              "query_balanced_mae": 0.061063261178560035,
+              "query_balanced_rmse": 0.12142025598862288,
+              "token_mae": 0.061063261178560035,
+              "query_balanced_top1_agreement": 0.9482421875,
+              "token_p99_abs": 0.48262206614017444,
+              "max_abs": 1.0568513870239258
+            }
+          }
+        },
+        "comparison": {
+          "1-2048": {
+            "query_MAE_relative_percent": -3.82303450430731,
+            "top1_percentage_point_change": 0.13989950956230235
+          },
+          "1-64": {
+            "query_MAE_relative_percent": 12.460502617457415,
+            "top1_percentage_point_change": -0.390625
+          },
+          "65-256": {
+            "query_MAE_relative_percent": -12.103942573067094,
+            "top1_percentage_point_change": 0.13020833333333703
+          },
+          "257-512": {
+            "query_MAE_relative_percent": -1.569363640251431,
+            "top1_percentage_point_change": 0.7529438405797118
+          },
+          "513-1024": {
+            "query_MAE_relative_percent": -6.325658487413222,
+            "top1_percentage_point_change": 1.3671875
+          },
+          "1025-1536": {
+            "query_MAE_relative_percent": 0.9627168147196885,
+            "top1_percentage_point_change": -1.171875
+          },
+          "1537-2048": {
+            "query_MAE_relative_percent": -0.46780196918961847,
+            "top1_percentage_point_change": 0.1953125
+          },
+          "1025-2048": {
+            "query_MAE_relative_percent": 0.1633475706838139,
+            "top1_percentage_point_change": -0.48828125
+          }
+        },
+        "primary_query_MAE_not_worse": true,
+        "long_repeat_performed": false,
+        "secondary_metrics_retained": true
+      }
+    },
+    "dense_default": {
+      "source": "long_dense_default",
+      "data": {
+        "complete": true,
+        "kind": "default-long",
+        "queries": 4,
+        "tokens": 2879,
+        "lengths": [
+          166,
+          317,
+          348,
+          2048
+        ],
+        "tail_513plus_queries": 1,
+        "original_scorer_metrics_reused": true,
+        "OLD_BF16_not_replaced": true,
+        "metrics": {
+          "old": {
+            "1-2048": {
+              "queries": 4,
+              "tokens": 2879,
+              "query_balanced_mae": 0.039600447096389435,
+              "query_balanced_rmse": 0.0978576168428485,
+              "token_mae": 0.051527070008937914,
+              "query_balanced_top1_agreement": 0.9745741356875137,
+              "token_p99_abs": 0.45149356961250287,
+              "max_abs": 1.3713397979736328
+            },
+            "1-64": {
+              "queries": 4,
+              "tokens": 256,
+              "query_balanced_mae": 0.029384224529745345,
+              "query_balanced_rmse": 0.07726430024069222,
+              "token_mae": 0.029384224529745345,
+              "query_balanced_top1_agreement": 0.98828125,
+              "token_p99_abs": 0.38706812858581485,
+              "max_abs": 0.47541916370391846
+            },
+            "65-256": {
+              "queries": 4,
+              "tokens": 678,
+              "query_balanced_mae": 0.038662305975143245,
+              "query_balanced_rmse": 0.10188372716109811,
+              "token_mae": 0.04164719355872398,
+              "query_balanced_top1_agreement": 0.9728094362745099,
+              "token_p99_abs": 0.47818491697311494,
+              "max_abs": 0.7990431785583496
+            },
+            "257-512": {
+              "queries": 3,
+              "tokens": 409,
+              "query_balanced_mae": 0.033057397595713627,
+              "query_balanced_rmse": 0.09417492649558191,
+              "token_mae": 0.04875215278432864,
+              "query_balanced_top1_agreement": 0.9869791666666666,
+              "token_p99_abs": 0.49521333694458075,
+              "max_abs": 0.8431844711303711
+            },
+            "513-1024": {
+              "queries": 1,
+              "tokens": 512,
+              "query_balanced_mae": 0.05841647917623782,
+              "query_balanced_rmse": 0.10612812025266538,
+              "token_mae": 0.05841647917623782,
+              "query_balanced_top1_agreement": 0.958984375,
+              "token_p99_abs": 0.3787968444824216,
+              "max_abs": 0.4483208656311035
+            },
+            "1025-1536": {
+              "queries": 1,
+              "tokens": 512,
+              "query_balanced_mae": 0.053068944901109805,
+              "query_balanced_rmse": 0.1093315866242213,
+              "token_mae": 0.053068944901109805,
+              "query_balanced_top1_agreement": 0.962890625,
+              "token_p99_abs": 0.39889926791191044,
+              "max_abs": 1.3713397979736328
+            },
+            "1537-2048": {
+              "queries": 1,
+              "tokens": 512,
+              "query_balanced_mae": 0.06946700825568397,
+              "query_balanced_rmse": 0.1356399221434251,
+              "token_mae": 0.06946700825568397,
+              "query_balanced_top1_agreement": 0.939453125,
+              "token_p99_abs": 0.5463517665863031,
+              "max_abs": 0.9593093395233154
+            },
+            "1025-2048": {
+              "queries": 1,
+              "tokens": 1024,
+              "query_balanced_mae": 0.06126797657839689,
+              "query_balanced_rmse": 0.12319006516932286,
+              "token_mae": 0.06126797657839689,
+              "query_balanced_top1_agreement": 0.951171875,
+              "token_p99_abs": 0.45046308279037456,
+              "max_abs": 1.3713397979736328
+            }
+          },
+          "new": {
+            "1-2048": {
+              "queries": 4,
+              "tokens": 2879,
+              "query_balanced_mae": 0.03960044707949699,
+              "query_balanced_rmse": 0.0978576165472917,
+              "token_mae": 0.051527069954883216,
+              "query_balanced_top1_agreement": 0.9745741356875137,
+              "token_p99_abs": 0.4514936888217924,
+              "max_abs": 1.3713397979736328
+            },
+            "1-64": {
+              "queries": 4,
+              "tokens": 256,
+              "query_balanced_mae": 0.029384223365663376,
+              "query_balanced_rmse": 0.0772643002633847,
+              "token_mae": 0.029384223365663376,
+              "query_balanced_top1_agreement": 0.98828125,
+              "token_p99_abs": 0.38706812858581485,
+              "max_abs": 0.47541916370391846
+            },
+            "65-256": {
+              "queries": 4,
+              "tokens": 678,
+              "query_balanced_mae": 0.038662304910135836,
+              "query_balanced_rmse": 0.1018837224837139,
+              "token_mae": 0.0416471922359894,
+              "query_balanced_top1_agreement": 0.9728094362745099,
+              "token_p99_abs": 0.47818491697311494,
+              "max_abs": 0.7990431785583496
+            },
+            "257-512": {
+              "queries": 3,
+              "tokens": 409,
+              "query_balanced_mae": 0.0330574014806268,
+              "query_balanced_rmse": 0.09417492592410835,
+              "token_mae": 0.04875215566471719,
+              "query_balanced_top1_agreement": 0.9869791666666666,
+              "token_p99_abs": 0.49521333694458075,
+              "max_abs": 0.8431844711303711
+            },
+            "513-1024": {
+              "queries": 1,
+              "tokens": 512,
+              "query_balanced_mae": 0.058416478998854826,
+              "query_balanced_rmse": 0.10612812064157338,
+              "token_mae": 0.058416478998854826,
+              "query_balanced_top1_agreement": 0.958984375,
+              "token_p99_abs": 0.3787968444824216,
+              "max_abs": 0.4483206272125244
+            },
+            "1025-1536": {
+              "queries": 1,
+              "tokens": 512,
+              "query_balanced_mae": 0.05306894731222933,
+              "query_balanced_rmse": 0.10933158916773991,
+              "token_mae": 0.05306894731222933,
+              "query_balanced_top1_agreement": 0.962890625,
+              "token_p99_abs": 0.39889926791191044,
+              "max_abs": 1.3713397979736328
+            },
+            "1537-2048": {
+              "queries": 1,
+              "tokens": 512,
+              "query_balanced_mae": 0.06946700575069087,
+              "query_balanced_rmse": 0.13563991881587256,
+              "token_mae": 0.06946700575069087,
+              "query_balanced_top1_agreement": 0.939453125,
+              "token_p99_abs": 0.5463517665863031,
+              "max_abs": 0.9593093395233154
+            },
+            "1025-2048": {
+              "queries": 1,
+              "tokens": 1024,
+              "query_balanced_mae": 0.0612679765314601,
+              "query_balanced_rmse": 0.12319006446609232,
+              "token_mae": 0.0612679765314601,
+              "query_balanced_top1_agreement": 0.951171875,
+              "token_p99_abs": 0.45046308279037456,
+              "max_abs": 1.3713397979736328
+            }
+          }
+        },
+        "comparison": {
+          "1-2048": {
+            "query_MAE_relative_percent": -4.265721109675269e-08,
+            "top1_percentage_point_change": 0.0
+          },
+          "1-64": {
+            "query_MAE_relative_percent": -3.9615881908261485e-06,
+            "top1_percentage_point_change": 0.0
+          },
+          "65-256": {
+            "query_MAE_relative_percent": -2.7546401604183757e-06,
+            "top1_percentage_point_change": 0.0
+          },
+          "257-512": {
+            "query_MAE_relative_percent": 1.1752023620914542e-05,
+            "top1_percentage_point_change": 0.0
+          },
+          "513-1024": {
+            "query_MAE_relative_percent": -3.036523255062207e-07,
+            "top1_percentage_point_change": 0.0
+          },
+          "1025-1536": {
+            "query_MAE_relative_percent": 4.543371900922466e-06,
+            "top1_percentage_point_change": 0.0
+          },
+          "1537-2048": {
+            "query_MAE_relative_percent": -3.6060184060993095e-06,
+            "top1_percentage_point_change": 0.0
+          },
+          "1025-2048": {
+            "query_MAE_relative_percent": -7.660900802619608e-08,
+            "top1_percentage_point_change": 0.0
+          }
+        },
+        "primary_query_MAE_not_worse": true,
+        "long_repeat_performed": false,
+        "secondary_metrics_retained": true
+      }
+    },
+    "moe_default": {
+      "source": "long_moe_default",
+      "data": {
+        "passed_raw_and_contract": true,
+        "queries": 4,
+        "tokens": 6532,
+        "natural_lengths": [
+          1249,
+          2048,
+          1187,
+          2048
+        ],
+        "BF16_reference_sha256": "06dd253d3bed0836260066bafdaea4119fbbd445f8d83a613f4cd794e9b94147",
+        "metrics": {
+          "old": {
+            "1-2048": {
+              "queries": 4,
+              "tokens": 6532,
+              "query_balanced_mae": 0.04314349524838697,
+              "token_mae": 0.045628909577877984,
+              "query_balanced_top1_agreement": 0.9748814405851502,
+              "token_p99_abs": 0.5354878455400451,
+              "max_abs": 1.1195592880249023
+            },
+            "1-64": {
+              "queries": 4,
+              "tokens": 256,
+              "query_balanced_mae": 0.025233571543210792,
+              "token_mae": 0.025233571543210792,
+              "query_balanced_top1_agreement": 0.98828125,
+              "token_p99_abs": 0.47926864027976845,
+              "max_abs": 0.6197824478149414
+            },
+            "65-256": {
+              "queries": 4,
+              "tokens": 768,
+              "query_balanced_mae": 0.042134846085625705,
+              "token_mae": 0.042134846085625705,
+              "query_balanced_top1_agreement": 0.9739583333333334,
+              "token_p99_abs": 0.5885800552368164,
+              "max_abs": 1.0706794261932373
+            },
+            "257-512": {
+              "queries": 4,
+              "tokens": 1024,
+              "query_balanced_mae": 0.02824129227008295,
+              "token_mae": 0.02824129227008295,
+              "query_balanced_top1_agreement": 0.990234375,
+              "token_p99_abs": 0.45402337431907624,
+              "max_abs": 0.7573424577713013
+            },
+            "513-1024": {
+              "queries": 4,
+              "tokens": 2048,
+              "query_balanced_mae": 0.04491890328080629,
+              "token_mae": 0.04491890328080629,
+              "query_balanced_top1_agreement": 0.970703125,
+              "token_p99_abs": 0.5027990508079524,
+              "max_abs": 0.7961182594299316
+            },
+            "1025-1536": {
+              "queries": 4,
+              "tokens": 1412,
+              "query_balanced_mae": 0.03821849388561816,
+              "token_mae": 0.04369891637963109,
+              "query_balanced_top1_agreement": 0.9779052834228017,
+              "token_p99_abs": 0.5223771715164217,
+              "max_abs": 1.0294427871704102
+            },
+            "1537-2048": {
+              "queries": 2,
+              "tokens": 1024,
+              "query_balanced_mae": 0.07481720129119257,
+              "token_mae": 0.07481720129119257,
+              "query_balanced_top1_agreement": 0.9599609375,
+              "token_p99_abs": 0.6697446799278258,
+              "max_abs": 1.1195592880249023
+            },
+            "1025-2048": {
+              "queries": 4,
+              "tokens": 2436,
+              "query_balanced_mae": 0.044113522105727845,
+              "token_mae": 0.05677983745903953,
+              "query_balanced_top1_agreement": 0.9749755959228017,
+              "token_p99_abs": 0.6093774318695069,
+              "max_abs": 1.1195592880249023
+            }
+          },
+          "new": {
+            "1-2048": {
+              "queries": 4,
+              "tokens": 6532,
+              "query_balanced_mae": 0.042891726723895116,
+              "token_mae": 0.045095397596313605,
+              "query_balanced_top1_agreement": 0.9753284860539021,
+              "token_p99_abs": 0.5076529192924492,
+              "max_abs": 1.7363433837890625
+            },
+            "1-64": {
+              "queries": 4,
+              "tokens": 256,
+              "query_balanced_mae": 0.02014005099247257,
+              "token_mae": 0.02014005099247257,
+              "query_balanced_top1_agreement": 0.984375,
+              "token_p99_abs": 0.3203385323286049,
+              "max_abs": 0.46493303775787354
+            },
+            "65-256": {
+              "queries": 4,
+              "tokens": 768,
+              "query_balanced_mae": 0.04700708889969878,
+              "token_mae": 0.04700708889969878,
+              "query_balanced_top1_agreement": 0.9765625,
+              "token_p99_abs": 0.5755720877647421,
+              "max_abs": 1.3875107765197754
+            },
+            "257-512": {
+              "queries": 4,
+              "tokens": 1024,
+              "query_balanced_mae": 0.028458937891770515,
+              "token_mae": 0.028458937891770515,
+              "query_balanced_top1_agreement": 0.9892578125,
+              "token_p99_abs": 0.42258001446723936,
+              "max_abs": 0.8159184455871582
+            },
+            "513-1024": {
+              "queries": 4,
+              "tokens": 2048,
+              "query_balanced_mae": 0.04565179045921121,
+              "token_mae": 0.04565179045921121,
+              "query_balanced_top1_agreement": 0.97265625,
+              "token_p99_abs": 0.4810195589065552,
+              "max_abs": 1.7363433837890625
+            },
+            "1025-1536": {
+              "queries": 4,
+              "tokens": 1412,
+              "query_balanced_mae": 0.03650645738468675,
+              "token_mae": 0.04243906569531415,
+              "query_balanced_top1_agreement": 0.9760145599011588,
+              "token_p99_abs": 0.498358492851258,
+              "max_abs": 0.961268424987793
+            },
+            "1537-2048": {
+              "queries": 2,
+              "tokens": 1024,
+              "query_balanced_mae": 0.0690869724088454,
+              "token_mae": 0.0690869724088454,
+              "query_balanced_top1_agreement": 0.9580078125,
+              "token_p99_abs": 0.5736960446834564,
+              "max_abs": 1.3460402488708496
+            },
+            "1025-2048": {
+              "queries": 4,
+              "tokens": 2436,
+              "query_balanced_mae": 0.041208178968855105,
+              "token_mae": 0.053640813016601514,
+              "query_balanced_top1_agreement": 0.9723524505261588,
+              "token_p99_abs": 0.5446432292461402,
+              "max_abs": 1.3460402488708496
+            }
+          }
+        },
+        "long_repeat_performed": false,
+        "scope": "Original four natural BF16 trajectories, physical M4, FP32SSM default. No new tolerance. Full rawLP head path because logprobs1; compact native head fixes that do not affect this path may reuse this evidence."
+      }
+    },
+    "moe_full": {
+      "source": "long_moe_full",
+      "data": {
+        "verified": true,
+        "acceptance": "metric_equivalent_with_fp32_scale_residuals",
+        "queries": 4,
+        "tokens": 6532,
+        "natural_lengths": [
+          1249,
+          2048,
+          1187,
+          2048
+        ],
+        "reference_sha256": "06dd253d3bed0836260066bafdaea4119fbbd445f8d83a613f4cd794e9b94147",
+        "metrics": {
+          "old": {
+            "1-2048": {
+              "queries": 4,
+              "tokens": 6532,
+              "query_balanced_mae": 0.043040934839504746,
+              "token_mae": 0.04519226313555904,
+              "query_balanced_top1_agreement": 0.9762583233413553,
+              "token_p99_abs": 0.5331740361452069,
+              "max_abs": 1.4503941535949707
+            },
+            "1-64": {
+              "queries": 4,
+              "tokens": 256,
+              "query_balanced_mae": 0.027795185367195052,
+              "token_mae": 0.027795185367195052,
+              "query_balanced_top1_agreement": 0.98046875,
+              "token_p99_abs": 0.4085916340351099,
+              "max_abs": 0.7108719348907471
+            },
+            "65-256": {
+              "queries": 4,
+              "tokens": 768,
+              "query_balanced_mae": 0.0435626013215255,
+              "token_mae": 0.0435626013215255,
+              "query_balanced_top1_agreement": 0.9817708333333334,
+              "token_p99_abs": 0.6081725978851327,
+              "max_abs": 1.4503941535949707
+            },
+            "257-512": {
+              "queries": 4,
+              "tokens": 1024,
+              "query_balanced_mae": 0.02641650126380895,
+              "token_mae": 0.02641650126380895,
+              "query_balanced_top1_agreement": 0.98828125,
+              "token_p99_abs": 0.4403872370719907,
+              "max_abs": 0.7035186290740967
+            },
+            "513-1024": {
+              "queries": 4,
+              "tokens": 2048,
+              "query_balanced_mae": 0.046242567637113124,
+              "token_mae": 0.046242567637113124,
+              "query_balanced_top1_agreement": 0.97021484375,
+              "token_p99_abs": 0.5700439429283141,
+              "max_abs": 1.0247130393981934
+            },
+            "1025-1536": {
+              "queries": 4,
+              "tokens": 1412,
+              "query_balanced_mae": 0.038053658687823816,
+              "token_mae": 0.043344367383487535,
+              "query_balanced_top1_agreement": 0.9795046757839128,
+              "token_p99_abs": 0.48740701317787233,
+              "max_abs": 0.8988895416259766
+            },
+            "1537-2048": {
+              "queries": 2,
+              "tokens": 1024,
+              "query_balanced_mae": 0.069987006808697,
+              "token_mae": 0.069987006808697,
+              "query_balanced_top1_agreement": 0.966796875,
+              "token_p99_abs": 0.5693491733074186,
+              "max_abs": 1.1461024284362793
+            },
+            "1025-2048": {
+              "queries": 4,
+              "tokens": 2436,
+              "query_balanced_mae": 0.04290732052744619,
+              "token_mae": 0.05454390054088265,
+              "query_balanced_top1_agreement": 0.9780398320339128,
+              "token_p99_abs": 0.5113055944442751,
+              "max_abs": 1.1461024284362793
+            }
+          },
+          "new": {
+            "1-2048": {
+              "queries": 4,
+              "tokens": 6532,
+              "query_balanced_mae": 0.04304093537022963,
+              "token_mae": 0.04519226355488251,
+              "query_balanced_top1_agreement": 0.9762583233413553,
+              "token_p99_abs": 0.5331740361452069,
+              "max_abs": 1.4503941535949707
+            },
+            "1-64": {
+              "queries": 4,
+              "tokens": 256,
+              "query_balanced_mae": 0.027795186531342053,
+              "token_mae": 0.027795186531342053,
+              "query_balanced_top1_agreement": 0.98046875,
+              "token_p99_abs": 0.4085916340351099,
+              "max_abs": 0.7108719348907471
+            },
+            "65-256": {
+              "queries": 4,
+              "tokens": 768,
+              "query_balanced_mae": 0.04356260162946221,
+              "token_mae": 0.04356260162946221,
+              "query_balanced_top1_agreement": 0.9817708333333334,
+              "token_p99_abs": 0.6081725978851327,
+              "max_abs": 1.4503941535949707
+            },
+            "257-512": {
+              "queries": 4,
+              "tokens": 1024,
+              "query_balanced_mae": 0.026416503026286987,
+              "token_mae": 0.026416503026286987,
+              "query_balanced_top1_agreement": 0.98828125,
+              "token_p99_abs": 0.4403872370719907,
+              "max_abs": 0.7035186290740967
+            },
+            "513-1024": {
+              "queries": 4,
+              "tokens": 2048,
+              "query_balanced_mae": 0.046242568611666215,
+              "token_mae": 0.046242568611666215,
+              "query_balanced_top1_agreement": 0.97021484375,
+              "token_p99_abs": 0.5700439429283141,
+              "max_abs": 1.0247130393981934
+            },
+            "1025-1536": {
+              "queries": 4,
+              "tokens": 1412,
+              "query_balanced_mae": 0.0380536578978532,
+              "token_mae": 0.0433443672197173,
+              "query_balanced_top1_agreement": 0.9795046757839128,
+              "token_p99_abs": 0.48740702629089416,
+              "max_abs": 0.8988895416259766
+            },
+            "1537-2048": {
+              "queries": 2,
+              "tokens": 1024,
+              "query_balanced_mae": 0.06998700547577236,
+              "token_mae": 0.06998700547577236,
+              "query_balanced_top1_agreement": 0.966796875,
+              "token_p99_abs": 0.5693491733074186,
+              "max_abs": 1.1461024284362793
+            },
+            "1025-2048": {
+              "queries": 4,
+              "tokens": 2436,
+              "query_balanced_mae": 0.042907319360693495,
+              "token_mae": 0.0545438998856452,
+              "query_balanced_top1_agreement": 0.9780398320339128,
+              "token_p99_abs": 0.5113055109977724,
+              "max_abs": 1.1461024284362793
+            }
+          }
+        },
+        "all_top1_ids_identical": true,
+        "scope": "Original four-question M4 natural BF16 trajectory; longest 2048 tokens. Single replay per stack. Original precision anchor and runtime contract retained; not whole-model bitwise equivalence or free-generation accuracy."
+      }
+    }
+  },
+  "long_binding_sha256": "387473f78a8166f64142b7ac16ca6d0d44265ea80642186cb77cb1d754ed4c8f"
+}
