@@ -113,14 +113,32 @@ endif()
 
 # A dispatcher-only shared library: Python loads it with
 # torch.ops.load_library(), so no CPython/PYBIND11 module is required.
+set(MXFP6_GENERATED_INCLUDE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+set(MXFP6_REGISTRY_DIR "${MXFP6_GENERATED_INCLUDE}/mxfp6_gemm")
+set(MXFP6_REGISTRY_FILES
+  "${MXFP6_REGISTRY_DIR}/w6a8_registry.hpp"
+  "${MXFP6_REGISTRY_DIR}/w6a8_candidates.inc"
+  "${MXFP6_REGISTRY_DIR}/w6a8_exact.inc")
+add_custom_command(
+  OUTPUT ${MXFP6_REGISTRY_FILES}
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_w6a8_dispatch.py"
+          --cpp-dir "${MXFP6_REGISTRY_DIR}"
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_w6a8_dispatch.py"
+          --python-output "${CMAKE_CURRENT_SOURCE_DIR}/python/mxfp6/_w6a8_registry.py" --check
+  DEPENDS scripts/generate_w6a8_dispatch.py python/mxfp6/w6a8_dispatch.json
+          python/mxfp6/_w6a8_registry.py
+  VERBATIM)
 add_library(mxfp6_torch SHARED
-  csrc/torch_extension.cu
+  ${MXFP6_REGISTRY_FILES}
+  csrc/torch_extension.cpp
+  csrc/dense_kernels.cu
   csrc/moe.cu
   csrc/packing.cu
   csrc/quantization.cu
 )
 
 target_include_directories(mxfp6_torch PRIVATE
+  "${MXFP6_GENERATED_INCLUDE}"
   "${CMAKE_CURRENT_SOURCE_DIR}/csrc/include"
   "${CUTLASS_DIR}/include"
   "${CUTLASS_DIR}/tools/util/include"
@@ -177,14 +195,60 @@ endif()
 # Independent W8A8 extension; shares the patched SM120 template infrastructure.
 set(MXFP8_GENERATED_INCLUDE "${CMAKE_CURRENT_BINARY_DIR}/generated")
 set(MXFP8_POLICY_HEADER "${MXFP8_GENERATED_INCLUDE}/mxfp8_gemm/dispatch_policy.hpp")
+set(MXFP8_REGISTRY_HEADER "${MXFP8_GENERATED_INCLUDE}/mxfp8_gemm/registry.def")
+option(MXFP8_PRUNE_UNUSED_FAMILIES
+  "Omit experimental families unreferenced by the builtin W8A8 policy (reduces explicit tactic availability)" OFF)
+option(MXFP8_JIT_UNUSED_FAMILIES
+  "Omit only unused families covered by JIT; prepare backend=auto restores their tactics" OFF)
+if(MXFP8_PRUNE_UNUSED_FAMILIES AND MXFP8_JIT_UNUSED_FAMILIES)
+  message(FATAL_ERROR "Choose either builtin-only pruning or JIT-covered pruning, not both")
+endif()
+set(MXFP8_REGISTRY_FLAGS)
+if(MXFP8_JIT_UNUSED_FAMILIES)
+  list(APPEND MXFP8_REGISTRY_FLAGS --jit-manifest "${CMAKE_CURRENT_SOURCE_DIR}/python/mxfp6/mxfp8_cp_async.json")
+endif()
+if(MXFP8_PRUNE_UNUSED_FAMILIES OR MXFP8_JIT_UNUSED_FAMILIES)
+  list(APPEND MXFP8_REGISTRY_FLAGS --prune-unused-families)
+  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    scripts/generate_mxfp8_dispatch.py python/mxfp6/mxfp8_dispatch.json
+    csrc/include/mxfp8_gemm/registry.def python/mxfp6/mxfp8_cp_async.json
+    python/mxfp6/_mxfp8_config.py)
+  execute_process(
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_mxfp8_dispatch.py"
+            "${CMAKE_CURRENT_SOURCE_DIR}/python/mxfp6/mxfp8_dispatch.json"
+            --registry-source "${CMAKE_CURRENT_SOURCE_DIR}/csrc/include/mxfp8_gemm/registry.def"
+            --list-unused-sources ${MXFP8_REGISTRY_FLAGS}
+    OUTPUT_VARIABLE MXFP8_UNUSED_SOURCES OUTPUT_STRIP_TRAILING_WHITESPACE
+    COMMAND_ERROR_IS_FATAL ANY)
+  message(STATUS "Omitting unused MXFP8 family sources: ${MXFP8_UNUSED_SOURCES}")
+endif()
 add_custom_command(
-  OUTPUT "${MXFP8_POLICY_HEADER}"
+  OUTPUT "${MXFP8_POLICY_HEADER}" "${MXFP8_REGISTRY_HEADER}"
   COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_mxfp8_dispatch.py"
           "${CMAKE_CURRENT_SOURCE_DIR}/python/mxfp6/mxfp8_dispatch.json" "${MXFP8_POLICY_HEADER}"
+          --registry-source "${CMAKE_CURRENT_SOURCE_DIR}/csrc/include/mxfp8_gemm/registry.def"
+          --registry-output "${MXFP8_REGISTRY_HEADER}" ${MXFP8_REGISTRY_FLAGS}
   DEPENDS scripts/generate_mxfp8_dispatch.py python/mxfp6/mxfp8_dispatch.json
+          csrc/include/mxfp8_gemm/registry.def python/mxfp6/mxfp8_cp_async.json
+          python/mxfp6/_mxfp8_config.py
   VERBATIM)
-add_library(mxfp8_torch SHARED
-  "${MXFP8_POLICY_HEADER}"
+# Migrated cp.async families share configuration metadata with optional JIT.
+set(MXFP8_CONFIG_HEADERS)
+foreach(family cute_4warp vector_store specialized cache_hint occupancy eightwarp)
+  list(APPEND MXFP8_CONFIG_HEADERS "${MXFP8_GENERATED_INCLUDE}/mxfp8_gemm/${family}.cuh")
+endforeach()
+set(MXFP8_CONFIG_STAMP "${MXFP8_GENERATED_INCLUDE}/mxfp8_configs.stamp")
+add_custom_command(
+  OUTPUT "${MXFP8_CONFIG_STAMP}"
+  BYPRODUCTS ${MXFP8_CONFIG_HEADERS}
+  COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_mxfp8_configs.py"
+          --output-dir "${MXFP8_GENERATED_INCLUDE}/mxfp8_gemm"
+  COMMAND "${CMAKE_COMMAND}" -E touch "${MXFP8_CONFIG_STAMP}"
+  DEPENDS scripts/generate_mxfp8_configs.py python/mxfp6/_mxfp8_config.py
+          python/mxfp6/mxfp8_cp_async.json csrc/include/mxfp8_gemm/registry.def
+  VERBATIM)
+add_custom_target(mxfp8_configs DEPENDS "${MXFP8_CONFIG_STAMP}")
+set(MXFP8_SOURCES
   csrc/mxfp8_extension.cu
   csrc/mxfp8_bf16_ba.cu
   csrc/mxfp8_dual_extension.cu
@@ -219,6 +283,16 @@ add_library(mxfp8_torch SHARED
   csrc/mxfp8_release_direct.cu
   csrc/mxfp8_tma_scales.cu
 )
+if(MXFP8_PRUNE_UNUSED_FAMILIES OR MXFP8_JIT_UNUSED_FAMILIES)
+  list(REMOVE_ITEM MXFP8_SOURCES ${MXFP8_UNUSED_SOURCES})
+endif()
+add_library(mxfp8_torch SHARED
+  "${MXFP8_POLICY_HEADER}" "${MXFP8_REGISTRY_HEADER}" ${MXFP8_SOURCES})
+add_dependencies(mxfp8_torch mxfp8_configs)
+# Also handle the first transition from the source registry to the generated
+# registry: an existing depfile can still name only the source-tree include.
+set_source_files_properties(csrc/mxfp8_extension.cu PROPERTIES
+  OBJECT_DEPENDS "${MXFP8_REGISTRY_HEADER};${MXFP8_POLICY_HEADER}")
 target_include_directories(mxfp8_torch PRIVATE
   "${MXFP8_GENERATED_INCLUDE}"
   "${CMAKE_CURRENT_SOURCE_DIR}/csrc/include"

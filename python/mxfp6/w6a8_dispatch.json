@@ -1,0 +1,959 @@
+{
+  "version": 1,
+  "candidate_abi": "native-w6a8-30-v5",
+  "candidates": [
+    {
+      "id": 0,
+      "name": "swapped_128x8_static_cooperative",
+      "tile": [
+        128,
+        8,
+        128
+      ],
+      "stages": "auto",
+      "scheduler": "static",
+      "launch": {
+        "kind": "swapped",
+        "kernel": "KernelW6A8_128x8StaticCooperative",
+        "sm_count": "sm_count"
+      }
+    },
+    {
+      "id": 1,
+      "name": "swapped_128x8_stage4_static_cooperative",
+      "tile": [
+        128,
+        8,
+        128
+      ],
+      "stages": 4,
+      "scheduler": "static",
+      "launch": {
+        "kind": "swapped",
+        "kernel": "KernelW6A8_128x8Stage4StaticCooperative",
+        "sm_count": "sm_count"
+      }
+    },
+    {
+      "id": 2,
+      "name": "swapped_128x8_stage5_static_cooperative",
+      "tile": [
+        128,
+        8,
+        128
+      ],
+      "stages": 5,
+      "scheduler": "static",
+      "launch": {
+        "kind": "swapped",
+        "kernel": "KernelW6A8_128x8Stage5StaticCooperative",
+        "sm_count": "sm_count"
+      }
+    },
+    {
+      "id": 3,
+      "name": "swapped_128x8_stream_k",
+      "tile": [
+        128,
+        8,
+        128
+      ],
+      "stages": "auto",
+      "scheduler": "stream_k",
+      "launch": {
+        "kind": "swapped",
+        "kernel": "KernelW6A8_128x8StreamK",
+        "sm_count": "sm_count"
+      },
+      "disabled_stream_k_fallback": 1
+    },
+    {
+      "id": 4,
+      "name": "swapped_128x16_stage4_static_cooperative",
+      "tile": [
+        128,
+        16,
+        128
+      ],
+      "stages": 4,
+      "scheduler": "static",
+      "launch": {
+        "kind": "swapped",
+        "kernel": "KernelW6A8_128x16Stage4StaticCooperative",
+        "sm_count": "sm_count"
+      }
+    },
+    {
+      "id": 5,
+      "name": "swapped_64x16x256_static_pingpong",
+      "tile": [
+        64,
+        16,
+        256
+      ],
+      "stages": "auto",
+      "scheduler": "static",
+      "launch": {
+        "kind": "swapped",
+        "kernel": "KernelW6A8_64x16x256StaticPingpong",
+        "sm_count": "sm_count"
+      }
+    },
+    {
+      "id": 6,
+      "name": "normal_64x64x128_pingpong",
+      "tile": [
+        64,
+        64,
+        128
+      ],
+      "stages": "auto",
+      "scheduler": "default",
+      "launch": {
+        "kind": "normal",
+        "kernel": "KernelW6A8_64x64x128Pingpong",
+        "sm_count": "0"
+      }
+    },
+    {
+      "id": 7,
+      "name": "normal_64x64x128_static_pingpong",
+      "tile": [
+        64,
+        64,
+        128
+      ],
+      "stages": "auto",
+      "scheduler": "static",
+      "launch": {
+        "kind": "normal",
+        "kernel": "KernelW6A8_64x64x128StaticPingpong",
+        "sm_count": "sm_count"
+      }
+    },
+    {
+      "id": 8,
+      "name": "normal_64x64x128_stage4_static_pingpong",
+      "tile": [
+        64,
+        64,
+        128
+      ],
+      "stages": 4,
+      "scheduler": "static",
+      "launch": {
+        "kind": "normal",
+        "kernel": "KernelW6A8_64x64x128Stage4StaticPingpong",
+        "sm_count": "sm_count"
+      }
+    },
+    {
+      "id": 9,
+      "name": "normal_64x64x256_static_pingpong",
+      "tile": [
+        64,
+        64,
+        256
+      ],
+      "stages": "auto",
+      "scheduler": "static",
+      "launch": {
+        "kind": "normal",
+        "kernel": "KernelW6A8_64x64x256StaticPingpong",
+        "sm_count": "sm_count"
+      }
+    },
+    {
+      "id": 10,
+      "name": "normal_64x128x128_pingpong",
+      "tile": [
+        64,
+        128,
+        128
+      ],
+      "stages": "auto",
+      "scheduler": "default",
+      "launch": {
+        "kind": "normal",
+        "kernel": "KernelW6A8_64x128x128Pingpong",
+        "sm_count": "0"
+      }
+    },
+    {
+      "id": 11,
+      "name": "normal_64x128x128_static_pingpong",
+      "tile": [
+        64,
+        128,
+        128
+      ],
+      "stages": "auto",
+      "scheduler": "static",
+      "launch": {
+        "kind": "normal",
+        "kernel": "KernelW6A8_64x128x128StaticPingpong",
+        "sm_count": "sm_count"
+      }
+    },
+    {
+      "id": 12,
+      "name": "normal_128x128x128_pingpong",
+      "tile": [
+        128,
+        128,
+        128
+      ],
+      "stages": "auto",
+      "scheduler": "default",
+      "launch": {
+        "kind": "normal_128",
+        "kernel": "Pingpong"
+      }
+    },
+    {
+      "id": 13,
+      "name": "normal_128x128x128_cooperative",
+      "tile": [
+        128,
+        128,
+        128
+      ],
+      "stages": "auto",
+      "scheduler": "default",
+      "launch": {
+        "kind": "normal_128",
+        "kernel": "Cooperative"
+      }
+    },
+    {
+      "id": 14,
+      "name": "normal_128x128x128_static_pingpong",
+      "tile": [
+        128,
+        128,
+        128
+      ],
+      "stages": "auto",
+      "scheduler": "static",
+      "launch": {
+        "kind": "normal_128",
+        "kernel": "StaticPingpong"
+      }
+    },
+    {
+      "id": 15,
+      "name": "normal_128x128x128_static_cooperative",
+      "tile": [
+        128,
+        128,
+        128
+      ],
+      "stages": "auto",
+      "scheduler": "static",
+      "launch": {
+        "kind": "normal_128",
+        "kernel": "StaticCooperative"
+      }
+    },
+    {
+      "id": 16,
+      "name": "normal_128x128x128_stream_k",
+      "tile": [
+        128,
+        128,
+        128
+      ],
+      "stages": "auto",
+      "scheduler": "stream_k",
+      "launch": {
+        "kind": "normal_128",
+        "kernel": "StreamK"
+      }
+    },
+    {
+      "id": 17,
+      "name": "swapped_64x32x128_pingpong",
+      "tile": [
+        64,
+        32,
+        128
+      ],
+      "stages": "auto",
+      "scheduler": "default",
+      "launch": {
+        "kind": "swapped",
+        "kernel": "KernelW6A8_64x32x128Pingpong",
+        "sm_count": "0"
+      }
+    },
+    {
+      "id": 18,
+      "name": "swapped_64x32x128_stage3_pingpong",
+      "tile": [
+        64,
+        32,
+        128
+      ],
+      "stages": 3,
+      "scheduler": "default",
+      "launch": {
+        "kind": "swapped",
+        "kernel": "KernelW6A8_64x32x128Stage3Pingpong",
+        "sm_count": "0"
+      }
+    },
+    {
+      "id": 19,
+      "name": "swapped_64x32x128_static_pingpong",
+      "tile": [
+        64,
+        32,
+        128
+      ],
+      "stages": "auto",
+      "scheduler": "static",
+      "launch": {
+        "kind": "swapped",
+        "kernel": "KernelW6A8_64x32x128StaticPingpong",
+        "sm_count": "sm_count"
+      }
+    },
+    {
+      "id": 20,
+      "name": "swapped_64x32x128_stage3_static_pingpong",
+      "tile": [
+        64,
+        32,
+        128
+      ],
+      "stages": 3,
+      "scheduler": "static",
+      "launch": {
+        "kind": "swapped",
+        "kernel": "KernelW6A8_64x32x128Stage3StaticPingpong",
+        "sm_count": "sm_count"
+      }
+    },
+    {
+      "id": 21,
+      "name": "swapped_64x32x256_pingpong",
+      "tile": [
+        64,
+        32,
+        256
+      ],
+      "stages": "auto",
+      "scheduler": "default",
+      "launch": {
+        "kind": "swapped",
+        "kernel": "KernelW6A8_64x32x256Pingpong",
+        "sm_count": "0"
+      }
+    },
+    {
+      "id": 22,
+      "name": "swapped_64x32x256_stage2_pingpong",
+      "tile": [
+        64,
+        32,
+        256
+      ],
+      "stages": 2,
+      "scheduler": "default",
+      "launch": {
+        "kind": "swapped",
+        "kernel": "KernelW6A8_64x32x256Stage2Pingpong",
+        "sm_count": "0"
+      }
+    },
+    {
+      "id": 23,
+      "name": "swapped_64x32x256_static_pingpong",
+      "tile": [
+        64,
+        32,
+        256
+      ],
+      "stages": "auto",
+      "scheduler": "static",
+      "launch": {
+        "kind": "swapped",
+        "kernel": "KernelW6A8_64x32x256StaticPingpong",
+        "sm_count": "sm_count"
+      }
+    },
+    {
+      "id": 24,
+      "name": "swapped_64x32x256_stage2_static_pingpong",
+      "tile": [
+        64,
+        32,
+        256
+      ],
+      "stages": 2,
+      "scheduler": "static",
+      "launch": {
+        "kind": "swapped",
+        "kernel": "KernelW6A8_64x32x256Stage2StaticPingpong",
+        "sm_count": "sm_count"
+      }
+    },
+    {
+      "id": 25,
+      "name": "swapped_128x32_cooperative",
+      "tile": [
+        128,
+        32,
+        128
+      ],
+      "stages": "auto",
+      "scheduler": "default",
+      "launch": {
+        "kind": "swapped",
+        "kernel": "KernelW6A8_128x32Cooperative",
+        "sm_count": "0"
+      }
+    },
+    {
+      "id": 26,
+      "name": "swapped_128x32_stage2_cooperative",
+      "tile": [
+        128,
+        32,
+        128
+      ],
+      "stages": 2,
+      "scheduler": "default",
+      "launch": {
+        "kind": "swapped",
+        "kernel": "KernelW6A8_128x32Stage2Cooperative",
+        "sm_count": "0"
+      }
+    },
+    {
+      "id": 27,
+      "name": "swapped_128x32_static_cooperative",
+      "tile": [
+        128,
+        32,
+        128
+      ],
+      "stages": "auto",
+      "scheduler": "static",
+      "launch": {
+        "kind": "swapped",
+        "kernel": "KernelW6A8_128x32StaticCooperative",
+        "sm_count": "sm_count"
+      }
+    },
+    {
+      "id": 28,
+      "name": "swapped_128x32_stage2_static_cooperative",
+      "tile": [
+        128,
+        32,
+        128
+      ],
+      "stages": 2,
+      "scheduler": "static",
+      "launch": {
+        "kind": "swapped",
+        "kernel": "KernelW6A8_128x32Stage2StaticCooperative",
+        "sm_count": "sm_count"
+      }
+    },
+    {
+      "id": 29,
+      "name": "swapped_64x16x128_stage3_static_pingpong",
+      "tile": [
+        64,
+        16,
+        128
+      ],
+      "stages": 3,
+      "scheduler": "static",
+      "launch": {
+        "kind": "swapped",
+        "kernel": "KernelW6A8_64x16x128Stage3StaticPingpong",
+        "sm_count": "sm_count"
+      }
+    }
+  ],
+  "exact_rules": [
+    {
+      "if": "target_nk && m == 1",
+      "then": [
+        {
+          "if": "n == 8192 && k == 5120",
+          "then": [
+            {
+              "config": 1,
+              "swizzle": "4",
+              "raster": "RasterOrder::Heuristic"
+            }
+          ]
+        },
+        {
+          "if": "n == 5120 && k == 3072",
+          "then": [
+            {
+              "config": 2,
+              "swizzle": "1",
+              "raster": "RasterOrder::AlongM"
+            }
+          ]
+        },
+        {
+          "if": "n == 7168 && k == 5120",
+          "then": [
+            {
+              "config": 0,
+              "swizzle": "1",
+              "raster": "RasterOrder::Heuristic"
+            }
+          ]
+        },
+        {
+          "if": "n == 17408 && k == 5120",
+          "then": [
+            {
+              "config": 0,
+              "swizzle": "1",
+              "raster": "RasterOrder::AlongM"
+            }
+          ]
+        },
+        {
+          "if": "stream_k_enabled()",
+          "then": [
+            {
+              "config": 3,
+              "swizzle": "2",
+              "raster": "RasterOrder::AlongM"
+            }
+          ]
+        },
+        {
+          "config": 1,
+          "swizzle": "2",
+          "raster": "RasterOrder::AlongM"
+        }
+      ]
+    },
+    {
+      "if": "target_nk && m == 16",
+      "then": [
+        {
+          "if": "n == 8192 && k == 5120",
+          "then": [
+            {
+              "config": 29,
+              "swizzle": "2",
+              "raster": "RasterOrder::AlongN"
+            }
+          ]
+        },
+        {
+          "if": "n == 5120 && k == 3072",
+          "then": [
+            {
+              "config": 29,
+              "swizzle": "2",
+              "raster": "RasterOrder::AlongN"
+            }
+          ]
+        },
+        {
+          "if": "n == 7168 && k == 5120",
+          "then": [
+            {
+              "config": 29,
+              "swizzle": "1",
+              "raster": "RasterOrder::AlongM"
+            }
+          ]
+        },
+        {
+          "if": "n == 17408 && k == 5120",
+          "then": [
+            {
+              "config": 4,
+              "swizzle": "1",
+              "raster": "RasterOrder::AlongM"
+            }
+          ]
+        },
+        {
+          "if": "n == 5120 && k == 8704",
+          "then": [
+            {
+              "config": 29,
+              "swizzle": "2",
+              "raster": "RasterOrder::AlongN"
+            }
+          ]
+        },
+        {
+          "config": 5,
+          "swizzle": "2",
+          "raster": "RasterOrder::AlongM"
+        }
+      ]
+    },
+    {
+      "if": "target_nk && m == 24",
+      "then": [
+        {
+          "if": "(n == 5120 && k == 3072) || (n == 5120 && k == 8704)",
+          "then": [
+            {
+              "config": 17,
+              "swizzle": "1",
+              "raster": "RasterOrder::AlongM"
+            }
+          ]
+        },
+        {
+          "if": "(n == 8192 && k == 5120) || (n == 7168 && k == 5120)",
+          "then": [
+            {
+              "config": 25,
+              "swizzle": "1",
+              "raster": "RasterOrder::AlongM"
+            }
+          ]
+        },
+        {
+          "if": "n == 17408 && k == 5120",
+          "then": [
+            {
+              "config": 25,
+              "swizzle": "1",
+              "raster": "RasterOrder::AlongN"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "if": "target_nk && m == 32",
+      "then": [
+        {
+          "if": "n == 8192 && k == 5120",
+          "then": [
+            {
+              "config": 25,
+              "swizzle": "1",
+              "raster": "RasterOrder::AlongM"
+            }
+          ]
+        },
+        {
+          "if": "n == 5120 && k == 3072",
+          "then": [
+            {
+              "config": 23,
+              "swizzle": "2",
+              "raster": "RasterOrder::AlongM"
+            }
+          ]
+        },
+        {
+          "if": "n == 7168 && k == 5120",
+          "then": [
+            {
+              "config": 25,
+              "swizzle": "1",
+              "raster": "RasterOrder::AlongM"
+            }
+          ]
+        },
+        {
+          "if": "n == 17408 && k == 5120",
+          "then": [
+            {
+              "config": 25,
+              "swizzle": "1",
+              "raster": "RasterOrder::Heuristic"
+            }
+          ]
+        },
+        {
+          "config": 17,
+          "swizzle": "1",
+          "raster": "RasterOrder::Heuristic"
+        }
+      ]
+    },
+    {
+      "if": "target_nk && m == 40 && n == 5120 && k == 3072",
+      "then": [
+        {
+          "config": 18,
+          "swizzle": "1",
+          "raster": "RasterOrder::AlongM"
+        }
+      ]
+    },
+    {
+      "if": "target_nk && m == 48 && n == 5120 && k == 3072",
+      "then": [
+        {
+          "config": 20,
+          "swizzle": "4",
+          "raster": "RasterOrder::AlongN"
+        }
+      ]
+    },
+    {
+      "if": "target_nk && m == 64",
+      "then": [
+        {
+          "if": "n == 5120 && k == 3072",
+          "then": [
+            {
+              "config": 8,
+              "swizzle": "1",
+              "raster": "RasterOrder::AlongM"
+            }
+          ]
+        },
+        {
+          "config": 7,
+          "swizzle": "n == 5120 && k == 8704 ? 8 : 2",
+          "raster": "RasterOrder::AlongM"
+        }
+      ]
+    },
+    {
+      "if": "target_nk && m == 96",
+      "then": [
+        {
+          "if": "n == 17408 && k == 5120",
+          "then": [
+            {
+              "config": 10,
+              "swizzle": "4",
+              "raster": "RasterOrder::AlongM"
+            }
+          ]
+        },
+        {
+          "config": 11,
+          "swizzle": "n == 8192 ? 2 : 1",
+          "raster": "RasterOrder::AlongM"
+        }
+      ]
+    },
+    {
+      "if": "target_nk && m == 512",
+      "then": [
+        {
+          "if": "n == 8192 && k == 5120",
+          "then": [
+            {
+              "config": 12,
+              "swizzle": "4",
+              "raster": "RasterOrder::AlongM"
+            }
+          ]
+        },
+        {
+          "if": "n == 5120 && k == 3072",
+          "then": [
+            {
+              "config": 14,
+              "swizzle": "8",
+              "raster": "RasterOrder::AlongM"
+            }
+          ]
+        },
+        {
+          "if": "n == 7168 && k == 5120",
+          "then": [
+            {
+              "config": 16,
+              "swizzle": "1",
+              "raster": "RasterOrder::AlongN"
+            }
+          ]
+        },
+        {
+          "if": "n == 17408 && k == 5120",
+          "then": [
+            {
+              "config": 16,
+              "swizzle": "8",
+              "raster": "RasterOrder::AlongN"
+            }
+          ]
+        },
+        {
+          "config": 12,
+          "swizzle": "1",
+          "raster": "RasterOrder::AlongM"
+        }
+      ]
+    },
+    {
+      "if": "target_nk && m == 1024",
+      "then": [
+        {
+          "if": "n == 8192 && k == 5120",
+          "then": [
+            {
+              "config": 16,
+              "swizzle": "1",
+              "raster": "RasterOrder::AlongM"
+            }
+          ]
+        },
+        {
+          "if": "n == 7168 && k == 5120",
+          "then": [
+            {
+              "config": 12,
+              "swizzle": "4",
+              "raster": "RasterOrder::AlongM"
+            }
+          ]
+        },
+        {
+          "if": "n == 17408 && k == 5120",
+          "then": [
+            {
+              "config": 16,
+              "swizzle": "1",
+              "raster": "RasterOrder::AlongM"
+            }
+          ]
+        },
+        {
+          "config": 12,
+          "swizzle": "1",
+          "raster": "RasterOrder::AlongM"
+        }
+      ]
+    },
+    {
+      "if": "target_nk && m == 2048",
+      "then": [
+        {
+          "if": "(n == 8192 && k == 5120) || (n == 7168 && k == 5120)",
+          "then": [
+            {
+              "config": 16,
+              "swizzle": "n == 7168 ? 2 : 1",
+              "raster": "RasterOrder::AlongM"
+            }
+          ]
+        },
+        {
+          "if": "n == 17408 && k == 5120",
+          "then": [
+            {
+              "config": 12,
+              "swizzle": "1",
+              "raster": "RasterOrder::AlongN"
+            }
+          ]
+        },
+        {
+          "config": 13,
+          "swizzle": "1",
+          "raster": "RasterOrder::AlongM"
+        }
+      ]
+    },
+    {
+      "if": "target_nk && m == 4096",
+      "then": [
+        {
+          "if": "n == 8192 && k == 5120",
+          "then": [
+            {
+              "config": 15,
+              "swizzle": "1",
+              "raster": "RasterOrder::AlongM"
+            }
+          ]
+        },
+        {
+          "if": "n == 5120 && k == 3072",
+          "then": [
+            {
+              "config": 14,
+              "swizzle": "2",
+              "raster": "RasterOrder::AlongM"
+            }
+          ]
+        },
+        {
+          "if": "n == 7168 && k == 5120",
+          "then": [
+            {
+              "config": 13,
+              "swizzle": "1",
+              "raster": "RasterOrder::AlongM"
+            }
+          ]
+        },
+        {
+          "if": "n == 17408 && k == 5120",
+          "then": [
+            {
+              "config": 12,
+              "swizzle": "1",
+              "raster": "RasterOrder::AlongN"
+            }
+          ]
+        },
+        {
+          "config": 14,
+          "swizzle": "1",
+          "raster": "RasterOrder::AlongM"
+        }
+      ]
+    },
+    {
+      "if": "target_nk && m == 8192",
+      "then": [
+        {
+          "if": "n == 7168 && k == 5120",
+          "then": [
+            {
+              "config": 12,
+              "swizzle": "1",
+              "raster": "RasterOrder::AlongN"
+            }
+          ]
+        },
+        {
+          "if": "n == 5120 && k == 8704",
+          "then": [
+            {
+              "if": "current_output_dtype == at::kHalf",
+              "then": [
+                {
+                  "config": 12,
+                  "swizzle": "1",
+                  "raster": "RasterOrder::AlongM"
+                }
+              ]
+            },
+            {
+              "config": 16,
+              "swizzle": "1",
+              "raster": "RasterOrder::AlongN"
+            }
+          ]
+        },
+        {
+          "config": 14,
+          "swizzle": "1",
+          "raster": "(n == 5120 && k == 3072) ? RasterOrder::AlongM : RasterOrder::AlongN"
+        }
+      ]
+    }
+  ]
+}

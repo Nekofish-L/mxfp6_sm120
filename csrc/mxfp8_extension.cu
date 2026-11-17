@@ -7,6 +7,7 @@
 #include "mxfp8_gemm/validation.hpp"
 #include "mxfp8_gemm/workspace.hpp"
 #include "mxfp8_gemm/pdl.cuh"
+#include "mxfp8_gemm/tactic.hpp"
 
 #define MXFP8_ARGS at::Tensor const& a, at::Tensor const& b, at::Tensor const& sa, at::Tensor const& sb, at::Tensor const& out
 #define MXFP8_NATIVE(NAME) namespace NAME { int64_t mm_out(MXFP8_ARGS, int64_t tactic, int64_t splits, int64_t swizzle, std::optional<at::Tensor> workspace, bool query, int64_t sms); }
@@ -39,28 +40,12 @@ WorkspacePool& workspace_pool() { static WorkspacePool pool; return pool; }
 #include "mxfp8_gemm/dispatch_policy.hpp"
 
 namespace mxfp8_runtime {
-bool core_tactic(int64_t t) { return t >= 0 && t < 96 && t != 30 && !(t >= 80 && t < 86); }
-bool release_direct_base(int64_t t) {
-  return (t >= 43 && t <= 50) || (t >= 58 && t <= 69) || (t >= 86 && t <= 95);
-}
-bool valid_tactic(int64_t t) {
-  if (core_tactic(t)) return true;
-  if (t >= 300 && t < 500) return core_tactic(t % 100) && !(t % 100 >= 33 && t % 100 <= 36);
-  if (t >= 800 && t < 1100) return t % 100 < 33 && t % 100 != 30;
-  if (t >= 1300 && t < 1600) return release_direct_base(t % 100);
-#define MXFP8_FAMILY(NAME, BASE, COUNT, RETURN) if (t >= BASE && t < BASE + COUNT) return true;
-#include "mxfp8_gemm/registry.def"
-#undef MXFP8_FAMILY
-  return false;
-}
-bool stream_k_tactic(int64_t t) {
-  if ((t >= 300 && t < 500) || (t >= 800 && t < 1100)) t %= 100;
-  return (t >= 12 && t <= 16) || t == 39 || t == 40 || t == 42 || t == 51 || t == 57;
-}
 std::vector<int64_t> tactics(bool stream_k_only) {
   std::vector<int64_t> result;
-  for (int64_t t = 0; t < 1600; ++t)
-    if (valid_tactic(t) && (!stream_k_only || stream_k_tactic(t))) result.push_back(t);
+  for (int64_t t = 0; t < 1600; ++t) {
+    const auto decoded = decode_tactic(t);
+    if (decoded.backend != Backend::invalid && (!stream_k_only || decoded.stream_k)) result.push_back(t);
+  }
   return result;
 }
 std::vector<int64_t> config_values(LaunchConfig c) { return {c.tactic,c.splits,c.swizzle,c.sms}; }
@@ -70,32 +55,33 @@ std::string policy_hash() { return policy_sha256; }
 LaunchConfig resolve(at::Tensor const& a, at::Tensor const& b, int64_t tactic, int64_t splits, int64_t swizzle, int64_t sms) {
   TORCH_CHECK(a.dim()==2 && b.dim()==2, "Expected CUDA matrices");
   auto config = tactic == -1 ? select_config(a.size(0),b.size(0),a.size(1)) : LaunchConfig{tactic,splits,swizzle,sms};
-  TORCH_CHECK(valid_tactic(config.tactic), "Unknown MXFP8 tactic: ",config.tactic);
+  TORCH_CHECK(decode_tactic(config.tactic).backend != Backend::invalid, "Unknown MXFP8 tactic: ",config.tactic);
   return config;
 }
 
 int64_t dispatch_out(MXFP8_ARGS, LaunchConfig c, std::optional<at::Tensor> workspace, bool query) {
   mxfp8_common::validate(a,b,sa,sb,out);
   mxfp8_common::validate_scheduler(c.splits,c.swizzle);
-  auto t=c.tactic;
-#define CALL(NS) return NS::mm_out(a,b,sa,sb,out,t,c.splits,c.swizzle,workspace,query,c.sms)
-  if (t >= 1300 && t < 1600) { CALL(mxfp8_release_direct); }
-  if (t >= 800 && t < 1100) { CALL(mxfp8_release_core); }
+  const auto decoded = decode_tactic(c.tactic);
+  switch (decoded.backend) {
+#define CALL(BACKEND, NS) case Backend::BACKEND: return NS::mm_out(a,b,sa,sb,out,decoded.argument,c.splits,c.swizzle,workspace,query,c.sms)
+    CALL(core, mxfp8_sm120);
+    CALL(direct, mxfp8_direct);
+    CALL(dynamic, mxfp8_dynamic);
+    CALL(extra, mxfp8_extra);
+    CALL(wide, mxfp8_wide);
+    CALL(release_core, mxfp8_release_core);
+    CALL(release_direct, mxfp8_release_direct);
+#undef CALL
 #define MXFP8_FAMILY(NAME, BASE, COUNT, RETURN) \
-  if (t >= BASE && t < BASE + COUNT) { if (!query) mxfp8_##NAME::mm_out(a,b,sa,sb,out,t-BASE); return 0; }
+    case Backend::NAME: if (!query) mxfp8_##NAME::mm_out(a,b,sa,sb,out,decoded.argument); return 0;
 #include "mxfp8_gemm/registry.def"
 #undef MXFP8_FAMILY
-  auto base = t >= 300 && t < 500 ? t % 100 : t;
-  if (base >= 33 && base <= 36) {
-    if (!query) mxfp8_sm120::gemv_out(a,b,sa,sb,out,int64_t(1) << (base-33));
-    return 0;
+    case Backend::gemv:
+      if (!query) mxfp8_sm120::gemv_out(a,b,sa,sb,out,decoded.argument);
+      return 0;
+    default: TORCH_CHECK(false, "Unknown MXFP8 tactic: ", c.tactic);
   }
-  if (base >= 70 && base <= 79) { CALL(mxfp8_dynamic); }
-  if (base >= 51 && base <= 57) { CALL(mxfp8_extra); }
-  if (base >= 43) { CALL(mxfp8_direct); }
-  if (base >= 37) { CALL(mxfp8_wide); }
-  CALL(mxfp8_sm120);
-#undef CALL
 }
 
 at::Tensor gemm(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at::Tensor const& sb,

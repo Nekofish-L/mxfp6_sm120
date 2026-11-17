@@ -1,4 +1,5 @@
 #pragma once
+#include "mxfp8_gemm/layout.cuh"
 #include "mxfp8_gemm/pdl.cuh"
 // Diagnostic alternative to the 384-thread CUTLASS warp-specialized templates.
 // Uses CUTLASS/CuTe's SM120 block-scaled MMA atom, four warps, cp.async,
@@ -19,13 +20,8 @@ namespace mxfp8_tma_scales {
 using Mma = cute::SM120::BLOCKSCALED::SM120_16x8x32_TN_VS<
     cutlass::float_e4m3_t,cutlass::float_e4m3_t,float,cutlass::float_ue8m0_t,32>;
 
-__device__ __forceinline__ int sf_index(int r,int g,int k) {
-  return (r/128)*(k/128)*512+(g/4)*512+(r%32)*16+((r%128)/32)*4+g%4;
-}
-template<int BK,int Rows>
-__device__ __forceinline__ int sm_index(int r,int c) {
-  return (c/128)*Rows*128+r*128+((c%128)^((r%8)*16));
-}
+using mxfp8_layout::sf_index;
+using mxfp8_layout::tma::sm_index;
 __device__ __forceinline__ void copy16(uint8_t* dst,const uint8_t* src,bool valid) {
   uint32_t addr=static_cast<uint32_t>(__cvta_generic_to_shared(dst));
   asm volatile("cp.async.cg.shared.global [%0], [%1], 16, %2;" ::

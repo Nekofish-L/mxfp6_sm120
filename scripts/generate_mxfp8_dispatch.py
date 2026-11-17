@@ -4,7 +4,55 @@
 import argparse
 import hashlib
 import json
+import re
+import runpy
 from pathlib import Path
+
+
+def unused_families(source, registry, jit_manifest=None):
+    """Conservative reference analysis: retain even shadowed policy leaves."""
+    policy = json.loads(source.read_text())
+    # IDs emitted by the generic fallback below. They currently belong to
+    # core translation units, which are never removed by family pruning.
+    used = {0, 2, 4, 7, 9, 12, 13, 14, 15, 16, 79}
+
+    def visit(config):
+        if isinstance(config, list):
+            used.add(config[0])
+        else:
+            visit(config["le"])
+            visit(config["gt"])
+
+    for region in policy["regions"]:
+        for config in region["configs"]:
+            visit(config)
+    jit_ranges = None
+    if jit_manifest is not None:
+        loader = runpy.run_path(str(Path(__file__).resolve().parents[1]/'python/mxfp6/_mxfp8_config.py'))
+        families = loader['load_manifest'](jit_manifest)['families']
+        jit_ranges = {f['name']: (f['first_tactic'], len(f['configs'])) for f in families}
+    unused = []
+    for name, base, count in re.findall(
+        r"MXFP8_FAMILY\((\w+),\s*(\d+),\s*(\d+),", registry.read_text()
+    ):
+        if jit_ranges is not None:
+            if name not in jit_ranges:
+                continue
+            if jit_ranges[name] != (int(base), int(count)):
+                raise ValueError(f'JIT range disagrees with native registry: {name}')
+        if not used.intersection(range(int(base), int(base) + int(count))):
+            unused.append(name)
+    return unused
+
+
+def generate_registry(source, registry, prune, jit_manifest=None):
+    unused = set(unused_families(source, registry, jit_manifest)) if prune else set()
+    lines = []
+    for line in registry.read_text().splitlines():
+        match = re.match(r"MXFP8_FAMILY\((\w+),", line)
+        if match is None or match[1] not in unused:
+            lines.append(line)
+    return "\n".join(lines) + "\n"
 
 
 def generate(source):
@@ -60,9 +108,26 @@ def generate(source):
 if __name__ == "__main__":
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("source", type=Path)
-    p.add_argument("output", type=Path)
+    p.add_argument("output", type=Path, nargs="?")
+    p.add_argument("--registry-source", type=Path)
+    p.add_argument("--registry-output", type=Path)
+    p.add_argument("--prune-unused-families", action="store_true")
+    p.add_argument("--list-unused-sources", action="store_true")
+    p.add_argument("--jit-manifest", type=Path, help="Only omit families fully covered by this JIT manifest")
     a = p.parse_args()
-    text = generate(a.source)
-    a.output.parent.mkdir(parents=True, exist_ok=True)
-    if not a.output.exists() or a.output.read_text() != text:
-        a.output.write_text(text)
+    if a.list_unused_sources:
+        if a.registry_source is None:
+            p.error("--registry-source is required")
+        print(";".join(f"csrc/mxfp8_{name}.cu" for name in unused_families(a.source, a.registry_source, a.jit_manifest)))
+    else:
+        if a.output is None:
+            p.error("output is required")
+        outputs = {a.output: generate(a.source)}
+        if a.registry_output is not None:
+            if a.registry_source is None:
+                p.error("--registry-source is required")
+            outputs[a.registry_output] = generate_registry(a.source, a.registry_source, a.prune_unused_families, a.jit_manifest)
+        for path, text in outputs.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if not path.exists() or path.read_text() != text:
+                path.write_text(text)

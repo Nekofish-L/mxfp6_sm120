@@ -1,4 +1,5 @@
 #pragma once
+#include "mxfp8_gemm/layout.cuh"
 // Diagnostic alternative to the 384-thread CUTLASS warp-specialized templates.
 // Uses CUTLASS/CuTe's SM120 block-scaled MMA atom, four warps, cp.async,
 // independent CTAs, and direct BF16 stores. No input repacking is required.
@@ -19,13 +20,8 @@ namespace mxfp8_tma_eightwarp {
 using Mma = cute::SM120::BLOCKSCALED::SM120_16x8x32_TN_VS<
     cutlass::float_e4m3_t,cutlass::float_e4m3_t,float,cutlass::float_ue8m0_t,32>;
 
-__device__ __forceinline__ int sf_index(int r,int g,int k) {
-  return (r/128)*(k/128)*512+(g/4)*512+(r%32)*16+((r%128)/32)*4+g%4;
-}
-template<int BK,int Rows>
-__device__ __forceinline__ int sm_index(int r,int c) {
-  return (c/128)*Rows*128+r*128+((c%128)^((r%8)*16));
-}
+using mxfp8_layout::sf_index;
+using mxfp8_layout::tma::sm_index;
 __device__ __forceinline__ void copy16(uint8_t* dst,const uint8_t* src,bool valid) {
   uint32_t addr=static_cast<uint32_t>(__cvta_generic_to_shared(dst));
   asm volatile("cp.async.cg.shared.global [%0], [%1], 16, %2;" ::
@@ -62,119 +58,8 @@ __global__ __launch_bounds__(Warps*32) void gemm(
     const uint8_t* __restrict__ a,const uint8_t* __restrict__ b,
     const uint8_t* __restrict__ sa,const uint8_t* __restrict__ sb,
     __nv_bfloat16* __restrict__ out,int m,int n,int dynamic_k, bool pdl, const __grid_constant__ CUtensorMap ma, const __grid_constant__ CUtensorMap mb) {
-  const int k=FixedK?FixedK:dynamic_k;
-#if defined(__CUDA_ARCH_FEAT_SM120_ALL)
-  extern __shared__ __align__(1024) uint8_t storage[];
-  __shared__ uint64_t barriers[Stages];
-  if(threadIdx.x==0) {
-    for(int i=0;i<Stages;++i) cute::initialize_barrier(barriers[i]);
-    cutlass::arch::fence_barrier_init();
-  }
-  __syncthreads();
-  constexpr int StageBytes=((BM+BN)*(BK+BK/32)+1023)/1024*1024;
-  constexpr int TM=BM/(16*WarpM),TN=BN/(8*Warps/WarpM);
-  int pm=blockIdx.y*BM,pn=blockIdx.x*BN;
-  int lane=threadIdx.x%32,warp=threadIdx.x/32;
-  int wm=(warp%WarpM)*16,wn=(warp/WarpM)*8;
-  int row=lane/4,col=(lane%4)*4;
-  float accum[TM][TN][4]={};
-  mxfp8_runtime::dependent_prologue(pdl);
-#pragma unroll
-  for(int s=0;s<Stages-1;++s)
-    prefetch<BM,BN,BK,Warps>(storage+s*StageBytes,a,b,sa,sb,pm,pn,s*BK,m,n,k,&ma,&mb,barriers+s);
-  for(int start=0,it=0;start<k;start+=BK,++it) {
-    int current=it%Stages;
-    prefetch<BM,BN,BK,Warps>(storage+((it+Stages-1)%Stages)*StageBytes,
-                      a,b,sa,sb,pm,pn,start+(Stages-1)*BK,m,n,k,&ma,&mb,barriers+((it+Stages-1)%Stages));
-    asm volatile("cp.async.wait_group %0;" :: "n"(Stages-1));
-    cute::wait_barrier(barriers[current],(it/Stages)&1);
-    __syncthreads();
-    const uint8_t* sm=storage+current*StageBytes;
-    uint32_t as_pack[TM][BK/128],bs_pack[TN][BK/128];
-    if constexpr(PackedSF) {
-#pragma unroll
-      for(int i=0;i<TM;++i) {
-        int r=wm+i*(16*WarpM)+row+(lane%2)*8;
-#pragma unroll
-        for(int g=0;g<BK/128;++g)
-          as_pack[i][g]=*reinterpret_cast<const uint32_t*>(sm+(BM+BN)*BK+r*(BK/32)+g*4);
-      }
-#pragma unroll
-      for(int j=0;j<TN;++j) {
-        int r=BM+wn+j*(8*Warps/WarpM)+row;
-#pragma unroll
-        for(int g=0;g<BK/128;++g)
-          bs_pack[j][g]=*reinterpret_cast<const uint32_t*>(sm+(BM+BN)*BK+r*(BK/32)+g*4);
-      }
-    }
-#pragma unroll
-    for(int kk=0;kk<BK;kk+=32) {
-      uint32_t av[TM][4],bv[TN][2];
-      uint8_t as[TM],bs[TN];
-#pragma unroll
-      for(int i=0;i<TM;++i) {
-        int r=wm+i*(16*WarpM);
-        const auto* ptr=reinterpret_cast<const cute::uint128_t*>(
-            sm+sm_index<BK,BM>(r+lane%16,kk+(lane/16)*16));
-        cute::SM75_U32x4_LDSM_N::copy(*ptr,av[i][0],av[i][1],av[i][2],av[i][3]);
-        as[i]=PackedSF ? uint8_t(as_pack[i][kk/128] >> ((kk/32%4)*8)) : sm[(BM+BN)*BK+(r+row+(lane%2)*8)*(BK/32)+kk/32];
-      }
-#pragma unroll
-      for(int j=0;j<TN;++j) {
-        int r=wn+j*(8*Warps/WarpM)+row;
-        const auto* ptr=reinterpret_cast<const cute::uint128_t*>(
-            sm+BM*BK+sm_index<BK,BN>(wn+j*(8*Warps/WarpM)+lane%8,kk+((lane/8)%2)*16));
-        cute::SM75_U32x2_LDSM_N::copy(*ptr,bv[j][0],bv[j][1]);
-        bs[j]=PackedSF ? uint8_t(bs_pack[j][kk/128] >> ((kk/32%4)*8)) : sm[(BM+BN)*BK+(BM+r)*(BK/32)+kk/32];
-      }
-#pragma unroll
-      for(int i=0;i<TM;++i) {
-#pragma unroll
-        for(int j=0;j<TN;++j) {
-          auto& c=accum[i][j];
-          Mma::fma(c[0],c[1],c[2],c[3],av[i][0],av[i][1],av[i][2],av[i][3],
-                   bv[j][0],bv[j][1],c[0],c[1],c[2],c[3],as[i],bs[j]);
-        }
-      }
-    }
-    __syncthreads();
-  }
-  asm volatile("cp.async.wait_group 0;");
-  // Drain every prefetched TMA before reusing its pipeline storage.
-  for(int s=0;s<Stages;++s) {
-    int last=(k+BK-1)/BK+Stages-2;
-    if(s<=last) cute::wait_barrier(barriers[s],((last-s)/Stages)&1);
-  }
-  __syncthreads();
-  constexpr int Rows=Swap?BN:BM, Cols=Swap?BM:BN, Stride=Cols+8;
-  // Launch reserves the larger of input stages and the padded output tile.
-  auto* tile=reinterpret_cast<__nv_bfloat16*>(storage);
-#pragma unroll
-  for(int i=0;i<TM;++i) {
-#pragma unroll
-    for(int j=0;j<TN;++j) {
-#pragma unroll
-      for(int v=0;v<4;++v) {
-        int r=wm+i*(16*WarpM)+row+(v/2)*8;
-        int c=wn+j*(8*Warps/WarpM)+(lane%4)*2+v%2;
-        tile[Swap?c*Stride+r:r*Stride+c]=__float2bfloat16_rn(accum[i][j][v]);
-      }
-    }
-  }
-  __syncthreads();
-#pragma unroll
-  for(int i=threadIdx.x;i<Rows*(Cols/8);i+=Warps*32) {
-    int r=i/(Cols/8),c=(i%(Cols/8))*8;
-    int gr=(Swap?pn:pm)+r,gc=(Swap?pm:pn)+c;
-    int out_rows=Swap?n:m, out_cols=Swap?m:n;
-    if(gr<out_rows && gc+7<out_cols) {
-      *reinterpret_cast<uint4*>(out+int64_t(gr)*out_cols+gc)=
-          *reinterpret_cast<const uint4*>(tile+r*Stride+c);
-    }
-  }
-#else
-  asm volatile("trap;");
-#endif
+  constexpr bool ReserveOutput=true;
+#include "mxfp8_gemm/kernels/tma_warp_body.inc"
 }
 
 template<int BM,int BN,int BK,int Stages,bool Swap,int FixedK=0,int WarpM=2,bool PackedSF=false,int Warps=4>
