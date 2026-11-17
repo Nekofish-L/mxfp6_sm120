@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- added opt-in W6A8 `prepare_w6a8(backend="jit")` execution through pinned
+  DeepJIT, sharing owned CUTLASS Params and workspace with prepared AOT;
+
+- added `mxfp6.prepare_w6a8` with fixed-storage output, cached CUTLASS parameters,
+  private workspace, FP16/BF16, PDL and CUDA Graph execution; ordinary and
+  prepared calls share the existing W6A8 selection and Stream-K fallback policy;
+
+- added optional `MXFP8_JIT_UNUSED_FAMILIES` pruning restricted to fully migrated
+  unused families, and backend-aware tactic discovery preserving the full ID
+  portfolio through AOT/JIT preparation;
+
+- added explicit `prepare(backend="auto" | "jit")` selection, preserving the
+  chosen tactic and default AOT behavior; `auto` fills missing migrated AOT
+  tactics through JIT before capture, with no failure-based fallback;
+
+- added opt-in `mxfp8.precompile_jit` and `mxfp8.prepare_jit` for the 88 migrated
+  cp.async tactics, with device-specific handles, concurrent compilation locks,
+  PDL and CUDA Graph lifetime protection; default AOT execution is unchanged;
+
 ## 0.3.1 - 2026-11-16
 
 ### Changed

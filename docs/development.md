@@ -48,6 +48,27 @@ cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
 
+Dense host validation, overrides and operator registration live in
+`csrc/torch_extension.cpp`; template instantiation lives in
+`csrc/dense_kernels.cu`. W6A8 exact-policy edits affect the host selector, while
+candidate/kernel changes rebuild the CUDA unit. Keep CUDA templates out of the
+host binding file so API and policy edits retain the shorter incremental build.
+
+Validate the optional W6A8 JIT path and compare it against AOT on identical
+parameter/workspace addresses:
+
+```bash
+PYTHONPATH=python MXFP6_LIBRARY_PATH="$PWD/build/mxfp6_torch.so" \
+  MXFP6_TEST_JIT=1 pytest -q tests/test_w6a8_jit.py
+python3 benchmarks/compare_w6a8_jit.py --library build/mxfp6_torch.so \
+  --output build/w6a8-jit-comparison.json
+```
+
+`benchmarks/benchmark_w6a8_prepared.py` separately measures host enqueue cost
+and Kineto GPU duration for ordinary versus prepared calls. Its default
+baseline uses persistent workspace planning; `--workspace ephemeral` includes
+ordinary per-call workspace initialization in the execution path.
+
 ## CUTLASS patch queue
 
 CUTLASS is pinned at `e6233cbac5d7c7a865c19c91cd684ceece19513c`.
@@ -105,6 +126,252 @@ third_party/           Pinned CUTLASS submodule
 ```
 
 ## Compatibility
+
+### Dispatch and build iteration
+
+W6A8 candidate IDs, launch metadata and ordered exact-shape rules live in
+`python/mxfp6/w6a8_dispatch.json`. CMake generates the native registration and
+direct launch branches. After editing the manifest, regenerate the checked-in
+Python registry before building:
+
+```bash
+python3 scripts/generate_w6a8_dispatch.py \
+  --python-output python/mxfp6/_w6a8_registry.py
+```
+
+The generator preserves direct calls and branch order. Candidate IDs and the
+ABI remain stable; the existing library fingerprint still invalidates tuning
+cache entries when a rebuilt library changes. Search ordering lives in
+`_autotune_policy.py`, CUDA Graph measurement in `_autotune_benchmark.py`, and
+cache/installation orchestration in `autotune.py`. The refactor preserves the
+candidate shortlists, event boundaries, validation, fallback and selection
+threshold. Tests freeze the original native dispatch tokens; an intentional
+policy change needs fresh correctness/performance evidence before updating
+that snapshot.
+
+Wheel builds select up to eight parallel compiler jobs, bounded by CPU affinity,
+container CPU/memory limits and available memory. The budget allows 24 GiB per
+job and reserves a quarter of available memory. `MAX_JOBS` takes precedence.
+Use `python3 scripts/build_resources.py` to inspect the detected budget. The
+helper does not use `nproc`, whose output can be reduced by `OMP_NUM_THREADS`.
+For incremental development, retain a CMake build directory and build only the
+affected target:
+
+```bash
+cmake --build build --target mxfp6_torch --parallel 8
+cmake --build build --target mxfp8_torch --parallel 8
+```
+
+The full build remains the default. For serving with the builtin W8A8 policy,
+`-DMXFP8_PRUNE_UNUSED_FAMILIES=ON` omits entire family translation units that
+have no policy references, including generic fallbacks. This preserves builtin
+selection for all shapes while reducing explicit tactic availability. Such
+builds intentionally exclude some experimental winners and are unsuitable for
+full-portfolio tuning. Core translation units, dual activation and W6A8 remain
+included. Policy/registry changes trigger regeneration of the source list.
+For wheels, pass the option through `CMAKE_ARGS`:
+
+```bash
+MAX_JOBS=8 CMAKE_ARGS=-DMXFP8_PRUNE_UNUSED_FAMILIES=ON bash scripts/build_wheel.sh
+```
+
+For a hybrid portfolio that retains every existing tactic ID across AOT/JIT,
+use `-DMXFP8_JIT_UNUSED_FAMILIES=ON` instead. This omits only default-unreferenced
+families whose complete native ID range is covered by the JIT manifest (currently
+`cute` and `specialized`, 52 tactics). Other families remain AOT. Query the union
+with `available_configs(backend="auto")` and execute through
+`prepare(..., backend="auto")`; migrated JIT tactics require scheduler parameters
+1/1/0, the matching source checkout and compiler. Default `gemm` and `prepare`
+still use AOT, so an omitted explicit tactic requires opting into auto/JIT.
+The two pruning options are mutually exclusive. The measured 22.3% build-time
+reduction below applies to broader builtin-only pruning, not this hybrid mode.
+
+Inspect builtin reachability with `benchmarks/audit_dispatch.py`; screen all
+available configurations on public model projection shapes with
+`benchmarks/screen_configs.py --backend w8a8 --output build/screen.json`.
+The offline tools load `bench_kineto` from a sibling DeepGEMM checkout by default;
+set `MXFP_BENCH_KINETO` or `--kineto-source` to choose another implementation.
+Add `--flush-l2-mb 256` for the reference helper's 256 MB L2 eviction. These are bounded
+operator measurements, not serving throughput or evidence that a configuration
+is globally useless. Warm-cache and flushed results must remain separate.
+
+For behavior-preserving changes, `scripts/compare_cuda_code.py` compares every
+GPU function's SASS and resource metadata. `benchmarks/compare_refactor.py`
+records full-output comparisons and alternating same-GPU `bench_kineto`
+measurements of Graph replay and eager GPU kernel duration, in warm and cold
+cache regimes. These exclude host launch time and workspace memsets. Set `CUDA_VISIBLE_DEVICES` to an idle GPU,
+and use `MXFP6_LIBRARY_PATH`/`MXFP8_LIBRARY_PATH` to select source-built libraries.
+Retain raw results and inspect per-shape outliers before accepting a change.
+
+`benchmarks/evaluate_shortlist.py` evaluates wave/tile ranking against the
+complete measured W6A8 coarse portfolio without installing a policy. A geometric
+shortlist alone does not model SM120 register pressure, pipeline latency or
+memory traffic; keep exhaustive/offline coverage when evaluating a tighter list.
+
+### Optional DeepJIT backend
+
+`mxfp8.precompile_jit` and `mxfp8.prepare_jit` provide explicit JIT entrypoints
+for the 88 migrated cp.async tactics. Default AOT dispatch remains unchanged.
+They require a matching source checkout, initialized CUTLASS/DeepJIT submodules,
+a C++20 host compiler and NVCC 12.9+. Installed wheels can supply `source_root`;
+the source checkout is not embedded into the wheel. The first opt-in call builds
+a small PyTorch host bridge using the normal Torch extension cache. Default
+AOT imports/builds do not load or compile this bridge.
+
+The backend uses one owned runtime/kernel handle per device and specialization,
+with thread locks and cross-process file locks preventing duplicate compilation.
+Each prepared callable owns its tensors, output and compiled handle. The
+process cache also retains compiled handles until process exit, so releasing a
+prepared callable cannot invalidate a captured Graph. There is no handle eviction;
+applications should precompile a bounded serving portfolio.
+
+Call precompile/prepare before CUDA Graph capture or `torch.compile` tracing.
+Prepared launches perform no source hashing, compilation, cache I/O or output
+allocation. They validate tensor contracts, guard the input device, use its
+current CUDA stream, and support PDL. Each concurrent invocation needs its own
+prepared object/output. Dynamic-K kernels reuse compiled handles; the 2048/2560
+specializations have separate handles. The default AOT candidate set is retained.
+
+Set `MXFP8_JIT_CACHE_DIR` before first use to choose the CUBIN cache (otherwise
+DeepJIT uses `DJ_JIT_CACHE_DIR` or `~/.dj`). Source roots, environment/compiler
+settings and cache paths are fixed for the lifetime of a process: restart after
+editing source or changing settings. Dependency signatures include the complete
+CUTLASS, DeepJIT and local include trees, plus the host bridge source; DeepJIT
+also hashes the compiler, compiler options and generated kernel source. This
+conservatively invalidates unrelated kernels when a header changes.
+
+`experiments/deepjit_probe.py` now benchmarks these same public APIs rather than
+maintaining a second C++ runtime implementation. Initialize the dependency with
+`git submodule update --init third_party/deepjit`, then run
+`python3 experiments/deepjit_probe.py --output build/jit-runtime/probe.json`
+with the native AOT library paths configured. `--source-root` selects the matching
+checkout; `--cache` allows a separate cold-cache or disk-hit experiment. The
+probe records both eager and Graph GPU durations using `bench_kineto`.
+
+The DeepGEMM-pinned DeepJIT revision
+`2efdab421e1cfb17fe8bc20e11ca72aa6d0e6c43` uses explicit `120a` architecture and
+PTXAS register-usage level 5 to match AOT, overriding its `120f`/level-10 defaults.
+Its parser rejects quoted includes, so local device helpers are inlined while
+external dependency trees are hashed separately. Each CUBIN contains one kernel.
+Tuning decision persistence remains separate in `_autotune_cache.py`; compiling
+a candidate does not select it or install an autotune result.
+
+### Device kernels and launch adapters
+
+The `cute_4warp`, `specialized`, `vector_store`, `cache_hint`, `eightwarp` and
+`occupancy` families keep their device implementation under
+`csrc/include/mxfp8_gemm/kernels/`. Their host adapters are generated under the build directory from
+`python/mxfp6/mxfp8_cp_async.json`; the handwritten host headers are removed. Both AOT and the optional
+JIT experiment consume the same device source.
+
+`kernels/async_pipeline.cuh` owns their shared asynchronous copies and prefetch
+loops. Compile-time thread count and cache policy preserve the 256-thread
+`eightwarp` path and the `.ca` 16-byte copies in `cache_hint`; the other families
+retain 128 threads and `.cg` copies. Scale copies remain `.ca` in all families.
+The six previous copies of this pipeline are removed. `cp_async_body.inc`
+also shares their MMA mainloop and scalar/vector epilogues; only the existing
+kernel entries and compile-time policies remain family-specific. It expands
+inside each entry to preserve the original parameter/restrict scope: extracting
+a separate force-inlined device function changed register allocation. Keep this
+include free of `#pragma once`, since multiple entries can use it in one TU.
+Tactic IDs, launch geometry and default dispatch remain unchanged.
+
+Five TMA families (`fewwarp`, `oddwarp`, `oddrotate`, `tma256` and
+`eightwarp`) share `kernels/tma_warp_body.inc`. The first three also share
+`tma_warp_launch.inc`. These expand in the original kernel entry and family
+namespace, respectively, preserving kernel signatures and fixed-K specializations.
+Each family retains its prefetch implementation, configuration switch and launch
+resource policy. `tma256` fixes the warp count to four; `eightwarp` reserves the
+larger of pipeline and output storage, while the others require the output to
+fit within the pipeline storage. The includes deliberately have no include
+guards; shared source does not merge compiled tactics.
+
+### Native tactic routing
+
+`mxfp8_gemm/tactic.hpp` decodes a stable tactic ID into its backend, launch
+argument and Stream-K capability. Availability enumeration, explicit-ID validation
+and native execution consume this same description. Family-local IDs still come
+from `registry.def`; replicated native tactics retain their full encoded ID,
+and GEMV receives its row count. Pruned builds use the generated registry, so
+omitted families remain unavailable. Shape policy selection is separate and
+unchanged. The CPU routing snapshot covers every ID and gap in both full and
+pruned builds, including signed integer extremes.
+
+### Shared launch and configuration descriptions
+
+The first six migrated families cover 88 stable tactics. Their manifest records
+local IDs, tiles, stages, swap/warp/scale layout, thread count, fixed-K policy
+and shared-memory policy. `_mxfp8_config.py` resolves the descriptors for build
+and JIT use; it does not change default dispatch or runtime availability. Tactics
+outside this manifest still use their existing implementation, and a pruned
+build may omit some of the described families.
+
+`generate_mxfp8_configs.py` checks the manifest ranges against `registry.def`
+and emits the family adapters. `mxfp8_gemm/launch.cuh` owns shared-memory opt-in,
+stream selection, PDL launch, swapped operand mapping and fixed-K dispatch.
+Validation and the device guard remain at each operator entry, before any
+launch. The generated templates preserve dynamic K and the 2048/2560
+specializations, including the original 256-thread and output-storage rules.
+Generated headers are build artifacts; edit the manifest rather than keeping
+another copy of configuration switches. Unchanged outputs retain their mtime,
+and a generation stamp avoids repeated builds after metadata-only edits.
+
+The optional probe now obtains both its kernel template expression and launch
+resources from that same manifest. For example:
+
+```bash
+python3 experiments/deepjit_probe.py --tactic 520 --shape 32 512 2048 \
+  --output build/host-refactor/jit-520.json
+```
+
+The probe accepts the 88 described tactics, positive M, and N/K divisible
+by 128. The explicit prepared JIT API uses the same contract, with BF16 output
+and splits/swizzle/sms fixed to 1/1/0. Opt-in `prepare(..., backend="auto")` uses JIT only when the same selected
+tactic is absent from AOT; the default backend remains `aot`.
+
+### Refactor validation (2026-11-16)
+
+The [validation receipt](../benchmarks/results/refactor_validation_20261116.json)
+records the unchanged default dispatch, device-code comparisons, real-shape
+coverage and `bench_kineto` measurements on RTX 5090 / CUDA 13.0. The full build
+preserves all 312 W6A8 and 861 W8A8 device functions and their resource usage.
+All 32 W6A8 and 23 W8A8 comparison cases produce bitwise identical outputs.
+Graph warm-cache median changes are -0.01% and -0.02%; maximum increases are
+0.58% and 0.28%. Cold-cache Graph maximum increases are 1.16% and 1.25%.
+These are measured samples, not a guarantee for every possible workload.
+
+The default W8A8 policy reaches 50 of 726 tactics across 36,400 boundary cells,
+and selects 33 on 260 model shapes. However, bounded Kineto sweeps find 25
+warm-cache and 30 cold-cache winning tactic IDs outside that reachable set.
+Do not equate default-unreachable tactics with useless tuning candidates.
+The geometric W6A8 shortlist also misses measured winners (up to 65.16%
+regret for a 12-ID shortlist), so it is not enabled in production.
+
+Optional family pruning reduces the W8A8 DSO from 44,669,688 to 24,471,496
+bytes and retains 329 identical device functions. It remains disabled by
+default because explicit tuning configurations disappear. A later same-source clean build comparison (Release, eight jobs, W8A8
+target only) took 454.5 seconds for full AOT and 353.4 seconds for family pruning,
+a 22.3% reduction. This is one sequential sample per mode with uncontrolled
+filesystem caches, excluding configure time; it is not a wheel build benchmark.
+Opt-in hybrid preparation restores omitted migrated tactics only; other omitted
+families still require the full build. The isolated DeepJIT probe produces
+identical SASS/resources and outputs for one tactic: cold compile/load takes
+2.22 seconds, a new-process disk hit about 0.65 ms, and cached Graph kernel
+medians are 8.698 us (AOT) versus 8.690 us (JIT). This establishes feasibility
+for a hybrid path. The subsequent explicit prepared JIT API is validated
+separately in the same receipt; automatic fallback/default AOT pruning remains
+disabled.
+
+### Remaining refactor scope
+
+The hybrid portfolio preserves tactic IDs by retaining unmigrated families in
+AOT. It does not finish JIT migration of the TMA/CUTLASS families or provide
+per-tactic AOT pruning. Those changes need separate compiler/cache, Graph and
+resource validation. The SM120 shape-policy cost model is also unfinished:
+the geometric Top-12 shortlist still misses measured winners, so default
+selection remains unchanged. Build speedups for the conservative JIT-covered
+mode require a separate clean-build comparison; do not reuse the builtin-only
+pruning measurement for it.
 
 ### Project scope
 

@@ -80,6 +80,56 @@ config = mxfp6.warmup_w6a8(
 See [Autotuning](autotuning.md) before enabling first-use profiling in a
 serving worker.
 
+## Prepared execution
+
+For fixed shapes and tensor storage, prepare the CUTLASS parameters once:
+
+```python
+run = mxfp6.prepare_w6a8(
+    quantized_a, packed_weight, out_dtype=torch.bfloat16, pdl=True
+)
+output = run()
+print(run.config, run.backend)
+```
+
+Preparation uses the same autotune/override/built-in selection as `gemm_w6a8`.
+An explicit `config=mxfp6.W6A8Config(id, swizzle, raster_order)` bypasses
+selection. Disabling Stream-K preserves the regular path's fallbacks, including
+ID 3 to 1 and ID 16 to 12.
+
+The callable owns one output, cached CUTLASS parameters and a private workspace;
+it does not use the shared workspace planner. Every call overwrites that output.
+Operand contents may change in place, but storage, shapes, strides and dtypes
+must remain unchanged. Use separate prepared objects for concurrent streams.
+
+Prepare before CUDA Graph capture or `torch.compile`; preparation synchronizes
+its stream once so initialized workspace can be used on another stream. The
+callable can then be captured. Captured prepared objects are retained for the
+process lifetime so deleting the Python callable cannot invalidate graph
+pointers. AOT is the default. To compile the same selected configuration on
+first use, opt into DeepJIT:
+
+```python
+run = mxfp6.prepare_w6a8(
+    quantized_a, packed_weight, out_dtype=torch.bfloat16,
+    backend="jit", pdl=True,
+)
+output = run()
+```
+
+JIT requires the matching source checkout, initialized `third_party/cutlass`
+and `third_party/deepjit`, a C++20 compiler and NVCC for SM120a. Installed-wheel
+users can pass `source_root="/path/to/checkout"`. The host bridge is built lazily;
+the default AOT path does not import it. Prepare before capture or serving.
+
+All 30 W6A8 configuration IDs use the same native parameter builder, with
+FP16/BF16 and Stream-K support. Compilation is keyed by configuration and output
+dtype; M/N/K, alpha, swizzle and raster order remain runtime parameters. Each
+device owns its loaded handle, while processes share the disk CUBIN cache.
+Set `MXFP6_JIT_CACHE_DIR` before first use to choose its location. Compilation
+failures are surfaced without silently switching configurations. Source and
+compiler settings are fixed for a process lifetime; restart after source edits.
+
 ## Persistent workspace planning
 
 Stream-K kernels can reuse a self-resetting workspace after all production

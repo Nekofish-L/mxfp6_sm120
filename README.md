@@ -72,7 +72,7 @@ bash scripts/build_wheel.sh
 python3 -m pip install --no-deps dist/mxfp6_sm120-*.whl
 ```
 
-For an existing clone, run `git submodule update --init third_party/cutlass`. The wheel script applies the checked-in CUTLASS runtime patches and builds both extensions. `MAX_JOBS` defaults to 2. See [development and compatibility](docs/development.md) for ABI, build and upgrade policies.
+For an existing clone, run `git submodule update --init third_party/cutlass`. The wheel script applies the checked-in CUTLASS runtime patches and builds both extensions. Build parallelism follows the available CPU/memory budget, up to 8 jobs; set `MAX_JOBS` to override it. See [development and compatibility](docs/development.md) for ABI, build and upgrade policies.
 
 See [Mach runtime versions](https://github.com/troycheng/vllm-mach/blob/main/docs/installation.md#runtime-versions) for the matching serving stack and pinned native source revision.
 

@@ -1,0 +1,2248 @@
+{
+  "baseline_commit": "eb61051b24790d133f50730240641f388bfddc36",
+  "environment": {
+    "gpu": "RTX 5090",
+    "torch": "2.14.0+cu130",
+    "nvcc": "13.0.88"
+  },
+  "default_dispatch_changed": false,
+  "performance": {
+    "w6a8-kineto": {
+      "cases": 32,
+      "all_outputs_bitwise_equal": true,
+      "method": "Alternating isolated processes; identical seeded quantized inputs; bench_kineto GPU kernel durations for single-GEMM Graph replay and eager launches, warm-cache and reference-controlled L2 flush",
+      "metrics": {
+        "graph_warm_us": {
+          "median_change_percent": -0.01056418762024336,
+          "max_change_percent": 0.5784167906131232
+        },
+        "graph_cold_us": {
+          "median_change_percent": 0.03047863838849807,
+          "max_change_percent": 1.1612326931665917
+        },
+        "eager_warm_us": {
+          "median_change_percent": -0.030298958641178375,
+          "max_change_percent": 0.4074979625101838
+        },
+        "eager_cold_us": {
+          "median_change_percent": -0.03982736936432585,
+          "max_change_percent": 0.9411552455122152
+        }
+      },
+      "raw_local_artifact": "build/refactor/w6a8-kineto.json"
+    },
+    "w8a8-kineto-final": {
+      "cases": 23,
+      "all_outputs_bitwise_equal": true,
+      "method": "Alternating isolated processes; identical seeded quantized inputs; bench_kineto GPU kernel durations for single-GEMM Graph replay and eager launches, warm-cache and reference-controlled L2 flush",
+      "metrics": {
+        "graph_warm_us": {
+          "median_change_percent": -0.019944156362172727,
+          "max_change_percent": 0.2846029788444948
+        },
+        "graph_cold_us": {
+          "median_change_percent": 0.003988751720140904,
+          "max_change_percent": 1.2514564363699021
+        },
+        "eager_warm_us": {
+          "median_change_percent": 0.0,
+          "max_change_percent": 0.3360779700890548
+        },
+        "eager_cold_us": {
+          "median_change_percent": -0.05005005005003227,
+          "max_change_percent": 2.2987588298678974
+        }
+      },
+      "raw_local_artifact": "build/refactor/w8a8-kineto-final.json"
+    },
+    "w8a8-pruned-kineto": {
+      "cases": 6,
+      "all_outputs_bitwise_equal": true,
+      "method": "Alternating isolated processes; identical seeded quantized inputs; bench_kineto GPU kernel durations for single-GEMM Graph replay and eager launches, warm-cache and reference-controlled L2 flush",
+      "metrics": {
+        "graph_warm_us": {
+          "median_change_percent": 0.06145874092782222,
+          "max_change_percent": 0.19827063942279288
+        },
+        "graph_cold_us": {
+          "median_change_percent": 0.7163472122008407,
+          "max_change_percent": 1.5320210207535379
+        },
+        "eager_warm_us": {
+          "median_change_percent": -0.056385135007858134,
+          "max_change_percent": 0.3289668078400476
+        },
+        "eager_cold_us": {
+          "median_change_percent": -0.11109612808030134,
+          "max_change_percent": 1.0346744195989688
+        }
+      },
+      "raw_local_artifact": "build/refactor/w8a8-pruned-kineto.json"
+    }
+  },
+  "device_code": {
+    "w6a8-code-comparison": {
+      "before_functions": 312,
+      "after_functions": 312,
+      "changed_functions": 0,
+      "resources_equal": true,
+      "before_sha256": "a053e7b194b8436b6efb3f40a7579501bfb9c4e365b430c016984924f746bbd0",
+      "after_sha256": "3e360432584c23784fd5b9f6116ebb7c24c1da23b5797e46737ab6ea5e0caaca"
+    },
+    "w8a8-code-comparison": {
+      "before_functions": 861,
+      "after_functions": 861,
+      "changed_functions": 0,
+      "resources_equal": true,
+      "before_sha256": "0464c5f3d26b4da7d0bdfc140c8b0b82017b78968401ac0ba90e14a890593b2b",
+      "after_sha256": "9a1800133526b80c039c7f05c573c8eb9a336c917b4bdcd5e1659b236c530dc9"
+    },
+    "w8a8-pruned-code": {
+      "before_functions": 861,
+      "after_functions": 329,
+      "changed_functions": 0,
+      "resources_equal": true,
+      "before_sha256": "9a1800133526b80c039c7f05c573c8eb9a336c917b4bdcd5e1659b236c530dc9",
+      "after_sha256": "6c78293040a605dc5f352c4681a3656fdcf9763c63ef0dc6fb13ad1c8539924e"
+    }
+  },
+  "dispatch_audit": {
+    "w6a8": {
+      "registered": 30,
+      "builtin_referenced": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        7,
+        8,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        20,
+        23,
+        25,
+        29
+      ],
+      "not_referenced": [
+        {
+          "id": 6,
+          "name": "normal_64x64x128_pingpong"
+        },
+        {
+          "id": 9,
+          "name": "normal_64x64x256_static_pingpong"
+        },
+        {
+          "id": 19,
+          "name": "swapped_64x32x128_static_pingpong"
+        },
+        {
+          "id": 21,
+          "name": "swapped_64x32x256_pingpong"
+        },
+        {
+          "id": 22,
+          "name": "swapped_64x32x256_stage2_pingpong"
+        },
+        {
+          "id": 24,
+          "name": "swapped_64x32x256_stage2_static_pingpong"
+        },
+        {
+          "id": 26,
+          "name": "swapped_128x32_stage2_cooperative"
+        },
+        {
+          "id": 27,
+          "name": "swapped_128x32_static_cooperative"
+        },
+        {
+          "id": 28,
+          "name": "swapped_128x32_stage2_static_cooperative"
+        }
+      ],
+      "also_used_by_w6a6_mixed_path": [
+        6,
+        9
+      ],
+      "note": "Reference analysis, not exhaustive reachability. All 30 candidates remain eligible for runtime autotuning."
+    },
+    "w8a8": {
+      "registered": 726,
+      "boundary_cells": 36400,
+      "reachable": [
+        12,
+        13,
+        14,
+        15,
+        16,
+        51,
+        73,
+        79,
+        379,
+        500,
+        504,
+        506,
+        566,
+        572,
+        700,
+        705,
+        707,
+        747,
+        763,
+        775,
+        780,
+        781,
+        782,
+        785,
+        786,
+        789,
+        809,
+        810,
+        816,
+        828,
+        911,
+        1009,
+        1010,
+        1027,
+        1028,
+        1240,
+        1241,
+        1242,
+        1243,
+        1244,
+        1245,
+        1246,
+        1247,
+        1248,
+        1249,
+        1250,
+        1251,
+        1252,
+        1253,
+        1254
+      ],
+      "real_shape_count": 260,
+      "real_shape_used": [
+        14,
+        15,
+        16,
+        51,
+        73,
+        79,
+        379,
+        500,
+        504,
+        572,
+        700,
+        705,
+        707,
+        747,
+        775,
+        780,
+        781,
+        786,
+        789,
+        809,
+        810,
+        828,
+        1240,
+        1241,
+        1242,
+        1243,
+        1244,
+        1245,
+        1246,
+        1247,
+        1248,
+        1249,
+        1250
+      ]
+    }
+  },
+  "screening": {
+    "w6a8-screen-kineto-warm": {
+      "cases": 60,
+      "winning_ids": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        10,
+        11,
+        12,
+        14,
+        16,
+        17,
+        23,
+        25
+      ],
+      "default_unused_winning_ids": [
+        6
+      ],
+      "limitation": "Not exhaustive over shapes, cache regimes, PDL, resource limits or W8A8 launch parameters; no deletion eligibility is implied.",
+      "raw_local_artifact": "build/refactor/w6a8-screen-kineto-warm.json"
+    },
+    "w6a8-screen-kineto-cold": {
+      "cases": 60,
+      "winning_ids": [
+        0,
+        3,
+        4,
+        5,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        16,
+        23,
+        24,
+        25,
+        27
+      ],
+      "default_unused_winning_ids": [
+        9,
+        24,
+        27
+      ],
+      "limitation": "Not exhaustive over shapes, cache regimes, PDL, resource limits or W8A8 launch parameters; no deletion eligibility is implied.",
+      "raw_local_artifact": "build/refactor/w6a8-screen-kineto-cold.json"
+    },
+    "w8a8-screen-kineto-warm": {
+      "cases": 60,
+      "winning_ids": [
+        57,
+        76,
+        218,
+        219,
+        309,
+        351,
+        373,
+        374,
+        375,
+        408,
+        550,
+        551,
+        554,
+        555,
+        604,
+        625,
+        781,
+        782,
+        784,
+        906,
+        916,
+        1027,
+        1160,
+        1162,
+        1172,
+        1191,
+        1192,
+        1231,
+        1241,
+        1245,
+        1249,
+        1250,
+        1251,
+        1254
+      ],
+      "default_unused_winning_ids": [
+        57,
+        76,
+        218,
+        219,
+        309,
+        351,
+        373,
+        374,
+        375,
+        408,
+        550,
+        551,
+        554,
+        555,
+        604,
+        625,
+        784,
+        906,
+        916,
+        1160,
+        1162,
+        1172,
+        1191,
+        1192,
+        1231
+      ],
+      "limitation": "Not exhaustive over shapes, cache regimes, PDL, resource limits or W8A8 launch parameters; no deletion eligibility is implied.",
+      "raw_local_artifact": "build/refactor/w8a8-screen-kineto-warm.json"
+    },
+    "w8a8-screen-kineto-cold": {
+      "cases": 60,
+      "winning_ids": [
+        1,
+        15,
+        21,
+        57,
+        73,
+        200,
+        225,
+        305,
+        314,
+        322,
+        328,
+        357,
+        372,
+        411,
+        478,
+        479,
+        504,
+        506,
+        555,
+        566,
+        572,
+        576,
+        624,
+        701,
+        705,
+        706,
+        710,
+        781,
+        806,
+        816,
+        1012,
+        1014,
+        1146,
+        1150,
+        1160,
+        1162,
+        1180,
+        1240,
+        1249,
+        1250,
+        1558
+      ],
+      "default_unused_winning_ids": [
+        1,
+        21,
+        57,
+        200,
+        225,
+        305,
+        314,
+        322,
+        328,
+        357,
+        372,
+        411,
+        478,
+        479,
+        555,
+        576,
+        624,
+        701,
+        706,
+        710,
+        806,
+        1012,
+        1014,
+        1146,
+        1150,
+        1160,
+        1162,
+        1180,
+        1558
+      ],
+      "limitation": "Not exhaustive over shapes, cache regimes, PDL, resource limits or W8A8 launch parameters; no deletion eligibility is implied.",
+      "raw_local_artifact": "build/refactor/w8a8-screen-kineto-cold.json"
+    }
+  },
+  "shortlist": {
+    "summary": [
+      {
+        "shortlist": 3,
+        "within_2_percent": 66,
+        "cases": 120,
+        "median_regret_percent": 0.4440578948404883,
+        "worst_regret_percent": 65.16072980017375
+      },
+      {
+        "shortlist": 6,
+        "within_2_percent": 85,
+        "cases": 120,
+        "median_regret_percent": 0.0,
+        "worst_regret_percent": 65.16072980017375
+      },
+      {
+        "shortlist": 12,
+        "within_2_percent": 99,
+        "cases": 120,
+        "median_regret_percent": 0.0,
+        "worst_regret_percent": 65.16072980017375
+      },
+      {
+        "shortlist": 20,
+        "within_2_percent": 120,
+        "cases": 120,
+        "median_regret_percent": 0.0,
+        "worst_regret_percent": 0.05621135469364713
+      },
+      {
+        "shortlist": 30,
+        "within_2_percent": 120,
+        "cases": 120,
+        "median_regret_percent": 0.0,
+        "worst_regret_percent": 0.0
+      }
+    ],
+    "decision": "Keep existing default candidate search; geometric shortlist not promoted."
+  },
+  "build": {
+    "automatic_max_jobs": 8,
+    "explicit_MAX_JOBS_respected": true,
+    "pruning_default": false,
+    "pruning_option": "MXFP8_PRUNE_UNUSED_FAMILIES",
+    "full_bytes": 44669688,
+    "pruned_bytes": 24471496,
+    "full_tactics": 726,
+    "pruned_tactics": 536,
+    "omitted_translation_units": 12,
+    "clean_build_speedup": "Not measured under matched concurrency/cache; no speedup ratio claimed."
+  },
+  "deepjit": {
+    "deepjit_commit": "2efdab421e1cfb17fe8bc20e11ca72aa6d0e6c43",
+    "arch": "sm_120a",
+    "ptxas_register_usage_level": 5,
+    "host_build_or_load_seconds": 27.862031346885487,
+    "compile_load_seconds": [
+      2.222546557895839,
+      6.27890694886446e-05,
+      4.208204336464405e-05
+    ],
+    "outputs_bitwise_equal": true,
+    "sass_identical_to_aot": true,
+    "resources_identical_to_aot": true,
+    "timings_us": {
+      "aot": {
+        "warm": [
+          8.703,
+          8.68,
+          8.706,
+          8.674,
+          8.698
+        ],
+        "cold": [
+          10.784,
+          10.924,
+          10.681,
+          10.828,
+          10.839
+        ]
+      },
+      "jit": {
+        "warm": [
+          8.689,
+          8.686,
+          8.69,
+          8.704,
+          8.699
+        ],
+        "cold": [
+          10.877,
+          10.852999999999998,
+          10.76,
+          10.868,
+          10.775
+        ]
+      }
+    },
+    "disk_cache_compile_load_seconds": [
+      0.0006478291470557451,
+      5.668005906045437e-05,
+      4.200800321996212e-05
+    ],
+    "production_enabled": false
+  },
+  "tests": {
+    "cpu": "31 passed, 1 skipped, 3 subtests passed",
+    "w8a8_gpu": "302 passed",
+    "standalone_ctest": "4/4 passed",
+    "w6a8_ops": "passed",
+    "streamk_disabled_targeted": "passed",
+    "candidate_order_comparisons": 92316,
+    "sdist": "built successfully"
+  },
+  "device_header_followup": {
+    "shared_header": "csrc/include/mxfp8_gemm/kernels/cache_hint.cuh",
+    "removed": "Probe string slicing and duplicate host/device source ownership",
+    "functions": 861,
+    "changed_functions": 0,
+    "resources_equal": true,
+    "cases": 23,
+    "all_outputs_bitwise_equal": true,
+    "kineto": {
+      "graph_warm_us": {
+        "median_change_percent": 0.010508617065996262,
+        "max_change_percent": 0.31464530892446607
+      },
+      "graph_cold_us": {
+        "median_change_percent": -0.18735975251084058,
+        "max_change_percent": 0.838973491257744
+      },
+      "eager_warm_us": {
+        "median_change_percent": 0.036676097663224105,
+        "max_change_percent": 0.23812358614119233
+      },
+      "eager_cold_us": {
+        "median_change_percent": 0.010409979700543026,
+        "max_change_percent": 1.472708547888768
+      }
+    },
+    "jit_sass_and_resources_identical": true,
+    "jit_outputs_bitwise_equal": true,
+    "jit_compile_load_seconds": [
+      2.218737894902006,
+      6.472389213740826e-05,
+      5.0582922995090485e-05
+    ],
+    "jit_timings_us": {
+      "aot": {
+        "warm": [
+          8.686,
+          8.686,
+          8.68,
+          8.733,
+          8.727000000000002
+        ],
+        "cold": [
+          10.83,
+          10.843,
+          10.733,
+          10.843,
+          10.76
+        ]
+      },
+      "jit": {
+        "warm": [
+          8.678,
+          8.674,
+          8.677,
+          8.707,
+          8.716
+        ],
+        "cold": [
+          10.83,
+          10.804,
+          10.769,
+          10.776,
+          10.855
+        ]
+      }
+    },
+    "raw_local_artifacts": [
+      "build/refactor/device-split-code.json",
+      "build/refactor/device-split-kineto.json",
+      "build/refactor/deepjit-device-split.json"
+    ]
+  },
+  "shared_pipeline_followup": {
+    "families": [
+      "cute_4warp",
+      "specialized",
+      "vector_store",
+      "cache_hint",
+      "eightwarp",
+      "occupancy"
+    ],
+    "changes": "Six duplicate prefetch/copy implementations replaced by one compile-time parameterized pipeline; device headers separated from host adapters.",
+    "default_dispatch_changed": false,
+    "functions": 861,
+    "changed_functions": 0,
+    "resources_equal": true,
+    "cases": 23,
+    "all_outputs_bitwise_equal": true,
+    "kineto": {
+      "graph_warm_us": {
+        "median_change_percent": 0.10182356752754806,
+        "max_change_percent": 0.24449877750609694
+      },
+      "graph_cold_us": {
+        "median_change_percent": 0.021804544066972298,
+        "max_change_percent": 1.046586517818815
+      },
+      "eager_warm_us": {
+        "median_change_percent": 0.14358738728388332,
+        "max_change_percent": 0.3317493051196996
+      },
+      "eager_cold_us": {
+        "median_change_percent": -0.2312491819014828,
+        "max_change_percent": 1.978132042400449
+      }
+    },
+    "gpu_tests": "302 passed",
+    "standalone_device_headers": "All six compile together without PyTorch include paths",
+    "jit_sass_and_resources_identical": true,
+    "jit_outputs_bitwise_equal": true,
+    "jit_compile_load_seconds": [
+      2.1717005288228393,
+      6.297789514064789e-05,
+      4.375400021672249e-05
+    ],
+    "jit_timings_us": {
+      "aot": {
+        "warm": [
+          8.708,
+          8.67,
+          8.677,
+          8.716,
+          8.714999999999998
+        ],
+        "cold": [
+          10.747,
+          10.774,
+          10.74,
+          10.832,
+          10.868
+        ]
+      },
+      "jit": {
+        "warm": [
+          8.663,
+          8.669,
+          8.691,
+          8.714,
+          8.711
+        ],
+        "cold": [
+          10.947,
+          10.845,
+          10.883,
+          10.869,
+          10.788
+        ]
+      }
+    },
+    "sdist": "Includes DeepJIT headers and MIT license",
+    "raw_local_artifacts": [
+      "build/refactor/pipeline-code.json",
+      "build/refactor/pipeline-kineto.json",
+      "build/refactor/deepjit-pipeline.json"
+    ]
+  },
+  "host_launch_followup": {
+    "upstream_main": "0d482160daefcbc1b40078c07efe8f5492c0cead",
+    "sync_merge_commit": "8a2999708ac6ed0bb3531394803a77db93783f95",
+    "manifest": "python/mxfp6/mxfp8_cp_async.json",
+    "migrated_families": 6,
+    "migrated_tactics": 88,
+    "legacy_instantiation_and_resource_checks": 352,
+    "default_dispatch_changed": false,
+    "removed": "Six handwritten host launch/config headers; build generates adapters from the manifest.",
+    "device_code": {
+      "before_sha256": "6ec0eb474cc1452c239f5dc3d50900c721139f6d5fc3e1b970312d0338937276",
+      "after_sha256": "00c0aec73d2ac861cfbc447e821a9e7e81d6116655719060c2900e842b97e074",
+      "functions": 861,
+      "changed_functions": 0,
+      "resources_equal": true
+    },
+    "performance": {
+      "method": "Alternating isolated processes; identical seeded quantized inputs; bench_kineto GPU kernel durations for single-GEMM Graph replay and eager launches, warm-cache and reference-controlled L2 flush",
+      "cases": 23,
+      "all_outputs_bitwise_equal": true,
+      "metrics": {
+        "graph_warm_us": {
+          "median_change_percent": 0.09036688957166916,
+          "max_change_percent": 0.3724394785847185
+        },
+        "graph_cold_us": {
+          "median_change_percent": 0.08516771488469299,
+          "max_change_percent": 2.156200317965018
+        },
+        "eager_warm_us": {
+          "median_change_percent": 0.16591452083887237,
+          "max_change_percent": 0.3750559785042462
+        },
+        "eager_cold_us": {
+          "median_change_percent": 0.041469685659811795,
+          "max_change_percent": 1.6779661016949055
+        }
+      },
+      "scope": "GPU kernel durations; not end-to-end serving throughput or CPU launch overhead."
+    },
+    "tests": {
+      "cpu": "48 passed, 1 skipped, 3 subtests passed",
+      "gpu": "302 passed",
+      "sdist": "Built; generator, manifest and shared launcher included; replaced source headers absent"
+    },
+    "incremental_build": "Touching unchanged metadata runs only generation; following build has no work. No clean build speedup claimed.",
+    "jit_representatives": [
+      {
+        "tactic": 200,
+        "shape": [
+          32,
+          512,
+          128
+        ],
+        "outputs_bitwise_equal": true,
+        "sass_and_resources_identical_to_aot": true,
+        "compile_load_seconds": [
+          2.0736201591789722,
+          6.512785330414772e-05,
+          3.854604437947273e-05
+        ],
+        "timings_us": {
+          "aot": {
+            "warm": [
+              1.295,
+              1.297,
+              1.304,
+              1.305,
+              1.302
+            ],
+            "cold": [
+              1.85,
+              1.818,
+              1.888,
+              1.86,
+              1.902
+            ]
+          },
+          "jit": {
+            "warm": [
+              1.305,
+              1.307,
+              1.312,
+              1.312,
+              1.312
+            ],
+            "cold": [
+              1.881,
+              1.9539999999999997,
+              1.806,
+              1.813,
+              1.947
+            ]
+          }
+        },
+        "raw_local_artifact": "build/host-refactor/jit-200.json"
+      },
+      {
+        "tactic": 500,
+        "shape": [
+          32,
+          512,
+          2560
+        ],
+        "outputs_bitwise_equal": true,
+        "sass_and_resources_identical_to_aot": true,
+        "compile_load_seconds": [
+          2.195942430989817,
+          6.92419707775116e-05,
+          4.333304241299629e-05
+        ],
+        "timings_us": {
+          "aot": {
+            "warm": [
+              8.449,
+              8.493,
+              8.488,
+              8.49,
+              8.475
+            ],
+            "cold": [
+              9.007,
+              9.023,
+              9.14,
+              9.099,
+              9.09
+            ]
+          },
+          "jit": {
+            "warm": [
+              8.446,
+              8.47,
+              8.482,
+              8.499,
+              8.478
+            ],
+            "cold": [
+              9.16,
+              9.164,
+              9.13,
+              9.2,
+              9.05
+            ]
+          }
+        },
+        "raw_local_artifact": "build/host-refactor/jit-500.json"
+      },
+      {
+        "tactic": 520,
+        "shape": [
+          32,
+          512,
+          2048
+        ],
+        "outputs_bitwise_equal": true,
+        "sass_and_resources_identical_to_aot": true,
+        "compile_load_seconds": [
+          2.1482012381311506,
+          6.622797809541225e-05,
+          4.647299647331238e-05
+        ],
+        "timings_us": {
+          "aot": {
+            "warm": [
+              5.694,
+              5.698,
+              5.727,
+              5.722,
+              5.707
+            ],
+            "cold": [
+              6.51,
+              6.428,
+              6.358,
+              6.405999999999999,
+              6.409
+            ]
+          },
+          "jit": {
+            "warm": [
+              5.696,
+              5.704,
+              5.717,
+              5.718,
+              5.715
+            ],
+            "cold": [
+              6.462000000000001,
+              6.41,
+              6.396,
+              6.4559999999999995,
+              6.4
+            ]
+          }
+        },
+        "raw_local_artifact": "build/host-refactor/jit-520.json"
+      },
+      {
+        "tactic": 560,
+        "shape": [
+          32,
+          512,
+          2560
+        ],
+        "outputs_bitwise_equal": true,
+        "sass_and_resources_identical_to_aot": true,
+        "compile_load_seconds": [
+          2.18951318715699,
+          6.85020349919796e-05,
+          4.406506195664406e-05
+        ],
+        "timings_us": {
+          "aot": {
+            "warm": [
+              8.695,
+              8.735,
+              8.742,
+              8.732,
+              8.731
+            ],
+            "cold": [
+              10.831,
+              10.753,
+              10.876,
+              10.897,
+              10.709
+            ]
+          },
+          "jit": {
+            "warm": [
+              8.69,
+              8.727000000000002,
+              8.726,
+              8.724,
+              8.72
+            ],
+            "cold": [
+              10.895,
+              10.833,
+              10.843,
+              10.789,
+              10.805
+            ]
+          }
+        },
+        "raw_local_artifact": "build/host-refactor/jit-560.json"
+      },
+      {
+        "tactic": 571,
+        "shape": [
+          32,
+          512,
+          3072
+        ],
+        "outputs_bitwise_equal": true,
+        "sass_and_resources_identical_to_aot": true,
+        "compile_load_seconds": [
+          2.182454523863271,
+          6.62549864500761e-05,
+          4.419893957674503e-05
+        ],
+        "timings_us": {
+          "aot": {
+            "warm": [
+              11.044,
+              11.104,
+              11.066,
+              11.102,
+              11.082000000000003
+            ],
+            "cold": [
+              15.028,
+              15.155000000000001,
+              15.086,
+              14.982,
+              15.024
+            ]
+          },
+          "jit": {
+            "warm": [
+              11.041,
+              11.096,
+              11.097,
+              11.079,
+              11.045
+            ],
+            "cold": [
+              15.071,
+              15.135999999999997,
+              15.001,
+              15.047,
+              15.045
+            ]
+          }
+        },
+        "raw_local_artifact": "build/host-refactor/jit-571.json"
+      },
+      {
+        "tactic": 575,
+        "shape": [
+          17,
+          512,
+          2560
+        ],
+        "outputs_bitwise_equal": true,
+        "sass_and_resources_identical_to_aot": true,
+        "compile_load_seconds": [
+          2.304367308039218,
+          7.01448880136013e-05,
+          4.387088119983673e-05
+        ],
+        "timings_us": {
+          "aot": {
+            "warm": [
+              25.714,
+              25.649,
+              25.767,
+              25.809999999999995,
+              25.835
+            ],
+            "cold": [
+              32.203,
+              32.271,
+              32.213,
+              32.282,
+              32.419
+            ]
+          },
+          "jit": {
+            "warm": [
+              25.706,
+              25.703,
+              25.849,
+              25.816999999999997,
+              25.79
+            ],
+            "cold": [
+              32.364,
+              32.151,
+              32.507,
+              32.44,
+              32.335
+            ]
+          }
+        },
+        "raw_local_artifact": "build/host-refactor/jit-575.json"
+      },
+      {
+        "tactic": 700,
+        "shape": [
+          32,
+          512,
+          2560
+        ],
+        "outputs_bitwise_equal": true,
+        "sass_and_resources_identical_to_aot": true,
+        "compile_load_seconds": [
+          2.2342917220667005,
+          6.991205736994743e-05,
+          4.424992948770523e-05
+        ],
+        "timings_us": {
+          "aot": {
+            "warm": [
+              21.977,
+              21.912,
+              21.895,
+              21.909,
+              21.977
+            ],
+            "cold": [
+              22.565,
+              22.551,
+              22.544,
+              22.619,
+              22.628
+            ]
+          },
+          "jit": {
+            "warm": [
+              21.983,
+              21.983,
+              21.971,
+              21.932,
+              21.985000000000003
+            ],
+            "cold": [
+              22.612,
+              22.639000000000003,
+              22.623,
+              22.53,
+              22.543
+            ]
+          }
+        },
+        "raw_local_artifact": "build/host-refactor/jit-700.json"
+      },
+      {
+        "tactic": 703,
+        "shape": [
+          129,
+          512,
+          128
+        ],
+        "outputs_bitwise_equal": true,
+        "sass_and_resources_identical_to_aot": true,
+        "compile_load_seconds": [
+          2.3132979080546647,
+          7.121986709535122e-05,
+          4.558800719678402e-05
+        ],
+        "timings_us": {
+          "aot": {
+            "warm": [
+              4.757,
+              4.783,
+              4.786,
+              4.77,
+              4.793
+            ],
+            "cold": [
+              5.212,
+              5.215,
+              5.149,
+              5.266,
+              5.218
+            ]
+          },
+          "jit": {
+            "warm": [
+              4.76,
+              4.781,
+              4.77,
+              4.789,
+              4.758
+            ],
+            "cold": [
+              5.259,
+              5.262,
+              5.341,
+              5.222,
+              5.278
+            ]
+          }
+        },
+        "raw_local_artifact": "build/host-refactor/jit-703.json"
+      }
+    ],
+    "limitations": "Other W8A8 families retain existing descriptors. JIT remains optional isolated probe; only these 8 configurations tested through JIT.",
+    "raw_local_artifacts": [
+      "build/host-refactor/code.json",
+      "build/host-refactor/kineto.json"
+    ]
+  },
+  "prepared_jit_followup": {
+    "baseline_commit": "91ff58d",
+    "default_aot_dispatch_changed": false,
+    "aot_library_sha256": "00c0aec73d2ac861cfbc447e821a9e7e81d6116655719060c2900e842b97e074",
+    "api": [
+      "available_jit_configs",
+      "precompile_jit",
+      "prepare_jit"
+    ],
+    "scope": "Explicit optional source-checkout backend for 88 cp.async tactics. No automatic fallback or default AOT pruning.",
+    "correctness_and_code": {
+      "shape": [
+        33,
+        512,
+        2560
+      ],
+      "tactics": 88,
+      "all_bitwise_equal": true,
+      "all_sass_equal": true,
+      "all_resources_equal": true,
+      "raw_local_artifact": "build/jit-runtime/all-configs.json"
+    },
+    "tests": {
+      "jit_suite": "30 passed (including two-device, PDL, capture lifetime, no compile/cache in launch, thread/process single-flight, retry and disk cache)",
+      "aot_gpu": "302 passed",
+      "cpu": "53 passed; 26 skipped (25 opt-in GPU cases plus one build identity case); 3 subtests passed",
+      "sdist": "Includes optional host bridge and Python modules; removed experiment C++ backend absent"
+    },
+    "performance_method": "bench_kineto; 5 alternating samples, 30 tests per sample; eager and one-GEMM Graph, warm and explicit L2 flush; GPU durations only.",
+    "performance_summary": {
+      "graph_warm": {
+        "median_change_percent": -0.10480276900247665,
+        "max_change_percent": 0.13302294645824997
+      },
+      "graph_cold": {
+        "median_change_percent": 0.12837419324813748,
+        "max_change_percent": 1.089985248319958
+      },
+      "eager_warm": {
+        "median_change_percent": -0.008234826264114092,
+        "max_change_percent": 0.14827795376424202
+      },
+      "eager_cold": {
+        "median_change_percent": -0.26164008189998866,
+        "max_change_percent": 0.6789003159239027
+      }
+    },
+    "performance_cases": [
+      {
+        "tactic": 200,
+        "shape": [
+          1,
+          8192,
+          2048
+        ],
+        "outputs_bitwise_equal": true,
+        "metrics": {
+          "graph_warm": {
+            "aot_median_us": 6.143,
+            "jit_median_us": 6.139,
+            "change_percent": -0.06511476477290001
+          },
+          "graph_cold": {
+            "aot_median_us": 14.048,
+            "jit_median_us": 14.045,
+            "change_percent": -0.02135535307516978
+          },
+          "eager_warm": {
+            "aot_median_us": 6.268,
+            "jit_median_us": 6.264,
+            "change_percent": -0.06381620931715792
+          },
+          "eager_cold": {
+            "aot_median_us": 14.877,
+            "jit_median_us": 14.978,
+            "change_percent": 0.6789003159239027
+          }
+        },
+        "compile_load_seconds": [
+          2.21075208298862,
+          0.0002852850593626499,
+          8.77890270203352e-05
+        ],
+        "raw_local_artifact": "build/jit-runtime/bench-200.json"
+      },
+      {
+        "tactic": 500,
+        "shape": [
+          32,
+          12288,
+          2560
+        ],
+        "outputs_bitwise_equal": true,
+        "metrics": {
+          "graph_warm": {
+            "aot_median_us": 18.042,
+            "jit_median_us": 18.066,
+            "change_percent": 0.13302294645824997
+          },
+          "graph_cold": {
+            "aot_median_us": 29.382,
+            "jit_median_us": 29.205,
+            "change_percent": -0.6024096385542244
+          },
+          "eager_warm": {
+            "aot_median_us": 18.133,
+            "jit_median_us": 18.147,
+            "change_percent": 0.07720730160480915
+          },
+          "eager_cold": {
+            "aot_median_us": 30.259,
+            "jit_median_us": 30.172,
+            "change_percent": -0.2875177633100856
+          }
+        },
+        "compile_load_seconds": [
+          2.2773484820500016,
+          0.000279060797765851,
+          8.225999772548676e-05
+        ],
+        "raw_local_artifact": "build/jit-runtime/bench-500.json"
+      },
+      {
+        "tactic": 520,
+        "shape": [
+          32,
+          5120,
+          2048
+        ],
+        "outputs_bitwise_equal": true,
+        "metrics": {
+          "graph_warm": {
+            "aot_median_us": 6.171,
+            "jit_median_us": 6.162,
+            "change_percent": -0.1458434613514914
+          },
+          "graph_cold": {
+            "aot_median_us": 12.202,
+            "jit_median_us": 12.335,
+            "change_percent": 1.089985248319958
+          },
+          "eager_warm": {
+            "aot_median_us": 6.278,
+            "jit_median_us": 6.257,
+            "change_percent": -0.334501433577572
+          },
+          "eager_cold": {
+            "aot_median_us": 12.762,
+            "jit_median_us": 12.657,
+            "change_percent": -0.8227550540667594
+          }
+        },
+        "compile_load_seconds": [
+          2.2529826280660927,
+          0.0002820130903273821,
+          8.840486407279968e-05
+        ],
+        "raw_local_artifact": "build/jit-runtime/bench-520.json"
+      },
+      {
+        "tactic": 560,
+        "shape": [
+          64,
+          2560,
+          4096
+        ],
+        "outputs_bitwise_equal": true,
+        "metrics": {
+          "graph_warm": {
+            "aot_median_us": 14.777,
+            "jit_median_us": 14.744,
+            "change_percent": -0.22332002436218357
+          },
+          "graph_cold": {
+            "aot_median_us": 19.715,
+            "jit_median_us": 19.765,
+            "change_percent": 0.2536139994927744
+          },
+          "eager_warm": {
+            "aot_median_us": 14.837,
+            "jit_median_us": 14.859,
+            "change_percent": 0.14827795376424202
+          },
+          "eager_cold": {
+            "aot_median_us": 20.284000000000002,
+            "jit_median_us": 20.266,
+            "change_percent": -0.0887398935121464
+          }
+        },
+        "compile_load_seconds": [
+          2.267570039955899,
+          0.0002911807969212532,
+          8.373800665140152e-05
+        ],
+        "raw_local_artifact": "build/jit-runtime/bench-560.json"
+      },
+      {
+        "tactic": 571,
+        "shape": [
+          64,
+          2048,
+          6144
+        ],
+        "outputs_bitwise_equal": true,
+        "metrics": {
+          "graph_warm": {
+            "aot_median_us": 24.223,
+            "jit_median_us": 24.188,
+            "change_percent": -0.14449077323205328
+          },
+          "graph_cold": {
+            "aot_median_us": 38.545,
+            "jit_median_us": 38.613,
+            "change_percent": 0.1764171747308252
+          },
+          "eager_warm": {
+            "aot_median_us": 24.292,
+            "jit_median_us": 24.281,
+            "change_percent": -0.04528239749712615
+          },
+          "eager_cold": {
+            "aot_median_us": 39.26700000000001,
+            "jit_median_us": 39.117,
+            "change_percent": -0.38200015280008826
+          }
+        },
+        "compile_load_seconds": [
+          2.2293574910145253,
+          0.00026921695098280907,
+          8.225510828197002e-05
+        ],
+        "raw_local_artifact": "build/jit-runtime/bench-571.json"
+      },
+      {
+        "tactic": 575,
+        "shape": [
+          17,
+          512,
+          2560
+        ],
+        "outputs_bitwise_equal": true,
+        "metrics": {
+          "graph_warm": {
+            "aot_median_us": 25.912,
+            "jit_median_us": 25.937,
+            "change_percent": 0.09648039518370677
+          },
+          "graph_cold": {
+            "aot_median_us": 32.366,
+            "jit_median_us": 32.392,
+            "change_percent": 0.08033121176544977
+          },
+          "eager_warm": {
+            "aot_median_us": 26.005,
+            "jit_median_us": 26.009,
+            "change_percent": 0.015381657373580992
+          },
+          "eager_cold": {
+            "aot_median_us": 32.66,
+            "jit_median_us": 32.583,
+            "change_percent": -0.23576240048989172
+          }
+        },
+        "compile_load_seconds": [
+          2.4132435428909957,
+          0.00028123892843723297,
+          8.309888653457165e-05
+        ],
+        "raw_local_artifact": "build/jit-runtime/bench-575.json"
+      },
+      {
+        "tactic": 700,
+        "shape": [
+          512,
+          10240,
+          2560
+        ],
+        "outputs_bitwise_equal": true,
+        "metrics": {
+          "graph_warm": {
+            "aot_median_us": 49.95,
+            "jit_median_us": 49.952,
+            "change_percent": 0.004004004003999029
+          },
+          "graph_cold": {
+            "aot_median_us": 58.386,
+            "jit_median_us": 58.249,
+            "change_percent": -0.23464529167951387
+          },
+          "eager_warm": {
+            "aot_median_us": 50.301,
+            "jit_median_us": 50.303,
+            "change_percent": 0.003976064094146636
+          },
+          "eager_cold": {
+            "aot_median_us": 58.976,
+            "jit_median_us": 58.984,
+            "change_percent": 0.013564839934887551
+          }
+        },
+        "compile_load_seconds": [
+          2.25490142009221,
+          0.0002802480012178421,
+          8.729798719286919e-05
+        ],
+        "raw_local_artifact": "build/jit-runtime/bench-700.json"
+      },
+      {
+        "tactic": 703,
+        "shape": [
+          129,
+          512,
+          128
+        ],
+        "outputs_bitwise_equal": true,
+        "metrics": {
+          "graph_warm": {
+            "aot_median_us": 4.815,
+            "jit_median_us": 4.808,
+            "change_percent": -0.14537902388370716
+          },
+          "graph_cold": {
+            "aot_median_us": 5.165,
+            "jit_median_us": 5.219,
+            "change_percent": 1.0454985479186885
+          },
+          "eager_warm": {
+            "aot_median_us": 4.891,
+            "jit_median_us": 4.89,
+            "change_percent": -0.02044571662237482
+          },
+          "eager_cold": {
+            "aot_median_us": 5.528,
+            "jit_median_us": 5.486,
+            "change_percent": -0.759768451519538
+          }
+        },
+        "compile_load_seconds": [
+          2.4103102050721645,
+          0.0002763040829449892,
+          9.207217954099178e-05
+        ],
+        "raw_local_artifact": "build/jit-runtime/bench-703.json"
+      }
+    ],
+    "startup": {
+      "cold_host_bridge_and_dependency_initialization_seconds": 28.85312261711806,
+      "cached_host_bridge_and_dependency_initialization_seconds": 0.152419795980677,
+      "new_process_disk_hit_compile_load_seconds": 0.10213171481154859,
+      "memory_hit_seconds": [
+        0.00017126998864114285,
+        8.279504254460335e-05
+      ],
+      "note": "Measured after torch.cuda.init. First precompile includes Runtime/compiler discovery, so disk-hit time is not just CUBIN loading."
+    },
+    "pruned_aot_proof": {
+      "tactic": 200,
+      "aot_available": false,
+      "jit_available": true,
+      "relative_rmse": 0.0016417684964835644,
+      "available_aot_tactics": 536
+    },
+    "cache_contract": "Source/compiler/cache settings fixed per process; full dependency tree signatures; handles retained until process exit; per-key thread and file locks.",
+    "dependency_signature": "99ea5e5dedf03aed806adc8caae55d7aee4ffe566efcfe94cc2bd40f071301bc",
+    "limitations": "Correctness/code audit covers all 88 at one shape plus representative boundaries and K variants; performance covers 8 cases, not serving throughput. Requires source checkout, C++20 and NVCC >=12.9."
+  },
+  "shared_mainloop_followup": {
+    "baseline_commit": "155d9f7",
+    "family_count": 6,
+    "kernel_lines_before": 715,
+    "kernel_lines_after": 234,
+    "runtime_config_generator_net_lines": -481,
+    "design": "Shared kernel body expands inside unchanged entries to preserve parameter/restrict scope. Compile-time warp/cache/store policies; no new config or generator.",
+    "device_code": {
+      "before_sha256": "00c0aec73d2ac861cfbc447e821a9e7e81d6116655719060c2900e842b97e074",
+      "after_sha256": "edbe9220342b32a79dcd3813f38a61ed7051e7a95f866b1f4df1b94a183ae959",
+      "functions": 861,
+      "changed_functions": 0,
+      "resources_equal": true
+    },
+    "correctness": {
+      "comparison_cases": 23,
+      "all_bitwise_equal": true,
+      "gpu_tests": 302,
+      "jit_tests": 30,
+      "metadata_tests": 13,
+      "jit_tactics_checked": 88,
+      "jit_shape": [
+        33,
+        512,
+        2560
+      ],
+      "jit_sass_resources_outputs_identical": true
+    },
+    "kineto_percent_changes": {
+      "graph_warm_us": {
+        "median": 0.07880220646179215,
+        "max": 0.285520054384758
+      },
+      "graph_cold_us": {
+        "median": 0.055928411633110464,
+        "max": 1.2797619047619113
+      },
+      "eager_warm_us": {
+        "median": 0.11670313639680074,
+        "max": 0.4596927906715953
+      },
+      "eager_cold_us": {
+        "median": 0.055803571428580945,
+        "max": 1.5720037693823574
+      }
+    },
+    "raw_local_artifacts": [
+      "build/mainloop-refactor/final-code.json",
+      "build/mainloop-refactor/final-kineto.json",
+      "build/mainloop-refactor/final-jit.json"
+    ],
+    "scope": "Default dispatch and tactic portfolio unchanged. GPU durations, not serving throughput; no clean build speedup claim."
+  },
+  "tma_shared_body_followup": {
+    "baseline_commit": "4cd8c7d98e77f6961d9e29f3f8d5e27046815c4e",
+    "families": [
+      "tma_fewwarp",
+      "tma_oddwarp",
+      "tma_oddrotate"
+    ],
+    "source_lines_before": 735,
+    "source_lines_after": 435,
+    "source_lines_removed": 300,
+    "expanded_source_tokens_identical": true,
+    "default_dispatch_changed": false,
+    "cuda_functions": 861,
+    "changed_cuda_functions": 0,
+    "resources_equal": true,
+    "before_library_sha256": "edbe9220342b32a79dcd3813f38a61ed7051e7a95f866b1f4df1b94a183ae959",
+    "after_library_sha256": "70d368fa62b706ecd6d85b5486f6fc7cd27726272754b32af0fe6c86234a878a",
+    "gpu_tests_passed": 302,
+    "comparison_cases": 23,
+    "all_outputs_bitwise_equal": true,
+    "bench_kineto": {
+      "graph_warm_us": {
+        "median_change_percent": 0.0,
+        "max_change_percent": 0.4122383252818107
+      },
+      "eager_warm_us": {
+        "median_change_percent": -0.018748535270685096,
+        "max_change_percent": 0.35996612083570856
+      },
+      "graph_cold_us": {
+        "median_change_percent": 0.06339917093391989,
+        "max_change_percent": 1.5905147484094773
+      },
+      "eager_cold_us": {
+        "median_change_percent": 0.09272400416313609,
+        "max_change_percent": 1.4393030743008906
+      }
+    },
+    "raw_code_report": "build/tma-refactor/code.json",
+    "raw_performance_report": "build/tma-refactor/kineto.json",
+    "sdist_shared_includes_verified": true,
+    "incremental_rebuild_no_work": true,
+    "scope": "Source deduplication only; compiled tactics and prefetch ordering retained. No clean-build speedup claim."
+  },
+  "tma_policy_followup": {
+    "baseline_commit": "926a733e4bde31eff9cc4448db65d582d6f7fba1",
+    "added_shared_body_families": [
+      "tma256",
+      "tma_eightwarp"
+    ],
+    "kernel_source_lines_removed": 217,
+    "default_dispatch_changed": false,
+    "cuda_functions": 861,
+    "changed_cuda_functions": 0,
+    "resources_equal": true,
+    "before_library_sha256": "70d368fa62b706ecd6d85b5486f6fc7cd27726272754b32af0fe6c86234a878a",
+    "after_library_sha256": "55572c37a224a3b5f215b57a25a09c2ae9d8450534fff279476c0a148bff235d",
+    "gpu_tests_passed": 302,
+    "comparison_cases": 23,
+    "all_outputs_bitwise_equal": true,
+    "bench_kineto": {
+      "graph_warm_us": {
+        "median_change_percent": 0.09520230489790116,
+        "max_change_percent": 0.29911624745071475
+      },
+      "eager_warm_us": {
+        "median_change_percent": 0.12281530467643798,
+        "max_change_percent": 0.3764612641173004
+      },
+      "graph_cold_us": {
+        "median_change_percent": 0.1981678818470778,
+        "max_change_percent": 1.83890645175655
+      },
+      "eager_cold_us": {
+        "median_change_percent": 0.18492602958817272,
+        "max_change_percent": 2.6810333856530866
+      }
+    },
+    "cold_outlier": "Both cold-cache maxima are tactic 560, whose source is unchanged; all 861 device functions remain identical.",
+    "raw_code_report": "build/tma-policy-refactor/code.json",
+    "raw_performance_report": "build/tma-policy-refactor/kineto.json",
+    "incremental_rebuild_no_work": true,
+    "scope": "Five TMA families share the body; existing launch resource policies, configuration tables and kernel signatures retained. No build-speed claim."
+  },
+  "shortlist_recheck": {
+    "source_commit": "fe03dc631a875fbb51d9e24facb456c1e7bea775",
+    "scope": "W6A8 diagnostic wave/tile ranking, not the full DeepGEMM dispatcher and not the W8A8 production policy.",
+    "gpu": "RTX 5090",
+    "sm_count": 170,
+    "timer": "bench_kineto",
+    "torch": "2.14.0+cu130",
+    "library_sha256": "3e360432584c23784fd5b9f6116ebb7c24c1da23b5797e46737ab6ea5e0caaca",
+    "ranking_script_sha256": "85db6b45177c791b45b77e68763d62a1eabc7401247e7a16ff776bfdced7dbed",
+    "manifest_sha256": "a7d7ed3b08fa18ba77fc83a2f2e91303f938bc0bc6a7754bb52a7350158a8a35",
+    "kineto_source_sha256": "bb3aa23af8fac40ca57777feb14d0bee16d1f97de86fe9ed51dbd67cd098d00a",
+    "coverage": "5 Qwen3.5-27B TP2 projection geometries x 6 batches x FP16/BF16 x warm/cold = 120 cases. 30 IDs x 4 swizzles, raster 0, in coarse oracle; 8 bench_kineto tests per probe. Existing screen also refines finalists, but regret uses coarse measurements.",
+    "rejected_configurations": 0,
+    "summary": [
+      {
+        "shortlist": 3,
+        "within_2_percent": 66,
+        "cases": 120,
+        "median_regret_percent": 0.5082737602094434,
+        "worst_regret_percent": 65.16666666666666
+      },
+      {
+        "shortlist": 6,
+        "within_2_percent": 84,
+        "cases": 120,
+        "median_regret_percent": 0.0,
+        "worst_regret_percent": 65.16666666666666
+      },
+      {
+        "shortlist": 12,
+        "within_2_percent": 98,
+        "cases": 120,
+        "median_regret_percent": 0.0,
+        "worst_regret_percent": 65.16666666666666
+      },
+      {
+        "shortlist": 20,
+        "within_2_percent": 120,
+        "cases": 120,
+        "median_regret_percent": 0.0,
+        "worst_regret_percent": 0.1949860724234087
+      },
+      {
+        "shortlist": 30,
+        "within_2_percent": 120,
+        "cases": 120,
+        "median_regret_percent": 0.0,
+        "worst_regret_percent": 0.0
+      }
+    ],
+    "top12_worst_by_regime": {
+      "explicit-flush CUDA Graph": 5.908048487495909,
+      "warm-cache CUDA Graph": 65.16666666666666
+    },
+    "paired_method": "Old top-three cases per regime; fixed old oracle and top-12 winner; nine alternating-order measurements, 30 bench_kineto tests each; not a new exhaustive optimum",
+    "paired_old_worst_case": {
+      "shape": [
+        1,
+        8192,
+        5120
+      ],
+      "dtype": "torch.float16",
+      "regime": "warm",
+      "oracle_config": [
+        2,
+        2,
+        0
+      ],
+      "shortlist_config": [
+        5,
+        4,
+        0
+      ],
+      "oracle_samples_us": [
+        9.175,
+        9.196,
+        9.144,
+        9.172,
+        9.141,
+        9.121,
+        9.114,
+        9.143,
+        9.117
+      ],
+      "shortlist_samples_us": [
+        15.204,
+        15.208,
+        15.132,
+        15.276000000000002,
+        15.191,
+        15.138,
+        15.166,
+        15.165,
+        15.223
+      ],
+      "oracle_median_us": 9.143,
+      "shortlist_median_us": 15.191,
+      "regret_percent": 66.14896642239965,
+      "relative_rmse": 0.0
+    },
+    "diagnosis": "For M=1,N=8192,K=5120 the old oracle ID 2 ranks 17th; top 12 excludes it. Stage/scheduler variants of the same MN tile consume multiple shortlist positions. The ranking does not model K, registers or pipeline differences.",
+    "raw_artifacts": {
+      "build/regret-recheck/w6a8-warm.json": "caff8e1f0c3dc2ae67aa246f58ac4e5307ccebc8b24276fa68bc45faf4a4da6c",
+      "build/regret-recheck/w6a8-cold.json": "ce2dbf32671bbc7f9097607f6480ceff2da5afb93b710b7e32d582f2744b2886",
+      "build/regret-recheck/shortlist.json": "103e0a5f95a3ca877b8aa804e23f3ab52babc26ae727fd0cb777aedf5597f139",
+      "build/regret-recheck/paired.json": "cc06f845f462f52d1ed4b62ea747ae575cd0dc8ff6a1153e07ce2bf6aeb0a6ea",
+      "build/regret-recheck/paired.py": "b80e59878ef70c27b688fc8c51dfd7ec237ff4ce1ba003fc67d948af2a50d9b0"
+    },
+    "reproduce": "MXFP6_LIBRARY_PATH=build/refactor/mxfp6_torch.so python3 benchmarks/screen_configs.py --backend w6a8 --iterations 8 --flush-l2-mb {0,256} --output <screen.json>; python3 benchmarks/evaluate_shortlist.py <warm.json> <cold.json> --sm-count 170 --output <summary.json>",
+    "decision": "Top-12 regret reproduced. Top-20 is within 0.20% on this bounded coarse screen only; no runtime policy changed."
+  },
+  "native_tactic_decode_followup": {
+    "baseline_commit": "42b7b102787d5ba3c1aa5766c6e99bd19bdf405f",
+    "change": "Single tactic decoder supplies backend, launch argument and Stream-K capability to availability, validation and dispatch. Shape policy and kernel implementations unchanged.",
+    "tests_passed": 315,
+    "route_snapshot": "All 1606 tested integer IDs including holes and extremes match legacy backend/argument/Stream-K records in full and pruned registries.",
+    "boundary_cells": 36400,
+    "real_shapes": 260,
+    "available_tactics": 726,
+    "audits_identical": true,
+    "cuda_functions": 861,
+    "changed_cuda_functions": 0,
+    "resources_equal": true,
+    "before_library_sha256": "55572c37a224a3b5f215b57a25a09c2ae9d8450534fff279476c0a148bff235d",
+    "after_library_sha256": "ec3c8c2123d1fec284114fc23c8a221812b5263b525975e7b139f377dc2731d5",
+    "comparison_cases": 23,
+    "all_outputs_bitwise_equal": true,
+    "bench_kineto": {
+      "graph_warm_us": {
+        "median_change_percent": 0.08791638175245087,
+        "max_change_percent": 0.33997416196367425
+      },
+      "eager_warm_us": {
+        "median_change_percent": 0.11273957158961512,
+        "max_change_percent": 0.2767754633426156
+      },
+      "graph_cold_us": {
+        "median_change_percent": 0.07845872199458981,
+        "max_change_percent": 3.31541218637994
+      },
+      "eager_cold_us": {
+        "median_change_percent": 0.38800244136367734,
+        "max_change_percent": 3.5481412482005315
+      }
+    },
+    "host_method": "Prepared eager host enqueue wall time; four alternating process rounds pinned to same CPU; 9 blocks x 100 launches; synchronize outside timing. Separate from bench_kineto GPU durations.",
+    "host_comparisons": [
+      {
+        "tactic": -1,
+        "before_us": 9.359895,
+        "after_us": 9.495335,
+        "change_percent": 1.4470247796583235
+      },
+      {
+        "tactic": 0,
+        "before_us": 17.346915000000003,
+        "after_us": 17.31334,
+        "change_percent": -0.193550265277731
+      },
+      {
+        "tactic": 33,
+        "before_us": 8.613455,
+        "after_us": 8.648225,
+        "change_percent": 0.40367076858240925
+      },
+      {
+        "tactic": 500,
+        "before_us": 9.210215000000002,
+        "after_us": 9.20044,
+        "change_percent": -0.10613215869554882
+      },
+      {
+        "tactic": 913,
+        "before_us": 16.68722,
+        "after_us": 16.786099999999998,
+        "change_percent": 0.5925492682423927
+      }
+    ],
+    "raw_artifacts": [
+      "build/dispatch-refactor/code.json",
+      "build/dispatch-refactor/kineto.json",
+      "build/dispatch-refactor/host.json",
+      "build/dispatch-refactor/host.py",
+      "build/dispatch-refactor/audit-before.json",
+      "build/dispatch-refactor/audit-after.json"
+    ],
+    "sdist_header_verified": true,
+    "incremental_rebuild_no_work": true,
+    "scope": "Behavior-preserving host routing refactor; no default JIT fallback, candidate pruning, dispatch tuning or build-speed claim."
+  },
+  "hybrid_prepare_followup": {
+    "default_backend": "aot",
+    "auto_policy": "Resolve the same tactic; use AOT if available, otherwise explicit migrated JIT. Never retry errors with another tactic.",
+    "jit_and_api_tests_passed": 42,
+    "cpu_regression_tests_passed": 42,
+    "pruned": {
+      "aot_tactics": 536,
+      "missing_tactic": 200,
+      "backend": "jit",
+      "outputs_bitwise_equal": true,
+      "default_backend": "aot",
+      "default_config": [
+        1241,
+        1,
+        1,
+        0
+      ]
+    },
+    "bench_kineto": [
+      {
+        "tactic": 200,
+        "shape": [
+          1,
+          8192,
+          2048
+        ],
+        "outputs_bitwise_equal": true,
+        "graph_warm_change_percent": 0.0976403580146501,
+        "graph_cold_change_percent": -0.8333921887138995,
+        "eager_warm_change_percent": -0.015966789078725174,
+        "eager_cold_change_percent": 0.22165502418054484,
+        "raw": "build/backend-refactor/kineto-200.json"
+      },
+      {
+        "tactic": 560,
+        "shape": [
+          64,
+          4096,
+          2560
+        ],
+        "outputs_bitwise_equal": true,
+        "graph_warm_change_percent": 0.018859028759998786,
+        "graph_cold_change_percent": 0.5106585119648344,
+        "eager_warm_change_percent": -0.2703710609733512,
+        "eager_cold_change_percent": -0.33820578962453496,
+        "raw": "build/backend-refactor/kineto-560.json"
+      },
+      {
+        "tactic": 700,
+        "shape": [
+          512,
+          10240,
+          2560
+        ],
+        "outputs_bitwise_equal": true,
+        "graph_warm_change_percent": 0.018037156542471955,
+        "graph_cold_change_percent": 0.013716715532474666,
+        "eager_warm_change_percent": -0.03581661891117749,
+        "eager_cold_change_percent": -0.02711450795640502,
+        "raw": "build/backend-refactor/kineto-700.json"
+      }
+    ],
+    "build_comparison": {
+      "method": "Fresh directories, same source/toolchain, Release, eight jobs, mxfp8_torch only, sequential full then pruned; configure excluded; one run per mode, filesystem caches uncontrolled; not wheel build time or aggregate peak-memory evidence.",
+      "results": [
+        {
+          "mode": "full",
+          "compile_link_seconds": 454.5371687270235,
+          "library_bytes": 44683832,
+          "library_sha256": "b7a2c41a000452c5fd55ae1c2a7503f06e1234d58fc15ba6dff7f97417fac339"
+        },
+        {
+          "mode": "pruned",
+          "compile_link_seconds": 353.3621083239559,
+          "library_bytes": 24480496,
+          "library_sha256": "a13f82ed94983456b32a1c31f5ec26a79e4ad01172e9a9345ce973aa5c993cdb"
+        }
+      ]
+    },
+    "raw_prefix": "build/backend-refactor",
+    "limitation": "Optional family pruning still excludes non-migrated tactics. Hybrid execution restores only migrated omitted tactics; full AOT remains the default. Clean build comparison is one sequential sample per mode, not a wheel benchmark.",
+    "clean_build_code_validation": {
+      "full_functions": 861,
+      "retained_pruned_functions": 329,
+      "all_retained_sass_and_resources_identical": true,
+      "raw_full": "build/backend-refactor/clean-full-code.json",
+      "raw_pruned": "build/backend-refactor/clean-pruned-code.json"
+    },
+    "pruned_api_tests_passed": 8,
+    "pruned_default_performance": {
+      "cases": 6,
+      "outputs_bitwise_equal": true,
+      "raw": "build/backend-refactor/pruned-kineto.json",
+      "metrics": {
+        "graph_warm_us": {
+          "median_change_percent": -0.04626785797525179,
+          "max_change_percent": 0.14755886315520605
+        },
+        "eager_warm_us": {
+          "median_change_percent": 0.00110289505540484,
+          "max_change_percent": 0.09535160905840279
+        },
+        "graph_cold_us": {
+          "median_change_percent": -0.21704783544952422,
+          "max_change_percent": 0.7191011235955003
+        },
+        "eager_cold_us": {
+          "median_change_percent": 0.12808539804751717,
+          "max_change_percent": 0.9178340872161961
+        }
+      }
+    },
+    "merged_main": "316fd7d",
+    "build_identity_tests": "7 passed, 1 skipped, 3 subtests passed"
+  },
+  "jit_covered_pruning_followup": {
+    "date": "2026-11-17",
+    "baseline_commit": "1d14f68bce03",
+    "option": "MXFP8_JIT_UNUSED_FAMILIES",
+    "omitted_families": [
+      "cute",
+      "specialized"
+    ],
+    "portfolio": {
+      "native_tactics": 674,
+      "hybrid_tactics": 726,
+      "restored_tactics": 52,
+      "bitwise_cases": 156,
+      "pdl": true,
+      "graph_replay": true
+    },
+    "cpu_tests_passed": 19,
+    "full_gpu_tests_passed": 302,
+    "hybrid_api_tests_passed": 8,
+    "boundary_cells": 36400,
+    "real_shapes": 260,
+    "retained_gpu_functions": 761,
+    "changed_gpu_functions": 0,
+    "resources_equal": true,
+    "full_library_sha256": "ec3c8c2123d1fec284114fc23c8a221812b5263b525975e7b139f377dc2731d5",
+    "hybrid_library_sha256": "843ddf782163c33013c37335af9e8822da5807dfea5de29cf08b1bc94e1cca50",
+    "native_performance": {
+      "graph_warm_us": {
+        "median_change_percent": -0.00998265817904187,
+        "max_change_percent": 0.281027758660235
+      },
+      "eager_warm_us": {
+        "median_change_percent": 0.055551242681872726,
+        "max_change_percent": 0.22136137244050946
+      },
+      "graph_cold_us": {
+        "median_change_percent": -0.1404124666022799,
+        "max_change_percent": 1.6919124811763497
+      },
+      "eager_cold_us": {
+        "median_change_percent": -0.9572241561780936,
+        "max_change_percent": 0.7681592039801011
+      }
+    },
+    "jit_performance": [
+      {
+        "tactic": 200,
+        "shape": [
+          1,
+          8192,
+          2048
+        ],
+        "bitwise": true,
+        "metrics": {
+          "graph_warm_change_percent": -0.08234519104084459,
+          "graph_cold_change_percent": 0.9647680983349005,
+          "eager_warm_change_percent": 0.3225286244154413,
+          "eager_cold_change_percent": -0.31681833501854273
+        }
+      },
+      {
+        "tactic": 520,
+        "shape": [
+          32,
+          5120,
+          2048
+        ],
+        "bitwise": true,
+        "metrics": {
+          "graph_warm_change_percent": -0.3108638743455572,
+          "graph_cold_change_percent": 0.5895357406042967,
+          "eager_warm_change_percent": -0.25744167337087287,
+          "eager_cold_change_percent": -0.2942813966436031
+        }
+      }
+    ],
+    "raw_artifacts": {
+      "build/hybrid-portfolio/validation.json": "6860fc41b4ebfe53bc27a4734ed10597f4222f303b4468917c1e67cf11c5bd46",
+      "build/hybrid-portfolio/code.json": "44eba1b4894ee75624c7cf98704159da52a643294a4c10e6d23dcde71e90660c",
+      "build/hybrid-portfolio/kineto.json": "cd8c4f2b5fbbf1acb9acad4bf7bef5f4cf812402fa538d3b6f26c1690bd01281",
+      "build/hybrid-portfolio/jit-200.json": "191647aa161acedfb95957f6322cc4387e37cbb378ca379675323060c3a62b37",
+      "build/hybrid-portfolio/jit-520.json": "cdd35c97659095222a2da28d03979777b925cd62e1f695c69cecba4dc0ce38f7",
+      "build/hybrid-portfolio/check.py": "f3d54f06931da030340cbdd63d43f8ad28a1bbfcd6b80ddc3eb33269180cbeae"
+    },
+    "limitation": "Preserves tactic IDs, not arbitrary scheduling options for migrated JIT tactics (1/1/0 required). Source/toolchain required. Default full AOT and existing default dispatch unchanged. No clean-build speed claim for this conservative mode."
+  },
+  "w6a8_prepared_jit_followup": {
+    "status": "validated; full W6A8 AOT retained after hybrid evaluation",
+    "source_changes": [
+      "CPU-only configuration selector shared with prepared execution",
+      "ordinary C++ host binding separated from CUDA instantiation",
+      "fixed-storage prepared AOT with owned CUTLASS Params and workspace",
+      "lazy DeepJIT execution of all 30 W6A8 configurations, both output dtypes"
+    ],
+    "tests": {
+      "cpu_policy_and_cache": 28,
+      "prepared_aot_stream_k_on": 126,
+      "prepared_aot_stream_k_off": 126,
+      "prepared_jit_stream_k_on": 126,
+      "prepared_jit_stream_k_off": 126,
+      "legacy_ops": "passed",
+      "latest_prepared_and_dispatch_regression": 136,
+      "final_cpu_suite": {
+        "passed": 35,
+        "skipped": 1,
+        "subtests_passed": 3,
+        "report": "build/w6-refactor/final-cpu-tests.log"
+      },
+      "default_real_shape_jit_cases": 32
+    },
+    "device_code": {
+      "functions_before": 312,
+      "functions_after": 312,
+      "changed": 0,
+      "resources_equal": true,
+      "report": "build/w6-refactor/final-sass.json"
+    },
+    "dispatch": {
+      "oracle": "old direct-launch implementation",
+      "m_range": [
+        1,
+        8193
+      ],
+      "sm_counts": [
+        1,
+        2,
+        16,
+        80,
+        128,
+        170,
+        192
+      ],
+      "dtypes": [
+        "fp16",
+        "bf16"
+      ],
+      "stream_k_modes": [
+        false,
+        true
+      ],
+      "result": "identical selections; all 30 candidate IDs retained"
+    },
+    "jit_gpu_comparison": {
+      "cases": 26,
+      "method": "alternating bench_kineto; AOT and JIT graphs share one prepared object and identical Params, output and workspace addresses",
+      "samples": 9,
+      "iterations": 50,
+      "bitwise_equal": true,
+      "report": "build/w6-refactor/jit-paired-all-changed-kineto.json",
+      "change_percent": {
+        "warm": {
+          "min": -1.8706333107955886,
+          "median": -0.0028356153285280516,
+          "max": 1.3689095127610296
+        },
+        "cold": {
+          "min": -1.0961104267136368,
+          "median": -0.010554074383856138,
+          "max": 0.5561150764111122
+        }
+      }
+    },
+    "build": {
+      "initial_host_object_seconds": 9.402,
+      "initial_cuda_object_seconds": 373.355,
+      "latest_host_object_seconds": 11.718,
+      "latest_cuda_object_seconds": 384.947,
+      "scope": "per-object Ninja elapsed times, not whole clean build",
+      "host_only_rebuild_and_link": {
+        "elapsed_seconds": 12.13539796299301,
+        "dso_before": "95ee3f584f7af58d181fc09988c423419fa2a082cab6791f328fea1864733f8a",
+        "dso_after": "95ee3f584f7af58d181fc09988c423419fa2a082cab6791f328fea1864733f8a"
+      }
+    },
+    "evidence": [
+      "build/w6-refactor/jit-tests.log",
+      "build/w6-refactor/jit-tests-no-stream-k.log",
+      "build/w6-refactor/jit-all-execution.json",
+      "build/w6-refactor/prepared-paired-persistent.json",
+      "build/w6-refactor/jit-default-real-shapes.json"
+    ],
+    "observations": [
+      "Current compiler resolves IDs 0 and 2 to the same device kernel symbol for both output dtypes; public IDs are preserved.",
+      "Cold prepared/AOT measurements with separately allocated workspaces showed bidirectional variation; JIT/AOT comparison uses identical addresses.",
+      "Hybrid pruning is experimental only until legacy explicit dispatch and cached autotune winners remain executable."
+    ],
+    "jit_device_code": {
+      "combinations": 60,
+      "sass_identical": 46,
+      "resources_identical": 60,
+      "changed_config_ids": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        29
+      ],
+      "report": "build/w6-refactor/jit-all-sass.json",
+      "coverage": "paired Kineto includes every configuration with changed JIT SASS"
+    },
+    "hybrid_evaluation": {
+      "pruned_aot_ids": [
+        6,
+        9,
+        19,
+        21,
+        22,
+        24,
+        26,
+        27,
+        28
+      ],
+      "cuda_compile_seconds": 368.4151971929241,
+      "dso_bytes": 28620192,
+      "scope": "Prepared-only experimental hybrid; legacy explicit/override/autotune execution for these IDs intentionally unsupported, not a production build option",
+      "full_dso_bytes": 30692600,
+      "retained_cuda_functions": 294,
+      "retained_sass_equal": true,
+      "production_decision": "Keep all 30 AOT configs. The modest per-TU compile reduction does not justify removing legacy explicit/cache routes; no incomplete hybrid option is shipped.",
+      "report": "build/w6-refactor/hybrid-probe-sass.json"
+    },
+    "packaging": {
+      "sdist": "build/w6-refactor/dist/mxfp6_sm120-0.3.1.tar.gz",
+      "backend": "setuptools.build_meta.build_sdist",
+      "verified": "new C++ host, CUDA kernel, lazy JIT bridge, Python modules and tests included; removed torch_extension.cu absent"
+    },
+    "final_build": {
+      "elapsed_seconds": 386.56805811286904,
+      "before": "95ee3f584f7af58d181fc09988c423419fa2a082cab6791f328fea1864733f8a",
+      "after": "4ba31da281cb841ffe2a2024301784f6696251ef3697b0e4e16d0dfcdfd63d93",
+      "change_since_full_jit_matrix": "Whitespace-only formatting of host/CUDA source, with unchanged tokens and line counts; no public API or device headers changed.",
+      "final_aot_and_dispatch_tests": 136,
+      "final_jit_smoke_cases": 4,
+      "final_jit_smoke_report": "build/w6-refactor/final-jit-execution.json",
+      "final_aot_report": "build/w6-refactor/final-aot-tests.log"
+    }
+  }
+}

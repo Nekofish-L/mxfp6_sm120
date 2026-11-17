@@ -227,6 +227,53 @@ prepared objects. `W8A8Config` supports explicit diagnostic overrides;
 `select_config(m, n, k)` inspects the native policy. Invalid IDs raise an
 error. The old `gemm_mxfp8`, `prepare_mxfp8` and raw `mm` APIs were removed.
 
+## Optional prepared JIT
+
+A matching source checkout with initialized `third_party/deepjit` and patched
+CUTLASS, a C++20 compiler, and NVCC 12.9+ enables explicit JIT execution for the
+88 migrated cp.async tactics, listed by `available_jit_configs()` without
+loading the compiler. This list describes support, not toolchain readiness.
+Default `gemm` and `prepare` continue to use AOT.
+The first JIT call builds the host bridge; perform warmup before serving/capture.
+`available_configs(backend="auto")` lists the union of native and JIT tactic IDs;
+`backend="jit"` lists only migrated IDs without loading the native DSO or compiler.
+This reports tactic support, not compiler readiness or support for arbitrary
+splits/swizzle/sms. `stream_k_only=True` excludes all current JIT tactics.
+
+```python
+config = mxfp8.W8A8Config(560)  # explicit migrated tactic; splits/swizzle/sms = 1/1/0
+mxfp8.precompile_jit(config, qa.k, device=qa.device)
+run = mxfp8.prepare_jit(qa, w8, config=config, use_pdl=False)
+out = run()  # private BF16 output; no workspace, compilation or cache I/O here
+```
+
+`prepare(..., backend="auto")` prefers AOT for the selected tactic and uses
+JIT only when that tactic is absent from the loaded AOT library. Selection still
+uses the native shape policy when `config` is omitted; explicit configurations
+retain their ID and scheduler parameters. `backend="jit"` forces the migrated
+JIT implementation; `prepare_jit` is its compatibility wrapper. The returned
+callable exposes `run.config` and `run.backend`. Unsupported JIT configurations
+and compilation failures propagate; neither changes the selected tactic.
+
+```python
+run = mxfp8.prepare(qa, w8, config=mxfp8.W8A8Config(200), backend="auto")
+# Full build: AOT. Family-pruned build omitting tactic 200: JIT.
+out = run()
+```
+
+Call `precompile_jit` and `prepare_jit` outside CUDA Graph capture and
+`torch.compile`; capture or replay the returned callable after warmup. Inputs
+and scales may change in place, while their shape/storage contract must remain
+valid. Concurrent streams need independent prepared objects/outputs. Device
+guarding and PDL follow the AOT semantics. Compiled handles are cached per device
+and retained until process exit to protect Graph lifetime.
+
+When using an installed wheel, pass `source_root="/path/to/matching/checkout"`
+to both calls. Set `MXFP8_JIT_CACHE_DIR` before first use to choose a CUBIN cache;
+restart after source/compiler/cache-setting changes. The optional path can
+execute a migrated tactic even if an AOT family-pruned build omits it, but it
+never changes default dispatch. See [development details](development.md#optional-deepjit-backend).
+
 ## Build and configuration limits
 
 ```bash
