@@ -44,7 +44,11 @@ class CMakeBuild(build_ext):
         configure.extend(shlex.split(os.environ.get("CMAKE_ARGS", "")))
         subprocess.check_call(configure, cwd=ROOT)
 
-        jobs = os.environ.get("MAX_JOBS", "2")
+        jobs = os.environ.get("MAX_JOBS")
+        if jobs is None:
+            resources = runpy.run_path(str(ROOT / "scripts" / "build_resources.py"))["resources"]()
+            jobs = str(resources["jobs"])
+            print(f"CUDA build: {jobs} jobs (CPU/memory budget); override with MAX_JOBS")
         subprocess.check_call(
             [
                 "cmake",

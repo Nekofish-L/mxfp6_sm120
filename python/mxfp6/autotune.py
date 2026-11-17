@@ -8,97 +8,33 @@ and persists the decision for later processes.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from dataclasses import asdict, dataclass
-import fcntl
 import hashlib
-import json
 import math
 import os
 from pathlib import Path
 import random
-import statistics
-import tempfile
 import threading
-import time
-from typing import Iterator
 
 import torch
 
+from . import _autotune_cache
+from ._autotune_cache import cache_key as _cache_key
 from ._loader import load_library
+from ._autotune_benchmark import measure_graph
+from ._autotune_policy import (
+    FALLBACK_CONFIG_ID, RASTER_NAMES, SWIZZLES, AutotuneResult, W6A8Config,
+    candidate_kernel_ids, refinement_kernel_ids,
+)
+from ._w6a8_registry import CANDIDATE_ABI, KERNEL_NAMES, STREAM_K_CONFIG_IDS
 
 
 AUTOTUNE_SCHEMA = 1
-CANDIDATE_ABI = "native-w6a8-30-v5"
 CANDIDATE_POLICY = "hybrid-all-families-through-m512-v2"
 TIMING_POLICY = "gemm-cuda-graph-events-two-stage-v5"
-FALLBACK_CONFIG_ID = -1
 DEFAULT_AUTOTUNE_WARMUP = 3
 DEFAULT_AUTOTUNE_ITERATIONS = 10
 DEFAULT_AUTOTUNE_REPEATS = 3
 DEFAULT_ALL_FAMILIES_MAX_M = 512
-
-KERNEL_NAMES = (
-    "swapped_128x8_static_cooperative",
-    "swapped_128x8_stage4_static_cooperative",
-    "swapped_128x8_stage5_static_cooperative",
-    "swapped_128x8_stream_k",
-    "swapped_128x16_stage4_static_cooperative",
-    "swapped_64x16x256_static_pingpong",
-    "normal_64x64x128_pingpong",
-    "normal_64x64x128_static_pingpong",
-    "normal_64x64x128_stage4_static_pingpong",
-    "normal_64x64x256_static_pingpong",
-    "normal_64x128x128_pingpong",
-    "normal_64x128x128_static_pingpong",
-    "normal_128x128x128_pingpong",
-    "normal_128x128x128_cooperative",
-    "normal_128x128x128_static_pingpong",
-    "normal_128x128x128_static_cooperative",
-    "normal_128x128x128_stream_k",
-    "swapped_64x32x128_pingpong",
-    "swapped_64x32x128_stage3_pingpong",
-    "swapped_64x32x128_static_pingpong",
-    "swapped_64x32x128_stage3_static_pingpong",
-    "swapped_64x32x256_pingpong",
-    "swapped_64x32x256_stage2_pingpong",
-    "swapped_64x32x256_static_pingpong",
-    "swapped_64x32x256_stage2_static_pingpong",
-    "swapped_128x32_cooperative",
-    "swapped_128x32_stage2_cooperative",
-    "swapped_128x32_static_cooperative",
-    "swapped_128x32_stage2_static_cooperative",
-    "swapped_64x16x128_stage3_static_pingpong",
-)
-RASTER_NAMES = ("heuristic", "along_m", "along_n")
-SWIZZLES = (1, 2, 4, 8)
-STREAM_K_CONFIG_IDS = frozenset((3, 16))
-
-
-@dataclass(frozen=True)
-class W6A8Config:
-    config_id: int
-    swizzle: int
-    raster_order: int
-
-    @property
-    def kernel(self) -> str:
-        if self.config_id == FALLBACK_CONFIG_ID:
-            return "builtin_fallback"
-        return KERNEL_NAMES[self.config_id]
-
-    @property
-    def raster(self) -> str:
-        return RASTER_NAMES[self.raster_order]
-
-
-@dataclass(frozen=True)
-class AutotuneResult:
-    config: W6A8Config
-    latency_us: float
-    fallback_us: float
-    runner_up_us: float
-    samples: int
 
 
 _STATE_LOCK = threading.Lock()
@@ -284,108 +220,21 @@ def _descriptor(
     }
 
 
-def _cache_key(descriptor: dict[str, object]) -> str:
-    canonical = json.dumps(
-        descriptor, sort_keys=True, separators=(",", ":")
-    )
-    return hashlib.sha256(canonical.encode()).hexdigest()
-
-
-def _entry_path(key: str) -> Path:
-    return _cache_root() / f"{key}.json"
-
-
 def _get_key_lock(key: str) -> threading.Lock:
     with _STATE_LOCK:
         return _KEY_LOCKS.setdefault(key, threading.Lock())
 
 
-@contextmanager
-def _file_lock(key: str) -> Iterator[None]:
-    root = _cache_root()
-    root.mkdir(parents=True, exist_ok=True)
-    lock_path = root / f"{key}.lock"
-    with lock_path.open("a+b") as lock_file:
-        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-        try:
-            yield
-        finally:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+def _file_lock(key: str):
+    return _autotune_cache.file_lock(_cache_root(), key)
 
 
-def _config_from_dict(value: object) -> W6A8Config | None:
-    if not isinstance(value, dict):
-        return None
-    try:
-        config = W6A8Config(
-            int(value["config_id"]),
-            int(value["swizzle"]),
-            int(value["raster_order"]),
-        )
-    except (KeyError, TypeError, ValueError):
-        return None
-    if config.config_id < FALLBACK_CONFIG_ID or config.config_id >= len(
-        KERNEL_NAMES
-    ):
-        return None
-    if config.swizzle not in SWIZZLES:
-        return None
-    if not 0 <= config.raster_order < len(RASTER_NAMES):
-        return None
-    return config
+def _read_entry(key: str, descriptor: dict[str, object]) -> W6A8Config | None:
+    return _autotune_cache.read_entry(_cache_root(), key, descriptor)
 
 
-def _read_entry(
-    key: str, descriptor: dict[str, object]
-) -> W6A8Config | None:
-    path = _entry_path(key)
-    try:
-        with path.open() as file:
-            entry = json.load(file)
-    except (FileNotFoundError, json.JSONDecodeError, OSError):
-        return None
-    if not isinstance(entry, dict) or entry.get("descriptor") != descriptor:
-        return None
-    return _config_from_dict(entry.get("config"))
-
-
-def _write_entry(
-    key: str,
-    descriptor: dict[str, object],
-    result: AutotuneResult,
-) -> None:
-    root = _cache_root()
-    root.mkdir(parents=True, exist_ok=True)
-    entry = {
-        "descriptor": descriptor,
-        "config": {
-            **asdict(result.config),
-            "kernel": result.config.kernel,
-            "raster": result.config.raster,
-        },
-        "measurement": {
-            "latency_us": result.latency_us,
-            "fallback_us": result.fallback_us,
-            "runner_up_us": result.runner_up_us,
-            "samples": result.samples,
-        },
-        "created_unix": time.time(),
-    }
-    file_descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{key}.", suffix=".tmp", dir=root
-    )
-    try:
-        with os.fdopen(file_descriptor, "w") as file:
-            json.dump(entry, file, indent=2, sort_keys=True)
-            file.write("\n")
-            file.flush()
-            os.fsync(file.fileno())
-        os.replace(temporary_name, _entry_path(key))
-    finally:
-        try:
-            os.unlink(temporary_name)
-        except FileNotFoundError:
-            pass
+def _write_entry(key: str, descriptor: dict[str, object], result: AutotuneResult) -> None:
+    _autotune_cache.write_entry(_cache_root(), key, descriptor, result)
 
 
 def _is_compiling_or_capturing() -> bool:
@@ -405,34 +254,10 @@ def can_autotune_now() -> bool:
 
 
 def _kernel_ids(m: int, k: int) -> tuple[int, ...]:
-    # Every AOT kernel family is geometrically valid for any M, and M-regime
-    # shortlists provably excluded winners through M=512 (notably swapped
-    # 64x32x128-stage3 at n=5120, k=3072). Above that point the observed
-    # family gaps are small enough for finite-sample ranking noise to dominate
-    # the larger search. Keep the stable normal-family shortlist there; an
-    # offline run can still opt into every family by raising the threshold.
-    if m <= _all_families_max_m():
-        kernels = list(range(len(KERNEL_NAMES)))
-    elif m <= 16:
-        kernels = [0, 1, 2, 3, 4, 5, 29]
-    elif m <= 32:
-        kernels = [
-            4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16,
-            17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
-        ]
-    else:
-        kernels = [6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
-    if k < 1024:
-        kernels = [
-            kernel for kernel in kernels
-            if kernel not in STREAM_K_CONFIG_IDS
-        ]
-    if not is_stream_k_enabled():
-        kernels = [
-            kernel for kernel in kernels
-            if kernel not in STREAM_K_CONFIG_IDS
-        ]
-    return tuple(kernels)
+    return candidate_kernel_ids(
+        m, k, all_families_max_m=_all_families_max_m(),
+        stream_k_enabled=is_stream_k_enabled(),
+    )
 
 
 def _run_config(
@@ -481,62 +306,10 @@ def _measure_config(
     repeats: int,
     flush: torch.Tensor | None,
 ) -> float:
-    for _ in range(warmup):
-        _run_config(config, a, b, sfa, sfb, m, n, k, out_dtype)
-    torch.cuda.synchronize(a.device)
-    graph = torch.cuda.CUDAGraph()
-    output = None
-    captured = False
-    if flush is None:
-        starts = [torch.cuda.Event(enable_timing=True, external=True)]
-        ends = [torch.cuda.Event(enable_timing=True, external=True)]
-    else:
-        starts = [
-            torch.cuda.Event(enable_timing=True, external=True)
-            for _ in range(iterations)
-        ]
-        ends = [
-            torch.cuda.Event(enable_timing=True, external=True)
-            for _ in range(iterations)
-        ]
-
-    try:
-        # Keep PyTorch's fail-closed global capture mode.  A service with
-        # conflicting CUDA work in another thread should retain the builtin
-        # dispatcher instead of weakening capture-safety checks.
-        with torch.cuda.graph(graph):
-            if flush is None:
-                starts[0].record()
-            for iteration in range(iterations):
-                if flush is not None:
-                    flush.zero_()
-                    starts[iteration].record()
-                output = _run_config(
-                    config, a, b, sfa, sfb, m, n, k, out_dtype
-                )
-                if flush is not None:
-                    ends[iteration].record()
-            if flush is None:
-                ends[0].record()
-        captured = True
-        samples = []
-        for _ in range(repeats):
-            # Keep unrelated stream work out of the captured timing interval.
-            torch.cuda.synchronize(a.device)
-            graph.replay()
-            ends[-1].synchronize()
-            elapsed_us = [
-                start.elapsed_time(end) * 1_000
-                for start, end in zip(starts, ends, strict=True)
-            ]
-            samples.append(sum(elapsed_us) / iterations)
-        return statistics.median(samples)
-    finally:
-        torch.cuda.synchronize(a.device)
-        if captured:
-            graph.reset()
-        # The captured output owns graph-private storage until replay ends.
-        del output, graph
+    return measure_graph(
+        lambda: _run_config(config, a, b, sfa, sfb, m, n, k, out_dtype),
+        a.device, warmup, iterations, repeats, flush,
+    )
 
 
 def _candidate_configs(m: int, k: int) -> tuple[list[W6A8Config], list[int]]:
@@ -627,24 +400,9 @@ def _autotune_impl(
         if math.isfinite(latency) and latency > 0.0:
             coarse_results.append((latency, config))
 
-    best_by_kernel: dict[int, float] = {}
-    for latency, config in coarse_results:
-        best_by_kernel[config.config_id] = min(
-            latency, best_by_kernel.get(config.config_id, math.inf)
-        )
-    ranked_kernel_ids = [
-        kernel_id
-        for kernel_id, _ in sorted(
-            best_by_kernel.items(), key=lambda item: item[1]
-        )
-    ]
-    top_kernel_ids = (
-        ranked_kernel_ids
-        if _use_exhaustive_search()
-        else ranked_kernel_ids[:3]
+    top_kernel_ids = refinement_kernel_ids(
+        coarse_results, kernel_ids, exhaustive=_use_exhaustive_search(),
     )
-    if not top_kernel_ids:
-        top_kernel_ids = kernel_ids[:3]
 
     refined = [
         W6A8Config(kernel_id, swizzle, raster)

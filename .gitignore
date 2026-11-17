@@ -81,3 +81,7 @@ wheelhouse/
 
 # MXFP8 generated measurements remain local; runtime dispatch lives in python/mxfp6.
 /benchmarks/results/mxfp8_*/
+
+# Curated refactor validation and isolated DeepJIT prototype
+!/benchmarks/results/refactor_validation_20261116.json
+!/experiments/deepjit_probe.py
