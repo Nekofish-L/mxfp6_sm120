@@ -39,20 +39,34 @@ WorkspacePool& workspace_pool() { static WorkspacePool pool; return pool; }
 #include "mxfp8_gemm/dispatch_policy.hpp"
 
 namespace mxfp8_runtime {
+enum class TacticFamily {
+  Invalid, Core, Direct, Dynamic, Extra, Wide, ReleaseCore, ReleaseDirect, Gemv,
+#define MXFP8_FAMILY(NAME, BASE, COUNT, RETURN) NAME,
+#include "mxfp8_gemm/registry.def"
+#undef MXFP8_FAMILY
+};
 bool core_tactic(int64_t t) { return t >= 0 && t < 96 && t != 30 && !(t >= 80 && t < 86); }
 bool release_direct_base(int64_t t) {
   return (t >= 43 && t <= 50) || (t >= 58 && t <= 69) || (t >= 86 && t <= 95);
 }
-bool valid_tactic(int64_t t) {
-  if (core_tactic(t)) return true;
-  if (t >= 300 && t < 500) return core_tactic(t % 100) && !(t % 100 >= 33 && t % 100 <= 36);
-  if (t >= 800 && t < 1100) return t % 100 < 33 && t % 100 != 30;
-  if (t >= 1300 && t < 1600) return release_direct_base(t % 100);
-#define MXFP8_FAMILY(NAME, BASE, COUNT, RETURN) if (t >= BASE && t < BASE + COUNT) return true;
+TacticFamily tactic_family(int64_t t) {
+#define MXFP8_FAMILY(NAME, BASE, COUNT, RETURN) if (t >= BASE && t < BASE + COUNT) return TacticFamily::NAME;
 #include "mxfp8_gemm/registry.def"
 #undef MXFP8_FAMILY
-  return false;
+  if (t >= 1300 && t < 1600)
+    return release_direct_base(t % 100) ? TacticFamily::ReleaseDirect : TacticFamily::Invalid;
+  if (t >= 800 && t < 1100)
+    return t % 100 < 33 && t % 100 != 30 ? TacticFamily::ReleaseCore : TacticFamily::Invalid;
+  auto base = t >= 300 && t < 500 ? t % 100 : t;
+  if (!core_tactic(base) || (t != base && base >= 33 && base <= 36)) return TacticFamily::Invalid;
+  if (base >= 33 && base <= 36) return TacticFamily::Gemv;
+  if (base >= 70 && base <= 79) return TacticFamily::Dynamic;
+  if (base >= 51 && base <= 57) return TacticFamily::Extra;
+  if (base >= 43) return TacticFamily::Direct;
+  if (base >= 37) return TacticFamily::Wide;
+  return TacticFamily::Core;
 }
+bool valid_tactic(int64_t t) { return tactic_family(t) != TacticFamily::Invalid; }
 bool stream_k_tactic(int64_t t) {
   if ((t >= 300 && t < 500) || (t >= 800 && t < 1100)) t %= 100;
   return (t >= 12 && t <= 16) || t == 39 || t == 40 || t == 42 || t == 51 || t == 57;
@@ -75,26 +89,28 @@ LaunchConfig resolve(at::Tensor const& a, at::Tensor const& b, int64_t tactic, i
 }
 
 int64_t dispatch_out(MXFP8_ARGS, LaunchConfig c, std::optional<at::Tensor> workspace, bool query) {
-  mxfp8_common::validate(a,b,sa,sb,out);
+  mxfp8_common::validate(a,b,sa,sb,out,query);
   mxfp8_common::validate_scheduler(c.splits,c.swizzle);
   auto t=c.tactic;
 #define CALL(NS) return NS::mm_out(a,b,sa,sb,out,t,c.splits,c.swizzle,workspace,query,c.sms)
-  if (t >= 1300 && t < 1600) { CALL(mxfp8_release_direct); }
-  if (t >= 800 && t < 1100) { CALL(mxfp8_release_core); }
+  switch (tactic_family(t)) {
+    case TacticFamily::ReleaseDirect: { CALL(mxfp8_release_direct); }
+    case TacticFamily::ReleaseCore: { CALL(mxfp8_release_core); }
 #define MXFP8_FAMILY(NAME, BASE, COUNT, RETURN) \
-  if (t >= BASE && t < BASE + COUNT) { if (!query) mxfp8_##NAME::mm_out(a,b,sa,sb,out,t-BASE); return 0; }
+    case TacticFamily::NAME: if (!query) mxfp8_##NAME::mm_out(a,b,sa,sb,out,t-BASE); return 0;
 #include "mxfp8_gemm/registry.def"
 #undef MXFP8_FAMILY
-  auto base = t >= 300 && t < 500 ? t % 100 : t;
-  if (base >= 33 && base <= 36) {
-    if (!query) mxfp8_sm120::gemv_out(a,b,sa,sb,out,int64_t(1) << (base-33));
-    return 0;
+    case TacticFamily::Gemv:
+      if (!query) mxfp8_sm120::gemv_out(a,b,sa,sb,out,int64_t(1) << (t-33));
+      return 0;
+    case TacticFamily::Dynamic: { CALL(mxfp8_dynamic); }
+    case TacticFamily::Extra: { CALL(mxfp8_extra); }
+    case TacticFamily::Direct: { CALL(mxfp8_direct); }
+    case TacticFamily::Wide: { CALL(mxfp8_wide); }
+    case TacticFamily::Core: { CALL(mxfp8_sm120); }
+    case TacticFamily::Invalid: TORCH_CHECK(false, "Unknown MXFP8 tactic: ", t);
   }
-  if (base >= 70 && base <= 79) { CALL(mxfp8_dynamic); }
-  if (base >= 51 && base <= 57) { CALL(mxfp8_extra); }
-  if (base >= 43) { CALL(mxfp8_direct); }
-  if (base >= 37) { CALL(mxfp8_wide); }
-  CALL(mxfp8_sm120);
+  TORCH_CHECK(false, "Unreachable MXFP8 tactic family");
 #undef CALL
 }
 
@@ -110,7 +126,8 @@ at::Tensor gemm(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at:
   return out;
 }
 std::optional<at::Tensor> allocate_workspace(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at::Tensor const& sb,
-               at::Tensor const& out,int64_t tactic,int64_t splits,int64_t swizzle,int64_t sms) {
+               std::optional<at::Tensor> output,int64_t tactic,int64_t splits,int64_t swizzle,int64_t sms) {
+  auto out = output.value_or(at::Tensor{});
   auto c=resolve(a,b,tactic,splits,swizzle,sms);
   TORCH_CHECK(a.is_cuda(), "Expected CUDA matrices");
   c10::cuda::CUDAGuard guard(a.device());
@@ -149,7 +166,7 @@ at::Tensor gemm_from_float_pdl(at::Tensor const& input,at::Tensor const& b,at::T
   return gemm_from_float_impl<true>(input,b,sb);
 }
 void begin_workspace_planning(at::Tensor const& anchor) { workspace_pool().begin_workspace_planning_cuda(anchor); }
-c10::Dict<std::string,int64_t> finalize_workspace_planning(at::Tensor const& anchor) { return workspace_pool().finalize_workspace_planning_cuda(anchor); }
+c10::Dict<std::string,int64_t> finalize_workspace_planning(at::Tensor const& anchor, bool per_stream) { return workspace_pool().finalize_workspace_planning_cuda(anchor, per_stream); }
 c10::Dict<std::string,int64_t> workspace_stats(at::Tensor const& anchor) { return workspace_pool().workspace_stats_cuda(anchor); }
 bool workspace_barriers_zero(at::Tensor const& anchor) { return workspace_pool().workspace_barriers_zero_cuda(anchor); }
 } // namespace mxfp8_runtime
@@ -159,12 +176,12 @@ TORCH_LIBRARY(mxfp8_sm120,m) {
   m.def("bf16_ba_m16(Tensor x, Tensor weight) -> Tensor");
   m.def("gemm(Tensor a, Tensor b, Tensor sa, Tensor sb, Tensor(a!)? out=None, Tensor? workspace=None, int tactic=-1, int splits=1, int swizzle=1, int sms=0, bool use_pdl=False) -> Tensor(a!)");
   m.def("prepare(Tensor a, Tensor b, Tensor sa, Tensor sb, Tensor(a!)? out=None, int tactic=-1, int splits=1, int swizzle=1, int sms=0) -> (Tensor(a!), Tensor?, int[])");
-  m.def("allocate_workspace(Tensor a, Tensor b, Tensor sa, Tensor sb, Tensor out, int tactic, int splits=1, int swizzle=1, int sms=0) -> Tensor?");
+  m.def("allocate_workspace(Tensor a, Tensor b, Tensor sa, Tensor sb, Tensor? out=None, int tactic=-1, int splits=1, int swizzle=1, int sms=0) -> Tensor?");
   m.def("gemm_from_float(Tensor input, Tensor b, Tensor sb, bool use_pdl=False) -> Tensor");
   m.def("gemm_pdl(Tensor a, Tensor b, Tensor sa, Tensor sb) -> Tensor");
   m.def("gemm_from_float_pdl(Tensor input, Tensor b, Tensor sb) -> Tensor");
   m.def("begin_workspace_planning(Tensor anchor) -> ()");
-  m.def("finalize_workspace_planning(Tensor anchor) -> Dict(str, int)");
+  m.def("finalize_workspace_planning(Tensor anchor, bool per_stream=False) -> Dict(str, int)");
   m.def("workspace_stats(Tensor anchor) -> Dict(str, int)");
   m.def("workspace_barriers_zero(Tensor anchor) -> bool");
   m.def("select_config(int m, int n, int k) -> int[]", &mxfp8_runtime::selected_config);

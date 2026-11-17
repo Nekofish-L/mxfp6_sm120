@@ -21,7 +21,7 @@ int64_t launch(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at::
      reinterpret_cast<typename Kernel::ElementB const*>((Swap?a:b).data_ptr()),db,
      reinterpret_cast<typename Kernel::ElementSF const*>((Swap?sb:sa).data_ptr()),Config::tile_atom_to_shape_SFA(problem),
      reinterpret_cast<typename Kernel::ElementSF const*>((Swap?sa:sb).data_ptr()),Config::tile_atom_to_shape_SFB(problem)},
-    {{1.f,0.f},nullptr,dc,reinterpret_cast<typename Kernel::ElementD*>(out.data_ptr()),dd}};
+    {{1.f,0.f},nullptr,dc,out.defined() ? reinterpret_cast<typename Kernel::ElementD*>(out.data_ptr()) : nullptr,dd}};
   args.hw_info.device_id=a.get_device();
   int physical_sms=at::cuda::getDeviceProperties(a.get_device())->multiProcessorCount;
   TORCH_CHECK(sms>=0 && sms<=physical_sms,"Invalid SM count");
@@ -65,6 +65,8 @@ int64_t launch(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at::
       TORCH_CHECK(error==cudaSuccess,cudaGetErrorString(error));
     }
     status=gemm.update(args,selected.persistent?selected.pointer:workspace.data_ptr());
+  } else if (bytes == 0) {
+    status=gemm.initialize(args,nullptr,stream);
   } else {
     workspace=at::empty({bytes},a.options().dtype(at::kByte));
     status=gemm.initialize(args,workspace.data_ptr(),stream);

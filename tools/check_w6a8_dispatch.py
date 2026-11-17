@@ -93,14 +93,14 @@ int main() {
         return subprocess.check_output([str(exe)], text=True).strip()
 
 
-def test_effective_launch_choices_unchanged():
-    assert (
-        fingerprint((ROOT / "csrc/torch_extension.cu").read_text())
-        == "822400 12076421243349506047"
-    )
-
-
 if __name__ == "__main__":
-    import sys
+    import argparse
 
-    print(fingerprint(Path(sys.argv[1]).read_text()))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "source", type=Path, nargs="?", default=ROOT / "csrc/torch_extension.cu"
+    )
+    args = parser.parse_args()
+    actual = fingerprint(args.source.read_text())
+    assert actual == "822400 12076421243349506047", actual
+    print("PASS", actual)

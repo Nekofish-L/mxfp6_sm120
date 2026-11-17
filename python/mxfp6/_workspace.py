@@ -26,11 +26,18 @@ class WorkspaceAPI:
         anchor = self._anchor(device)
         getattr(torch.ops, self.namespace).begin_workspace_planning(anchor)
 
-    def finalize_workspace_planning(self, device=None):
-        """Freeze capacity and allocate the current stream's workspace lane."""
+    def finalize_workspace_planning(self, device=None, *, per_stream=False):
+        """Freeze capacity; optionally preallocate each planning stream at its own size.
+
+        With per_stream=True, warm every shape/config on each execution stream
+        during planning. Keep those streams alive for the workspace lifetime.
+        Frozen stream capacities cannot grow, even outside graph capture.
+        """
         anchor = self._anchor(device)
         return dict(
-            getattr(torch.ops, self.namespace).finalize_workspace_planning(anchor)
+            getattr(torch.ops, self.namespace).finalize_workspace_planning(
+                anchor, per_stream
+            )
         )
 
     def workspace_stats(self, device=None):

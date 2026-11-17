@@ -66,7 +66,8 @@ Stream-K fallbacks, output dtype and PDL semantics remain stable. Changes to
 selection must preserve or deliberately update the CPU launch fingerprint:
 
 ```bash
-PYTHONPATH=python python3 -m pytest -q tests/test_w6a8_dispatch.py tests/test_python_entrypoints.py
+PYTHONPATH=python python3 -m pytest -q tests/test_python_entrypoints.py
+python3 tools/check_w6a8_dispatch.py
 MXFP6_LIBRARY_PATH="$PWD/build/mxfp6_torch.so" python3 tests/test_ops.py
 ```
 

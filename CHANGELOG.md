@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- unify W8A8 tactic classification and remove temporary output allocation from
+  workspace queries; zero-workspace launches skip empty scratch tensors;
+- add optional per-stream workspace planning for both native backends, with
+  fixed per-stream capacities and eager/graph rejection of unplanned usage;
+- move the heavyweight W6A8 source fingerprint audit to an explicit tool,
+  retaining behavior-level API and CUDA Graph regression tests.
+
 ## 0.3.1 - 2026-11-16
 
 ### Changed

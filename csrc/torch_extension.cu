@@ -1706,8 +1706,8 @@ at::Tensor gemm_from_float_config_cuda(at::Tensor const& input,
 void begin_workspace_planning_cuda(at::Tensor const& anchor) {
   workspace_pool.begin_workspace_planning_cuda(anchor);
 }
-c10::Dict<std::string, int64_t> finalize_workspace_planning_cuda(at::Tensor const& anchor) {
-  return workspace_pool.finalize_workspace_planning_cuda(anchor);
+c10::Dict<std::string, int64_t> finalize_workspace_planning_cuda(at::Tensor const& anchor, bool per_stream) {
+  return workspace_pool.finalize_workspace_planning_cuda(anchor, per_stream);
 }
 c10::Dict<std::string, int64_t> workspace_stats_cuda(at::Tensor const& anchor) {
   return workspace_pool.workspace_stats_cuda(anchor);
@@ -1745,7 +1745,7 @@ TORCH_LIBRARY(mxfp6, m) {
         "ScalarType? out_dtype=None) -> bool");
   m.def("w6a8_config_abi(Tensor anchor) -> str");
   m.def("begin_workspace_planning(Tensor anchor) -> ()");
-  m.def("finalize_workspace_planning(Tensor anchor) -> Dict(str, int)");
+  m.def("finalize_workspace_planning(Tensor anchor, bool per_stream=False) -> Dict(str, int)");
   m.def("workspace_stats(Tensor anchor) -> Dict(str, int)");
   m.def("workspace_barriers_zero(Tensor anchor) -> bool");
   m.def("_set_workspace_collection(Tensor anchor, bool enabled) -> bool");

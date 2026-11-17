@@ -174,8 +174,7 @@ def allocate_workspace(a: MXFP8Tensor, b: MXFP8Tensor, *, config=None, out=None)
     """Allocate private native workspace for explicit low-level launches."""
     operands = _operands(a, b)
     load_library()
-    _, workspace, _ = torch.ops.mxfp8_sm120.prepare(*operands, out, *_config(config))
-    return workspace
+    return torch.ops.mxfp8_sm120.allocate_workspace(*operands, out, *_config(config))
 
 
 def warmup(a, b, *, out_dtype=torch.bfloat16, iterations=3, use_pdl=False):

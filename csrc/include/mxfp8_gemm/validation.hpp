@@ -4,9 +4,9 @@
 #include <ATen/cuda/CUDAContext.h>
 namespace mxfp8_common {
 inline void validate(at::Tensor const& a,at::Tensor const& b,
-                     at::Tensor const& sa,at::Tensor const& sb,at::Tensor const& out) {
+                     at::Tensor const& sa,at::Tensor const& sb,at::Tensor const& out, bool query=false) {
   TORCH_CHECK(a.is_cuda() && a.dim()==2 && b.dim()==2,"Expected CUDA matrices");
-  for(auto const& t:{a,b,sa,sb,out}) {
+  for(auto const& t:{a,b,sa,sb}) {
     TORCH_CHECK(t.device()==a.device() && t.is_contiguous(),"Expected contiguous tensors on one CUDA device");
     TORCH_CHECK(reinterpret_cast<uintptr_t>(t.data_ptr())%16==0,"Expected 16-byte-aligned storage");
   }
@@ -17,9 +17,16 @@ inline void validate(at::Tensor const& a,at::Tensor const& b,
   TORCH_CHECK(sa.element_size()==1 && sb.element_size()==1 &&
               sa.numel()>=(m+127)/128*128*(k/32) && sb.numel()>=n*(k/32),
               "Expected padded 128x4 swizzled E8M0 scales");
-  TORCH_CHECK(out.scalar_type()==at::kBFloat16 && out.dim()==2 &&
-              out.size(0)==m && out.size(1)==n,"Expected BF16 output [M,N]");
-  for(auto const& t:{a,b,sa,sb}) TORCH_CHECK(!out.is_alias_of(t),"Output must not alias inputs");
+  if (out.defined()) {
+    TORCH_CHECK(out.device()==a.device() && out.is_contiguous() &&
+                reinterpret_cast<uintptr_t>(out.data_ptr())%16==0,
+                "Expected contiguous aligned output on the input CUDA device");
+    TORCH_CHECK(out.scalar_type()==at::kBFloat16 && out.dim()==2 &&
+                out.size(0)==m && out.size(1)==n,"Expected BF16 output [M,N]");
+    for(auto const& t:{a,b,sa,sb}) TORCH_CHECK(!out.is_alias_of(t),"Output must not alias inputs");
+  } else {
+    TORCH_CHECK(query, "Output is required for execution");
+  }
   auto* props=at::cuda::getDeviceProperties(a.get_device());
   TORCH_CHECK(props->major==12 && props->minor==0,"MXFP8 kernels require SM120");
 }

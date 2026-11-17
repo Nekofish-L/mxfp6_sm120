@@ -219,6 +219,45 @@ layout falls back to temporary workspace in eager execution and raises
 during capture. `workspace_stats()` and `workspace_barriers_zero()` expose
 pool state for diagnostics.
 
+To avoid allocating the device-wide maximum on every stream, use per-stream
+planning. Run every required shape/config on its actual execution stream
+between begin and finalize:
+
+```python
+mxfp8.begin_workspace_planning()
+for stream, run in stream_workloads:  # retain these streams for the pool lifetime
+    with torch.cuda.stream(stream):
+        run()  # warm every shape/config that this stream will execute
+stats = mxfp8.finalize_workspace_planning(per_stream=True)
+```
+
+This preallocates only the streams observed during planning, each at its own
+maximum reduction/barrier size. There is no extra default-stream lane unless
+that stream also needs workspace. `total_arena_bytes` reports the actual sum;
+`arena_bytes` remains the device-wide maximum for compatibility. Per-stream
+mode rejects missing streams and oversized layouts in both eager and graph
+execution instead of silently allocating temporary scratch. Default mode
+retains the previous global-capacity behavior. Rebuild both native libraries
+when updating the Python wrapper for the new optional argument.
+
+A tactic requiring zero workspace allocates none, including queries made by
+`allocate_workspace(a, b, config=...)`; querying no longer creates a temporary
+output matrix. The same Stream-K kernel can require zero scratch for one
+shape/decomposition and nonzero scratch for another. Parallel Split-K still
+requires reduction/barrier storage. Inspect the actual selected configuration
+rather than deciding from the tactic's name alone.
+
+Private `prepare` objects retain their own workspaces. Prefer the shared pool
+for sequential layers on the same stream; independent private objects and
+concurrent streams cannot blindly share one scratch address. Graphs captured
+with the same lane must not overlap, even if replayed on different streams.
+Do not evict or
+resize a buffer referenced by a captured graph. Planning avoids hot-path
+allocation and per-launch barrier initialization; it cannot bound latency
+from other allocations, GPU contention or clocks. If one rare configuration
+dominates a single stream's capacity, changing splits/tactic requires a new
+latency/accuracy measurement, not a blanket reduction of the allocation size.
+
 Alternatively, `mxfp8.prepare(qa, w8)` returns a callable with private
 output/workspace allocated by C++. Warm it on a side stream before graph
 capture, and retain it for the graph's lifetime. Inputs and scales may
