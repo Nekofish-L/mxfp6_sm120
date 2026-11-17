@@ -40,16 +40,10 @@ def generate(source):
         lines.append("  if (" + " && ".join(terms) + ") {")
         for upper, cfg in zip(policy["m_bounds"], r["configs"]):
             lines.append(f"    if (m <= {upper}) return {expression(cfg)};")
-        lines.append("    return {79, 1, 1, 0};")
+        lines.append(f"    return {expression(policy['default_config'])};")
         lines.append("  }")
     lines += [
-        "  if (m > 2048) return {79, 1, 1, 0};",
-        "  if (k > 3072) {",
-        "    int64_t tactic = m <= 8 ? 12 : m <= 32 ? 13 : m <= 64 ? 14 : m <= 256 ? 15 : 16;",
-        "    int64_t splits = m <= 128 ? (k >= 8192 ? 4 : 2) : 1;",
-        "    return {tactic, splits, 1, 0};",
-        "  }",
-        "  return {m <= 8 ? 0 : m <= 16 ? 2 : m <= 32 ? 4 : m <= 64 ? 7 : 9, 1, 1, 0};",
+        f"  return {expression(policy['default_config'])};",
         "}",
         "} // namespace mxfp8_runtime",
         "",

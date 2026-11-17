@@ -6,8 +6,11 @@
   workspace queries; zero-workspace launches skip empty scratch tensors;
 - add optional per-stream workspace planning for both native backends, with
   fixed per-stream capacities and eager/graph rejection of unplanned usage;
-- move the heavyweight W6A8 source fingerprint audit to an explicit tool,
-  retaining behavior-level API and CUDA Graph regression tests.
+- consolidate W6A8 candidate metadata into a shared native/Python registry,
+  and keep installed tuning decisions and cache-only misses in one table;
+- keep all W8A8 fallback decisions in the checked-in JSON policy;
+- consolidate benchmark timing and remove the implementation-coupled source
+  fingerprint tool; retain native API, candidate and CUDA Graph regressions.
 
 ## 0.3.1 - 2026-11-16
 

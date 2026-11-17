@@ -8,7 +8,7 @@ from ._loader import load_library
 from ._workspace import WorkspaceAPI
 from .autotune import (
     _needs_w6a8_autotune,
-    _ensure_w6a8_autotuned,
+    ensure_w6a8_tuned,
     TUNED_NK as TUNED_NK,
     TUNED_M as TUNED_M,
     is_tuned_shape as is_tuned_shape,
@@ -131,7 +131,7 @@ def gemm_w6a8(
     _require_sm120(a.device)
     load_library()
     if _needs_w6a8_autotune(a.device, a.rows, b.rows, a.k, out_dtype):
-        _ensure_w6a8_autotuned(
+        ensure_w6a8_tuned(
             a.values,
             b.values,
             a.scales,
@@ -182,7 +182,7 @@ def gemm_from_float(
         # every candidate timing; the normal fused call below remains the
         # production 16->8 + GEMM path and uses the installed C++ override.
         tune_values, tune_scales = torch.ops.mxfp6.quantize_mxfp8(a)
-        _ensure_w6a8_autotuned(
+        ensure_w6a8_tuned(
             tune_values,
             b.values,
             tune_scales,
@@ -236,7 +236,7 @@ def autotune_w6a8(
 
         if not should_tune_exact_shapes() and not is_autotune_cache_only():
             return None
-    return _ensure_w6a8_autotuned(
+    return ensure_w6a8_tuned(
         a.values,
         b.values,
         a.scales,
@@ -275,46 +275,27 @@ def warmup_w6a8(
     if not isinstance(b, PackedMXFP6Tensor):
         raise TypeError("b must be a PackedMXFP6Tensor instance")
 
-    config = None
     if isinstance(a, torch.Tensor):
         rows, k = _validate_float_activation(a)
-        if k != b.k or a.device != b.device:
-            raise ValueError("a and b must have matching K and CUDA device")
-        _validate_problem(rows, b.rows, k)
-        _require_sm120(a.device)
-        load_library()
-        if autotune:
-            config = autotune_w6a8(a, b, out_dtype=out_dtype, force=force)
-        for _ in range(iterations):
-            torch.ops.mxfp6.gemm_from_float(
-                a, b.values, b.scales, b.rows, 1.0, out_dtype
-            )
-        device = a.device
+        op_name = "gemm_from_float"
+        arguments = (a, b.values, b.scales, b.rows, 1.0, out_dtype)
     elif isinstance(a, MXFP8Tensor):
-        if a.k != b.k or a.device != b.device:
-            raise ValueError("a and b must have matching K and CUDA device")
-        _validate_problem(a.rows, b.rows, a.k)
-        _require_sm120(a.device)
-        load_library()
-        if autotune:
-            config = autotune_w6a8(a, b, out_dtype=out_dtype, force=force)
-        for _ in range(iterations):
-            torch.ops.mxfp6.gemm_w6a8(
-                a.values,
-                b.values,
-                a.scales,
-                b.scales,
-                a.rows,
-                b.rows,
-                a.k,
-                1.0,
-                out_dtype,
-            )
-        device = a.device
+        rows, k = a.shape
+        op_name = "gemm_w6a8"
+        arguments = (a.values, b.values, a.scales, b.scales,
+                     rows, b.rows, k, 1.0, out_dtype)
     else:
         raise TypeError("a must be an FP16/BF16 Tensor or MXFP8Tensor")
-
-    torch.cuda.synchronize(device)
+    if k != b.k or a.device != b.device:
+        raise ValueError("a and b must have matching K and CUDA device")
+    _validate_problem(rows, b.rows, k)
+    _require_sm120(a.device)
+    load_library()
+    config = autotune_w6a8(a, b, out_dtype=out_dtype, force=force) if autotune else None
+    launch = getattr(torch.ops.mxfp6, op_name)
+    for _ in range(iterations):
+        launch(*arguments)
+    torch.cuda.synchronize(a.device)
     return config
 
 
@@ -332,17 +313,9 @@ def gemm(
     MXFP6 activation inputs retain the legacy W6A6-compatible API.
 
     """
-    out_dtype = _validate_output_dtype(out_dtype)
     if isinstance(a, torch.Tensor):
-        if not isinstance(b, PackedMXFP6Tensor):
-            raise TypeError(
-                "FP16/BF16 activation input requires a PackedMXFP6Tensor weight"
-            )
         return gemm_from_float(a, b, alpha, out_dtype=out_dtype)
-
     if isinstance(a, MXFP8Tensor):
-        if not isinstance(b, PackedMXFP6Tensor):
-            raise TypeError("MXFP8 activation requires a PackedMXFP6Tensor weight")
         return gemm_w6a8(a, b, alpha, out_dtype=out_dtype)
 
     if not isinstance(a, PackedMXFP6Tensor):

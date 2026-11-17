@@ -17,6 +17,7 @@ import math
 import os
 from pathlib import Path
 import random
+import re
 import statistics
 import tempfile
 import threading
@@ -28,15 +29,17 @@ import torch
 from ._loader import load_library
 
 
-TUNED_NK = frozenset(
-    {
-        (8192, 5120),
-        (5120, 3072),
-        (7168, 5120),
-        (17408, 5120),
-        (5120, 8704),
-    }
+_registry = Path(__file__).with_name("w6a8_registry.def").read_text()
+_candidates = re.findall(
+    r'W6A8_KERNEL\(\s*(\d+),\s*"([^"]+)"[^\n]*,\s*(-?\d+)\s*\)', _registry
 )
+KERNEL_NAMES = tuple(name for _, name, _ in _candidates)
+STREAM_K_CONFIG_IDS = frozenset(int(i) for i, _, fallback in _candidates if int(fallback) >= 0)
+TUNED_NK = frozenset(
+    (int(n), int(k))
+    for n, k in re.findall(r"W6A8_TARGET_NK\((\d+), (\d+)\)", _registry)
+)
+del _registry, _candidates
 TUNED_M = frozenset((1, 16, 24, 32, 64, 96, 512, 1024, 2048, 4096, 8192))
 
 
@@ -57,41 +60,8 @@ DEFAULT_AUTOTUNE_ITERATIONS = 10
 DEFAULT_AUTOTUNE_REPEATS = 3
 DEFAULT_ALL_FAMILIES_MAX_M = 512
 
-KERNEL_NAMES = (
-    "swapped_128x8_static_cooperative",
-    "swapped_128x8_stage4_static_cooperative",
-    "swapped_128x8_stage5_static_cooperative",
-    "swapped_128x8_stream_k",
-    "swapped_128x16_stage4_static_cooperative",
-    "swapped_64x16x256_static_pingpong",
-    "normal_64x64x128_pingpong",
-    "normal_64x64x128_static_pingpong",
-    "normal_64x64x128_stage4_static_pingpong",
-    "normal_64x64x256_static_pingpong",
-    "normal_64x128x128_pingpong",
-    "normal_64x128x128_static_pingpong",
-    "normal_128x128x128_pingpong",
-    "normal_128x128x128_cooperative",
-    "normal_128x128x128_static_pingpong",
-    "normal_128x128x128_static_cooperative",
-    "normal_128x128x128_stream_k",
-    "swapped_64x32x128_pingpong",
-    "swapped_64x32x128_stage3_pingpong",
-    "swapped_64x32x128_static_pingpong",
-    "swapped_64x32x128_stage3_static_pingpong",
-    "swapped_64x32x256_pingpong",
-    "swapped_64x32x256_stage2_pingpong",
-    "swapped_64x32x256_static_pingpong",
-    "swapped_64x32x256_stage2_static_pingpong",
-    "swapped_128x32_cooperative",
-    "swapped_128x32_stage2_cooperative",
-    "swapped_128x32_static_cooperative",
-    "swapped_128x32_stage2_static_cooperative",
-    "swapped_64x16x128_stage3_static_pingpong",
-)
 RASTER_NAMES = ("heuristic", "along_m", "along_n")
 SWIZZLES = (1, 2, 4, 8)
-STREAM_K_CONFIG_IDS = frozenset((3, 16))
 
 
 @dataclass(frozen=True)
@@ -121,10 +91,10 @@ class AutotuneResult:
 
 
 _STATE_LOCK = threading.Lock()
-# Fast shape lookup also remembers cache-only misses without disk access.
-_AUTOTUNE_READY: set[tuple[int, int, int, int, torch.dtype]] = set()
 _KEY_LOCKS: dict[str, threading.Lock] = {}
-_DECISIONS: dict[tuple[int, str], W6A8Config] = {}
+# One record per installed shape; None remembers a cache-only miss. The disk
+# key preserves explicit-call invalidation when the cache descriptor changes.
+_DECISIONS: dict[tuple[int, int, int, int, torch.dtype], tuple[str, W6A8Config | None]] = {}
 _LIBRARY_FINGERPRINT: str | None = None
 
 
@@ -830,25 +800,25 @@ def ensure_w6a8_tuned(
     _output_dtype_name(out_dtype)
     descriptor = _descriptor(device_index, m, n, k, out_dtype)
     key = _cache_key(descriptor)
-    process_key = (device_index, key)
+    process_key = _autotune_process_key(a.device, m, n, k, out_dtype)
     if cache_lookup:
         with _STATE_LOCK:
             existing = _DECISIONS.get(process_key)
-        if existing is not None:
-            return existing
+        if existing is not None and existing[0] == key and existing[1] is not None:
+            return existing[1]
 
     with _get_key_lock(key):
         if cache_lookup:
             with _STATE_LOCK:
                 existing = _DECISIONS.get(process_key)
-            if existing is not None:
-                return existing
+            if existing is not None and existing[0] == key and existing[1] is not None:
+                return existing[1]
 
         cached = _read_entry(key, descriptor) if cache_lookup else None
         if cached is not None:
             _install(a, m, n, k, cached, out_dtype)
             with _STATE_LOCK:
-                _DECISIONS[process_key] = cached
+                _DECISIONS[process_key] = (key, cached)
             _verbose(
                 f"cache hit {m}x{n}x{k}: {cached.kernel}, "
                 f"{cached.raster}/sw{cached.swizzle}"
@@ -856,6 +826,8 @@ def ensure_w6a8_tuned(
             return cached
 
         if cache_only:
+            with _STATE_LOCK:
+                _DECISIONS[process_key] = (key, None)
             _verbose(
                 f"cache miss {m}x{n}x{k}; using native static dispatcher"
             )
@@ -901,7 +873,7 @@ def ensure_w6a8_tuned(
 
         _install(a, m, n, k, result_config, out_dtype)
         with _STATE_LOCK:
-            _DECISIONS[process_key] = result_config
+            _DECISIONS[process_key] = (key, result_config)
         return result_config
 
 
@@ -939,30 +911,4 @@ def _needs_w6a8_autotune(
         return False
     key = _autotune_process_key(device, m, n, k, out_dtype)
     with _STATE_LOCK:
-        return key not in _AUTOTUNE_READY
-
-
-def _ensure_w6a8_autotuned(
-    a: torch.Tensor,
-    b: torch.Tensor,
-    sfa: torch.Tensor,
-    sfb: torch.Tensor,
-    m: int,
-    n: int,
-    k: int,
-    *,
-    out_dtype: torch.dtype,
-    force: bool = False,
-) -> W6A8Config | None:
-    cache_only = is_autotune_cache_only()
-    config = ensure_w6a8_tuned(
-        a, b, sfa, sfb, m, n, k, out_dtype=out_dtype, force=force
-    )
-    # Cache-only misses deliberately return None. Remember that result for the
-    # process so an eager-prefill shape does not repeatedly touch the cache on
-    # every request; deployment caches are expected to be immutable in-process.
-    if config is not None or (cache_only and can_autotune_now()):
-        key = _autotune_process_key(a.device, m, n, k, out_dtype)
-        with _STATE_LOCK:
-            _AUTOTUNE_READY.add(key)
-    return config
+        return key not in _DECISIONS

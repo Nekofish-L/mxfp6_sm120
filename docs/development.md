@@ -53,8 +53,8 @@ ctest --test-dir build --output-on-failure
 `quantization.py` owns packed tensor types and conversions; `moe.py` owns
 routing, grouped/array GEMM and reduction wrappers; `ops.py` owns dense W6A8
 entry points. `qwen35.py` composes model schedules from these operations.
-`autotune.py` owns tuning decisions and the fast process-local shape cache,
-including cache-only misses. Existing package-level and `mxfp6.ops` imports
+`autotune.py` stores installed decisions and cache-only misses in one
+process-local table. Existing package-level and `mxfp6.ops` imports
 remain direct aliases, so moving an implementation adds no launch wrapper.
 
 `MXFP8Tensor.as_float8()` views the payload without applying scales. The old
@@ -63,11 +63,13 @@ remain direct aliases, so moving an implementation adds no launch wrapper.
 The W6A8 static selector returns a launch configuration. Static decisions and
 cached overrides both execute through `launch_w6a8_config`; candidate IDs,
 Stream-K fallbacks, output dtype and PDL semantics remain stable. Changes to
-selection must preserve or deliberately update the CPU launch fingerprint:
+selection must preserve candidate IDs and pass the native candidate/override
+and graph regression tests. `python/mxfp6/w6a8_registry.def` is the shared
+source for candidate names, kernel types, Stream-K fallbacks and target N/K
+pairs; it is included in both source distributions and wheels:
 
 ```bash
 PYTHONPATH=python python3 -m pytest -q tests/test_python_entrypoints.py
-python3 tools/check_w6a8_dispatch.py
 MXFP6_LIBRARY_PATH="$PWD/build/mxfp6_torch.so" python3 tests/test_ops.py
 ```
 
@@ -79,7 +81,8 @@ static path. The script records full-output hashes and raw CUDA Graph/eager
 latency samples. `--shapes 1536x5120x3072` narrows an outlier for a reverse-order
 rerun. Compare hashes before comparing timings; report per-shape outliers as
 well as aggregate ratios. GPU clock and thermal variation can affect short
-sequential measurements.
+sequential measurements. The same driver supports `--workspace-mode temporary`,
+`global` or `per-stream` for the W8A8 workspace comparison.
 
 ## CUTLASS patch queue
 

@@ -175,11 +175,11 @@ int64_t round_up(int64_t value, int64_t alignment) {
 }
 
 bool is_target_nk(int64_t n, int64_t k) {
-  return (n == 8192 && k == 5120) ||
-      (n == 5120 && k == 3072) ||
-      (n == 7168 && k == 5120) ||
-      (n == 17408 && k == 5120) ||
-      (n == 5120 && k == 8704);
+  return false
+#define W6A8_TARGET_NK(N, K) || (n == N && k == K)
+#include "../python/mxfp6/w6a8_registry.def"
+#undef W6A8_TARGET_NK
+      ;
 }
 
 int64_t output_tile_count(int64_t m, int64_t n, int64_t tile_m) {
@@ -740,14 +740,6 @@ at::Tensor launch_normal_policy(at::Tensor const& a,
       8, RasterOrder::Heuristic, stream_k_splits);
 }
 
-enum class W6A8Kernel128 {
-  Pingpong,
-  Cooperative,
-  StreamK,
-  StaticPingpong,
-  StaticCooperative,
-};
-
 RasterOrder parse_raster_order(int64_t value) {
   switch (value) {
     case 0:
@@ -764,49 +756,6 @@ RasterOrder parse_raster_order(int64_t value) {
 void check_swizzle(int64_t value) {
   TORCH_CHECK(value == 1 || value == 2 || value == 4 || value == 8,
               "swizzle must be one of 1, 2, 4, or 8; got ", value);
-}
-
-at::Tensor launch_w6a8_128(at::Tensor const& a,
-                           at::Tensor const& b,
-                           at::Tensor const& sfa,
-                           at::Tensor const& sfb,
-                           int64_t m,
-                           int64_t n,
-                           int64_t k,
-                           double alpha,
-                           int device_index,
-                           int sm_count,
-                           W6A8Kernel128 kernel,
-                           int swizzle,
-                           RasterOrder raster,
-                           bool use_pdl) {
-  namespace kernels = mxfp6_gemm::normal;
-  if (kernel == W6A8Kernel128::StreamK && !stream_k_enabled()) {
-    kernel = W6A8Kernel128::Pingpong;
-  }
-  switch (kernel) {
-    case W6A8Kernel128::Pingpong:
-      return launch_normal<kernels::KernelW6A8_128x128x128Pingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle, raster, 1, 0, use_pdl);
-    case W6A8Kernel128::Cooperative:
-      return launch_normal<kernels::KernelW6A8_128x128x128Cooperative>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle, raster, 1, 0, use_pdl);
-    case W6A8Kernel128::StreamK:
-      return launch_normal<kernels::KernelW6A8_128x128x128StreamK>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle, raster, 1, 0, use_pdl);
-    case W6A8Kernel128::StaticPingpong:
-      return launch_normal<kernels::KernelW6A8_128x128x128StaticPingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle, raster, 1, sm_count, use_pdl);
-    case W6A8Kernel128::StaticCooperative:
-      return launch_normal<kernels::KernelW6A8_128x128x128StaticCooperative>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle, raster, 1, sm_count, use_pdl);
-  }
-  TORCH_CHECK(false, "unreachable W6A8 kernel selection");
 }
 
 // Stable candidate IDs used by the Python first-use autotuner. All candidates
@@ -833,140 +782,18 @@ at::Tensor launch_w6a8_config(at::Tensor const& a,
   int const swizzle_value = static_cast<int>(swizzle);
 
   switch (config_id) {
-    case 0:
-      return launch_swapped<swapped::KernelW6A8_128x8StaticCooperative>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, sm_count, use_pdl);
-    case 1:
-      return launch_swapped<
-          swapped::KernelW6A8_128x8Stage4StaticCooperative>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, sm_count, use_pdl);
-    case 2:
-      return launch_swapped<
-          swapped::KernelW6A8_128x8Stage5StaticCooperative>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, sm_count, use_pdl);
-    case 3:
-      if (!stream_k_enabled()) {
-        return launch_swapped<
-            swapped::KernelW6A8_128x8Stage4StaticCooperative>(
-            a, b, sfa, sfb, m, n, k, alpha, device_index,
-            swizzle_value, raster, 1, sm_count, use_pdl);
-      }
-      return launch_swapped<swapped::KernelW6A8_128x8StreamK>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, sm_count, use_pdl);
-    case 4:
-      return launch_swapped<
-          swapped::KernelW6A8_128x16Stage4StaticCooperative>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, sm_count, use_pdl);
-    case 5:
-      return launch_swapped<swapped::KernelW6A8_64x16x256StaticPingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, sm_count, use_pdl);
-    case 6:
-      return launch_normal<normal::KernelW6A8_64x64x128Pingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, 0, use_pdl);
-    case 7:
-      return launch_normal<normal::KernelW6A8_64x64x128StaticPingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, sm_count, use_pdl);
-    case 8:
-      return launch_normal<
-          normal::KernelW6A8_64x64x128Stage4StaticPingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, sm_count, use_pdl);
-    case 9:
-      return launch_normal<normal::KernelW6A8_64x64x256StaticPingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, sm_count, use_pdl);
-    case 10:
-      return launch_normal<normal::KernelW6A8_64x128x128Pingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, 0, use_pdl);
-    case 11:
-      return launch_normal<normal::KernelW6A8_64x128x128StaticPingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, sm_count, use_pdl);
-    case 12:
-      return launch_w6a8_128(
-          a, b, sfa, sfb, m, n, k, alpha, device_index, sm_count,
-          W6A8Kernel128::Pingpong, swizzle_value, raster, use_pdl);
-    case 13:
-      return launch_w6a8_128(
-          a, b, sfa, sfb, m, n, k, alpha, device_index, sm_count,
-          W6A8Kernel128::Cooperative, swizzle_value, raster, use_pdl);
-    case 14:
-      return launch_w6a8_128(
-          a, b, sfa, sfb, m, n, k, alpha, device_index, sm_count,
-          W6A8Kernel128::StaticPingpong, swizzle_value, raster, use_pdl);
-    case 15:
-      return launch_w6a8_128(
-          a, b, sfa, sfb, m, n, k, alpha, device_index, sm_count,
-          W6A8Kernel128::StaticCooperative, swizzle_value, raster, use_pdl);
-    case 16:
-      return launch_w6a8_128(
-          a, b, sfa, sfb, m, n, k, alpha, device_index, sm_count,
-          W6A8Kernel128::StreamK, swizzle_value, raster, use_pdl);
-    case 17:
-      return launch_swapped<swapped::KernelW6A8_64x32x128Pingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, 0, use_pdl);
-    case 18:
-      return launch_swapped<swapped::KernelW6A8_64x32x128Stage3Pingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, 0, use_pdl);
-    case 19:
-      return launch_swapped<swapped::KernelW6A8_64x32x128StaticPingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, sm_count, use_pdl);
-    case 20:
-      return launch_swapped<
-          swapped::KernelW6A8_64x32x128Stage3StaticPingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, sm_count, use_pdl);
-    case 21:
-      return launch_swapped<swapped::KernelW6A8_64x32x256Pingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, 0, use_pdl);
-    case 22:
-      return launch_swapped<swapped::KernelW6A8_64x32x256Stage2Pingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, 0, use_pdl);
-    case 23:
-      return launch_swapped<swapped::KernelW6A8_64x32x256StaticPingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, sm_count, use_pdl);
-    case 24:
-      return launch_swapped<
-          swapped::KernelW6A8_64x32x256Stage2StaticPingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, sm_count, use_pdl);
-    case 25:
-      return launch_swapped<swapped::KernelW6A8_128x32Cooperative>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, 0, use_pdl);
-    case 26:
-      return launch_swapped<swapped::KernelW6A8_128x32Stage2Cooperative>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, 0, use_pdl);
-    case 27:
-      return launch_swapped<swapped::KernelW6A8_128x32StaticCooperative>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, sm_count, use_pdl);
-    case 28:
-      return launch_swapped<
-          swapped::KernelW6A8_128x32Stage2StaticCooperative>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, sm_count, use_pdl);
-    case 29:
-      return launch_swapped<
-          swapped::KernelW6A8_64x16x128Stage3StaticPingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          swizzle_value, raster, 1, sm_count, use_pdl);
+#define W6A8_KERNEL(ID, NAME, LAYOUT, KERNEL, SMS, FALLBACK) \
+    case ID: \
+      if constexpr (FALLBACK >= 0) { \
+        if (!stream_k_enabled()) return launch_w6a8_config( \
+            a, b, sfa, sfb, m, n, k, alpha, device_index, sm_count, \
+            FALLBACK, swizzle, raster_order, use_pdl); \
+      } \
+      return launch_##LAYOUT<LAYOUT::KERNEL>( \
+          a, b, sfa, sfb, m, n, k, alpha, device_index, \
+          swizzle_value, raster, 1, SMS, use_pdl);
+#include "../python/mxfp6/w6a8_registry.def"
+#undef W6A8_KERNEL
   }
   TORCH_CHECK(false, "unknown W6A8 config_id ", config_id,
               "; expected an integer in [0, 29]");

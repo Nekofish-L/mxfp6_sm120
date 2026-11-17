@@ -36,11 +36,11 @@ SHAPES = [
 ]
 
 
-def measure(fn):
+def measure(fn, *, stream=None, individual=False):
     for _ in range(5):
         fn()
     graph = torch.cuda.CUDAGraph()
-    with torch.cuda.graph(graph):
+    with torch.cuda.graph(graph, stream=stream):
         for _ in range(20):
             result = fn()
     samples = []
@@ -55,21 +55,89 @@ def measure(fn):
         end.synchronize()
         samples.append(start.elapsed_time(end) * 1000 / 20)
     eager = []
-    for _ in range(3):
+    iterations = 1 if individual else 20
+    for _ in range(100 if individual else 3):
         torch.cuda.synchronize()
         start = time.perf_counter()
-        for _ in range(20):
+        for _ in range(iterations):
             fn()
         torch.cuda.synchronize()
-        eager.append((time.perf_counter() - start) * 1e6 / 20)
+        eager.append((time.perf_counter() - start) * 1e6 / iterations)
     return result, samples, eager
+
+
+def benchmark_workspace(args):
+    from mxfp6 import mxfp8 as api
+
+    torch.manual_seed(91)
+    streams = [torch.cuda.Stream(), torch.cuda.Stream()]
+    runs = []
+    for stream, (m, n, k, t) in zip(
+        streams, [(1, 128, 8192, 12), (512, 8192, 2048, 16)]
+    ):
+        with torch.cuda.stream(stream):
+            a = api.quantize_mxfp8(
+                torch.randn(m, k, device="cuda", dtype=torch.bfloat16)
+            )
+            b = api.quantize_mxfp8(
+                torch.randn(n, k, device="cuda", dtype=torch.bfloat16)
+            )
+            out = torch.empty((m, n), device="cuda", dtype=torch.bfloat16)
+            run = lambda a=a, b=b, out=out, t=t: api.gemm_w8a8(
+                a, b, out=out, config=api.W8A8Config(t, 4)
+            )
+            run()
+            runs.append((run, (m, n, k, t)))
+    torch.cuda.synchronize()
+    if args.workspace_mode != "temporary":
+        api.begin_workspace_planning()
+        for stream, (run, _) in zip(streams, runs):
+            with torch.cuda.stream(stream):
+                run()
+        if args.workspace_mode == "global":
+            api.finalize_workspace_planning()
+        else:
+            api.finalize_workspace_planning(per_stream=True)
+    rows = []
+    for stream, (run, shape) in zip(streams, runs):
+        with torch.cuda.stream(stream):
+            out, graph_us, eager = measure(run, stream=stream, individual=True)
+        rows.append(
+            dict(
+                shape=shape,
+                sha256=hashlib.sha256(
+                    out.cpu().view(torch.uint8).numpy().tobytes()
+                ).hexdigest(),
+                graph_median_us=statistics.median(graph_us),
+                eager_median_us=statistics.median(eager),
+                eager_p99_us=sorted(eager)[98],
+                graph_samples_us=graph_us,
+                eager_samples_us=eager,
+            )
+        )
+    args.output.write_text(
+        json.dumps(
+            dict(mode=args.workspace_mode, stats=api.workspace_stats(), rows=rows),
+            indent=2,
+        )
+        + "\n"
+    )
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--shapes", help="Comma-separated MxNxK shapes")
+    parser.add_argument(
+        "--workspace-mode",
+        choices=("temporary", "global", "per-stream"),
+        help="Benchmark W8A8 workspace instead of W6A8 entry points",
+    )
     args = parser.parse_args()
+    if args.workspace_mode:
+        if args.shapes:
+            parser.error("--shapes applies to W6A8 entry points only")
+        return benchmark_workspace(args)
     shapes = (
         [tuple(map(int, x.split("x"))) for x in args.shapes.split(",")]
         if args.shapes

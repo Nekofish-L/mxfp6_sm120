@@ -77,26 +77,8 @@ def test_compiled_policy_matches_source_intervals():
                                 )
                             ]
                         return tuple(c)
-                return (79, 1, 1, 0)
-        if m > 2048:
-            return (79, 1, 1, 0)
-        if k > 3072:
-            return (
-                (
-                    12
-                    if m <= 8
-                    else 13 if m <= 32 else 14 if m <= 64 else 15 if m <= 256 else 16
-                ),
-                (4 if k >= 8192 else 2) if m <= 128 else 1,
-                1,
-                0,
-            )
-        return (
-            0 if m <= 8 else 2 if m <= 16 else 4 if m <= 32 else 7 if m <= 64 else 9,
-            1,
-            1,
-            0,
-        )
+                return tuple(policy["default_config"])
+        return tuple(policy["default_config"])
 
     for m in dimensions["m"]:
         for n in dimensions["n"]:

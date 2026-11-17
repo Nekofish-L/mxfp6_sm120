@@ -1700,14 +1700,11 @@ def test_autotune_cache_only(mxfp6) -> None:
         device_index = torch.cuda.current_device()
     descriptor = autotune._descriptor(device_index, m, n, k, out_dtype)
     cache_key = autotune._cache_key(descriptor)
-    decision_key = (device_index, cache_key)
-    ready_key = autotune._autotune_process_key(a8.device, m, n, k, out_dtype)
+    decision_key = autotune._autotune_process_key(a8.device, m, n, k, out_dtype)
 
     def clear_process_state() -> None:
         with autotune._STATE_LOCK:
             autotune._DECISIONS.pop(decision_key, None)
-        with autotune._STATE_LOCK:
-            autotune._AUTOTUNE_READY.discard(ready_key)
 
     torch.ops.mxfp6.set_w6a8_config(
         a8.values, m, n, k, -1, 1, 0, out_dtype
@@ -1730,14 +1727,20 @@ def test_autotune_cache_only(mxfp6) -> None:
                     "_autotune",
                     side_effect=AssertionError("cache_only profiled a miss"),
                 ) as profiler:
-                    mxfp6.gemm_w6a8(a8, b, out_dtype=out_dtype)
-                    mxfp6.gemm_w6a8(a8, b, out_dtype=out_dtype)
-                    assert mxfp6.autotune_w6a8(
-                        a8, b, out_dtype=out_dtype, force=True
-                    ) is None
+                    with mock.patch.object(
+                        autotune, "_read_entry", wraps=autotune._read_entry
+                    ) as reader:
+                        mxfp6.gemm_w6a8(a8, b, out_dtype=out_dtype)
+                        assert reader.call_count == 1
+                        mxfp6.gemm_w6a8(a8, b, out_dtype=out_dtype)
+                        assert reader.call_count == 1  # Remember the miss without a second cache.
+                        assert mxfp6.autotune_w6a8(
+                            a8, b, out_dtype=out_dtype, force=True
+                        ) is None
+                        assert reader.call_count == 2  # Explicit warmup may retry the disk cache.
                     assert not profiler.called
                 with autotune._STATE_LOCK:
-                    assert ready_key in autotune._AUTOTUNE_READY
+                    assert autotune._DECISIONS[decision_key] == (cache_key, None)
                 assert not list(Path(cache_dir).glob("*.json"))
 
                 expected_config = autotune.W6A8Config(5, 2, 1)
