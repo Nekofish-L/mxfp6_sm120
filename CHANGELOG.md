@@ -9,6 +9,8 @@
 - consolidate W6A8 candidate metadata into a shared native/Python registry,
   and keep installed tuning decisions and cache-only misses in one table;
 - keep all W8A8 fallback decisions in the checked-in JSON policy;
+- share W8A8 static-shape and dynamic launch handling, and validate common
+  inputs once at the native dispatch boundary;
 - consolidate benchmark timing and remove the implementation-coupled source
   fingerprint tool; retain native API, candidate and CUDA Graph regressions.
 

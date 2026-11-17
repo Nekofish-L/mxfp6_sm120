@@ -18,7 +18,7 @@ bash scripts/apply_cutlass_patches.sh --runtime-only
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
-pytest -q tests/test_ops.py
+python3 tests/test_ops.py --library build/mxfp6_torch.so
 ```
 
 Before submitting a documentation or packaging-only change, run:

@@ -45,8 +45,6 @@ __global__ void gemv(const uint32_t* __restrict__ a,const uint32_t* __restrict__
   }
 }
 void gemv_out(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at::Tensor const& sb,at::Tensor const& out,int64_t rows) {
-  mxfp8_common::validate(a,b,sa,sb,out);
-  c10::cuda::CUDAGuard guard(a.device());
   int m=a.size(0),n=b.size(0),k=a.size(1);
   TORCH_CHECK(rows==1 || rows==2 || rows==4 || rows==8,"Invalid GEMV row tile");
   dim3 grid((n+3)/4,(m+rows-1)/rows);

@@ -32,24 +32,34 @@ def test_workspace_query_does_not_allocate_output(tactic):
 
 
 @pytest.mark.parametrize("per_stream", [False, True])
-def test_capacity_and_graph_replay(per_stream):
+@pytest.mark.parametrize("backend", ["mxfp6", "mxfp8"])
+def test_capacity_and_graph_replay(per_stream, backend):
     code = r"""
-import json,sys,torch,mxfp6
+import json,os,sys,torch,mxfp6
+os.environ['MXFP6_AUTOTUNE']='0'
+os.environ['MXFP6_STREAM_K']='1'
 per_stream=bool(int(sys.argv[1]))
-import mxfp6.mxfp8 as api
+import mxfp6.mxfp8 as w8
+is_w8=sys.argv[2]=='mxfp8'
+api,other=(w8,mxfp6) if is_w8 else (mxfp6,w8)
 streams = [torch.cuda.Stream(), torch.cuda.Stream()]
 runs=[]
-for stream,(m,n,k,t) in zip(streams,[(1,128,8192,12),(512,8192,2048,16)]):
+shapes=[(1,128,8192,12),(512,8192,2048,16)] if is_w8 else [(1,5120,8704,3),(672,5120,3072,16)]
+for stream,(m,n,k,t) in zip(streams,shapes):
     with torch.cuda.stream(stream):
         a=api.quantize_mxfp8(torch.randn(m,k,device='cuda',dtype=torch.bfloat16))
-        b=api.quantize_mxfp8(torch.randn(n,k,device='cuda',dtype=torch.bfloat16))
-        out=torch.empty((m,n),device='cuda',dtype=torch.bfloat16)
-        run=lambda a=a,b=b,out=out,t=t:api.gemm_w8a8(a,b,config=api.W8A8Config(t,4),out=out)
+        quantize_weight=api.quantize_mxfp8 if is_w8 else api.quantize_mxfp6
+        b=quantize_weight(torch.randn(n,k,device='cuda',dtype=torch.bfloat16))
+        if is_w8:
+            out=torch.empty((m,n),device='cuda',dtype=torch.bfloat16)
+            run=lambda a=a,b=b,out=out,t=t:api.gemm_w8a8(a,b,config=api.W8A8Config(t,4),out=out)
+        else:
+            run=lambda a=a,b=b:api.gemm_w6a8(a,b,out_dtype=torch.bfloat16)
         reference=run().clone()
         runs.append((a,run,reference))
 torch.cuda.synchronize()
 api.begin_workspace_planning()
-assert mxfp6.workspace_stats()["planning"]==0
+assert other.workspace_stats()["planning"]==0
 for stream,(_,run,_) in zip(streams,runs):
     with torch.cuda.stream(stream):run()
 api.finalize_workspace_planning(per_stream=per_stream)
@@ -83,7 +93,7 @@ if per_stream:
         try:runs[1][1]()
         except RuntimeError as e:assert 'capacity' in str(e)
         else:raise AssertionError('oversized layout accepted')
-assert mxfp6.workspace_stats()['frozen']==0
+assert other.workspace_stats()['frozen']==0
 with torch.profiler.profile(activities=[torch.profiler.ProfilerActivity.CUDA]) as prof:
     graphs[0][0].replay();torch.cuda.synchronize()
 events=[e for e in prof.events() if e.device_type==torch.autograd.DeviceType.CUDA]
@@ -95,7 +105,7 @@ print(json.dumps(stats))
 """
     stats = json.loads(
         subprocess.check_output(
-            [sys.executable, "-c", code, str(int(per_stream))], text=True, timeout=180
+            [sys.executable, "-c", code, str(int(per_stream)), backend], text=True, timeout=180
         )
     )
     assert stats["lanes"] == (2 if per_stream else 3)

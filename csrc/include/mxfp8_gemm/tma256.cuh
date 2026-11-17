@@ -220,8 +220,6 @@ void specialized(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at
 }
 void mm_out(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,
             at::Tensor const& sb,at::Tensor const& out,int64_t config) {
-  mxfp8_common::validate(a,b,sa,sb,out);
-  c10::cuda::CUDAGuard guard(a.device());
 #define RUN(ID,...) case ID:specialized<__VA_ARGS__>(a,b,sa,sb,out);break
   switch(config) {
     RUN(0,64,16,256,2,true,2,true);

@@ -112,6 +112,35 @@ When disabled, built-in dispatch and runtime autotuning exclude Stream-K
 kernels, and cached decisions are isolated from the default policy. The
 workspace APIs remain callable but collect zero layouts.
 
+For streams with different shape ranges, use
+`finalize_workspace_planning(device, per_stream=True)` after warming every
+shape/config on its execution stream. This allocates each stream's own maximum
+before serving and rejects unplanned streams or larger layouts. Retain the
+streams for the pool lifetime; graphs sharing a lane must not overlap. See the
+[shared planning workflow](mxfp8.md#input-contract-and-use) for both backends.
+
+### Qwen3.5-27B TP2 workspace budget
+
+On an RTX 5090 with 170 SMs, the native BF16 W6A8 static policy was scanned over
+all M=1…8193 for the [five TP2 projection shapes](benchmarks.md#dense-gemm)
+(40,965 launches, synthetic packed inputs, autotuning disabled). The largest
+arena is 15,730,560 bytes, including 1,920 barrier bytes. For M=1…128 the
+largest arena is 164,224 bytes. These are shared across sequential layers:
+
+| Planned execution streams | Global capacity per stream | Per-stream capacities |
+|---|---:|---:|
+| One decode (M≤128), one prefill (M≤8193) | 30.004 MiB/rank | 15.158 MiB/rank |
+| Two decode, one prefill | 45.005 MiB/rank | 15.315 MiB/rank |
+
+Global mode also allocates a lane on the finalizing stream; count that lane if
+it is separate from the execution streams. Values exclude allocator rounding,
+weights, activations, CUDA Graph pools, KV cache and GDN recurrent state. They
+are kernel workspace measurements, not a full serving-process memory estimate.
+Other GPU SM counts, autotuned configurations and larger M ranges must be
+planned separately. Disabling Stream-K removes this arena but can change GEMM
+latency; preplanning the needed lanes preserves the selected kernels and avoids
+request-time workspace allocation and barrier initialization.
+
 ## Serialization utilities
 
 Logical E3M2 code and UE8M0 scale utilities are available for serialization

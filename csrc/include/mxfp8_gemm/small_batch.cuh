@@ -241,8 +241,6 @@ void launch(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,
 // One runtime-K implementation; tile and pipeline parameters only.
 void mm_out(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,
             at::Tensor const& sb,at::Tensor const& out,int64_t config) {
-  mxfp8_common::validate(a,b,sa,sb,out);
-  c10::cuda::CUDAGuard guard(a.device());
 #define RUN(ID,BM,BN,BK,S,WM,W,WK) case ID:launch<BM,BN,BK,S,WM,W,WK>(a,b,sa,sb,out);break
   switch(config) {
     RUN(0,16,8,512,3,1,4,4);

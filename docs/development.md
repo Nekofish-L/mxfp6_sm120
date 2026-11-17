@@ -73,6 +73,12 @@ PYTHONPATH=python python3 -m pytest -q tests/test_python_entrypoints.py
 MXFP6_LIBRARY_PATH="$PWD/build/mxfp6_torch.so" python3 tests/test_ops.py
 ```
 
+W8A8 validates tensors and scheduler arguments once in `dispatch_out`, under
+the public entry's device guard. Internal family launchers rely on that
+boundary and retain only their specific shape/config checks. Static-shape and
+dynamic CUTLASS kernels share `mxfp8_gemm/launch.hpp`, including workspace and
+PDL handling; non-Stream-K kernels bypass the workspace pool.
+
 For a paired API performance check, retain the baseline Python package and
 DSO, then run `benchmarks/benchmark_entrypoints.py --output result.json` in
 separate baseline/candidate processes. Select each package with `PYTHONPATH`

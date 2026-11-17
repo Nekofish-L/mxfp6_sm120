@@ -39,9 +39,6 @@ int64_t mm_out(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at::
   int raster = int(tactic / 100) - 8;
   TORCH_CHECK(raster >= 0 && raster <= 2, "Unknown release tactic");
   tactic %= 100;
-  mxfp8_common::validate(a,b,sa,sb,out,query);
-  mxfp8_common::validate_scheduler(splits,swizzle);
-  c10::cuda::CUDAGuard guard(a.device());
 #define RUN(ID,SWAP,...) case ID: return launch<ReleaseConfig<__VA_ARGS__>,SWAP>(a,b,sa,sb,out,splits,swizzle,persistent,query,sms,raster)
   switch(tactic) {
     RUN(0,true,Swapped<128,8,128>);

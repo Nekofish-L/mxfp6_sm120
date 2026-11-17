@@ -31,8 +31,6 @@ using Normal = mxfp6_gemm::normal::KernelConfig<cute::Int<M>,cute::Int<N>,cute::
 
 int64_t mm_out(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at::Tensor const& sb,
                at::Tensor const& out,int64_t config) {
-  mxfp8_common::validate(a,b,sa,sb,out);
-  c10::cuda::CUDAGuard guard(a.device());
 #define RUN(ID,SWAP,...) case ID: return mxfp8_common::launch<ReleaseConfig<__VA_ARGS__>,SWAP>(a,b,sa,sb,out,1,1,std::nullopt,false,0)
   switch(config) {
     RUN(0,true,Swapped<128,8,Ping,void>);

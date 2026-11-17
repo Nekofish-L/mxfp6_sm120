@@ -11,7 +11,15 @@ int64_t launch(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at::
   using Gemm=typename Kernel::Gemm;
   using Config=typename Kernel::BlockScaledConfig;
   int m=Swap?b.size(0):a.size(0), n=Swap?a.size(0):b.size(0), k=a.size(1);
-  auto problem=cute::make_shape(m,n,k,1);
+  auto dynamic_problem=cute::make_shape(m,n,k,1);
+  auto problem = [&]() {
+    if constexpr (requires { Kernel::KValue; }) {
+      using PS=typename Kernel::ProblemShape;
+      if constexpr (Swap && Kernel::MValue>0)
+        return PS{m,cute::Int<Kernel::MValue>{},cute::Int<Kernel::KValue>{},cute::_1{}};
+      else return PS{m,n,cute::Int<Kernel::KValue>{},cute::_1{}};
+    } else return dynamic_problem;
+  }();
   auto da=cutlass::make_cute_packed_stride(typename Kernel::StrideA{},cute::make_shape(m,k,1));
   auto db=cutlass::make_cute_packed_stride(typename Kernel::StrideB{},cute::make_shape(n,k,1));
   auto dc=cutlass::make_cute_packed_stride(typename Kernel::StrideC{},cute::make_shape(m,n,1));
@@ -19,8 +27,8 @@ int64_t launch(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at::
   typename Gemm::Arguments args{cutlass::gemm::GemmUniversalMode::kGemm,problem,
     {reinterpret_cast<typename Kernel::ElementA const*>((Swap?b:a).data_ptr()),da,
      reinterpret_cast<typename Kernel::ElementB const*>((Swap?a:b).data_ptr()),db,
-     reinterpret_cast<typename Kernel::ElementSF const*>((Swap?sb:sa).data_ptr()),Config::tile_atom_to_shape_SFA(problem),
-     reinterpret_cast<typename Kernel::ElementSF const*>((Swap?sa:sb).data_ptr()),Config::tile_atom_to_shape_SFB(problem)},
+     reinterpret_cast<typename Kernel::ElementSF const*>((Swap?sb:sa).data_ptr()),Config::tile_atom_to_shape_SFA(dynamic_problem),
+     reinterpret_cast<typename Kernel::ElementSF const*>((Swap?sa:sb).data_ptr()),Config::tile_atom_to_shape_SFB(dynamic_problem)},
     {{1.f,0.f},nullptr,dc,out.defined() ? reinterpret_cast<typename Kernel::ElementD*>(out.data_ptr()) : nullptr,dd}};
   args.hw_info.device_id=a.get_device();
   int physical_sms=at::cuda::getDeviceProperties(a.get_device())->multiProcessorCount;
@@ -50,9 +58,11 @@ int64_t launch(at::Tensor const& a,at::Tensor const& b,at::Tensor const& sa,at::
   if(query) return bytes;
   auto stream=at::cuda::getCurrentCUDAStream(a.get_device());
   mxfp_common::WorkspaceSelection selected;
-  if (!persistent.has_value()) {
-    selected = mxfp8_runtime::workspace_pool().select_workspace(
-        a.get_device(), stream.stream(), mxfp_common::get_workspace_layout<Kernel>(args));
+  if constexpr (Kernel::IsStreamK) {
+    if (!persistent.has_value()) {
+      selected = mxfp8_runtime::workspace_pool().select_workspace(
+          a.get_device(), stream.stream(), mxfp_common::get_workspace_layout<Kernel>(args));
+    }
   }
   at::Tensor workspace;
   if(persistent.has_value() || selected.persistent) {

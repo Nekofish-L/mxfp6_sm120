@@ -28,9 +28,6 @@ int64_t mm_out(at::Tensor const& a, at::Tensor const& b,
   // Tactic aliases 300+base and 400+base select explicit raster directions.
   int raster = tactic >= 300 && tactic < 500 ? int(tactic / 100) - 2 : 0;
   if (raster) tactic %= 100;
-  mxfp8_common::validate(a,b,sa,sb,out,query);
-  mxfp8_common::validate_scheduler(splits,swizzle);
-  c10::cuda::CUDAGuard guard(a.device());
 #define RUN(ID,SWAP,...) case ID: return mxfp8_common::launch<__VA_ARGS__,SWAP>(a,b,sa,sb,out,splits,swizzle,workspace,query,sms,raster)
   switch (tactic) {
     RUN(70,true,Swapped<128,8>);

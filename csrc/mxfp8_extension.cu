@@ -89,6 +89,7 @@ LaunchConfig resolve(at::Tensor const& a, at::Tensor const& b, int64_t tactic, i
 }
 
 int64_t dispatch_out(MXFP8_ARGS, LaunchConfig c, std::optional<at::Tensor> workspace, bool query) {
+  // The public entry owns the device guard; validate once before family dispatch.
   mxfp8_common::validate(a,b,sa,sb,out,query);
   mxfp8_common::validate_scheduler(c.splits,c.swizzle);
   auto t=c.tactic;

@@ -5,6 +5,9 @@ import mxfp6.mxfp8 as api
 from mxfp6.mxfp8 import load_library
 
 
+# Representative variants cover each family; all candidates are checked below.
+GRAPH_TACTICS = [2, 13, 27, 33, 38, 43, 49, 66, 72, 73, 78, 79, 200, 202, 203, 221, 222, 223, 313, 373, 427, 500, 502, 504, 520, 537, 560, 563, 566, 570, 572, 576, 600, 602, 606, 608, 611, 621, 624, 628, 665, 666, 671, 700, 706, 710, 711, 720, 730, 735, 740, 743, 747, 751, 760, 774, 775, 780, 785, 786, 791, 802, 813, 827, 913, 1014, 1120, 1122, 1125, 1131, 1142, 1145, 1148, 1153, 1162, 1165, 1168, 1173, 1180, 1188, 1192, 1197, 1203, 1344, 1358, 1366, 1390, 1458, 1460, 1569, 1595, 1220, 1225, 1230, 1231]
+
 def operand(values, scales):
     return api.MXFP8Tensor(values.view(torch.uint8), scales, *values.shape)
 
@@ -95,7 +98,7 @@ def test_exact_quantized_input(m,n,k):
         assert error < .004, (tactic,error)
 
 
-@pytest.mark.parametrize('tactic', [13, 66, 72, 73, 78, 79, 200, 202, 203, 221, 222, 223, 313, 373, 427, 500, 502, 504, 520, 537, 560, 563, 566, 570, 572, 576, 600, 602, 606, 608, 611, 621, 624, 628, 665, 666, 671, 700, 706, 710, 711, 720, 730, 735, 740, 743, 747, 751, 760, 774, 775, 780, 785, 786, 791, 802, 813, 827, 913, 1014, 1120, 1122, 1125, 1131, 1142, 1145, 1148, 1153, 1162, 1165, 1168, 1173, 1180, 1188, 1192, 1197, 1203, 1344, 1358, 1366, 1390, 1458, 1460, 1569, 1595, 1220, 1225, 1230, 1231])
+@pytest.mark.parametrize('tactic', GRAPH_TACTICS)
 def test_graph_replays_new_data(tactic):
     load_library()
     a,sa,_=quantize(torch.randn(16,256,device='cuda'))
@@ -117,13 +120,16 @@ def test_graph_replays_new_data(tactic):
         assert ((out.float()-reference).square().sum()/reference.square().sum()).sqrt() < .004
 
 
-@pytest.mark.parametrize("tactic", [0, 760, 780, 813, 1344])
+@pytest.mark.parametrize("tactic", [0, 39, 43, 51, 72, 760, 780, 813, 1344])
 def test_invalid_inputs(tactic):
     load_library()
     a,sa,_=quantize(torch.randn(16,128,device='cuda'))
     b,sb,_=quantize(torch.randn(128,128,device='cuda'))
     with pytest.raises(RuntimeError,match='scales'):
         mm(a,b,sa[:1],sb,tactic=tactic)
+    for kwargs in (dict(splits=0), dict(swizzle=3)):
+        with pytest.raises(RuntimeError, match='scheduler'):
+            mm(a,b,sa,sb,tactic=tactic,**kwargs)
     with pytest.raises(RuntimeError,match='Unknown'):
         mm(a,b,sa,sb,tactic=999)
     with pytest.raises(RuntimeError,match='Unknown'):
@@ -152,7 +158,7 @@ def test_private_workspaces_on_two_streams(tactic):
         assert error < .004
 
 
-@pytest.mark.parametrize('tactic', [2, 13, 27, 33, 38, 43, 49, 66, 72, 73, 78, 79, 200, 202, 203, 221, 222, 223, 313, 373, 427, 500, 502, 504, 520, 537, 560, 563, 566, 570, 572, 576, 600, 602, 606, 608, 611, 621, 624, 628, 665, 666, 671, 700, 706, 710, 711, 720, 730, 735, 740, 743, 747, 751, 760, 774, 775, 780, 785, 786, 791, 802, 813, 827, 913, 1014, 1120, 1122, 1125, 1131, 1142, 1145, 1148, 1153, 1162, 1165, 1168, 1173, 1180, 1188, 1192, 1197, 1203, 1344, 1358, 1366, 1390, 1458, 1460, 1569, 1595, 1220, 1225, 1230, 1231])
+@pytest.mark.parametrize('tactic', GRAPH_TACTICS)
 def test_zero_and_varying_group_scales(tactic):
     load_library()
     torch.manual_seed(105)
@@ -179,7 +185,7 @@ def test_stream_k_sm_count(sms):
 
 
 @pytest.mark.parametrize('k', [2048, 2560])
-@pytest.mark.parametrize('m', [14, 33])
+@pytest.mark.parametrize('m', [10, 12, 14, 16, 24, 32, 33, 40])
 def test_static_shape_graph_changes_both_inputs(m, k):
     load_library()
     a,sa,_=quantize(torch.randn(m,k,device='cuda'))
