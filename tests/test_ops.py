@@ -1701,13 +1701,13 @@ def test_autotune_cache_only(mxfp6) -> None:
     descriptor = autotune._descriptor(device_index, m, n, k, out_dtype)
     cache_key = autotune._cache_key(descriptor)
     decision_key = (device_index, cache_key)
-    ready_key = ops._autotune_process_key(a8.device, m, n, k, out_dtype)
+    ready_key = autotune._autotune_process_key(a8.device, m, n, k, out_dtype)
 
     def clear_process_state() -> None:
         with autotune._STATE_LOCK:
             autotune._DECISIONS.pop(decision_key, None)
-        with ops._AUTOTUNE_STATE_LOCK:
-            ops._AUTOTUNE_READY.discard(ready_key)
+        with autotune._STATE_LOCK:
+            autotune._AUTOTUNE_READY.discard(ready_key)
 
     torch.ops.mxfp6.set_w6a8_config(
         a8.values, m, n, k, -1, 1, 0, out_dtype
@@ -1736,8 +1736,8 @@ def test_autotune_cache_only(mxfp6) -> None:
                         a8, b, out_dtype=out_dtype, force=True
                     ) is None
                     assert not profiler.called
-                with ops._AUTOTUNE_STATE_LOCK:
-                    assert ready_key in ops._AUTOTUNE_READY
+                with autotune._STATE_LOCK:
+                    assert ready_key in autotune._AUTOTUNE_READY
                 assert not list(Path(cache_dir).glob("*.json"))
 
                 expected_config = autotune.W6A8Config(5, 2, 1)

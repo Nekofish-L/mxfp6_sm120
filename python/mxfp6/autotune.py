@@ -28,6 +28,25 @@ import torch
 from ._loader import load_library
 
 
+TUNED_NK = frozenset(
+    {
+        (8192, 5120),
+        (5120, 3072),
+        (7168, 5120),
+        (17408, 5120),
+        (5120, 8704),
+    }
+)
+TUNED_M = frozenset((1, 16, 24, 32, 64, 96, 512, 1024, 2048, 4096, 8192))
+
+
+def is_tuned_shape(m: int, n: int, k: int) -> bool:
+    """Return whether a problem has an exact target-shape override."""
+    if m in TUNED_M and (n, k) in TUNED_NK:
+        return True
+    return m in (40, 48) and (n, k) == (5120, 3072)
+
+
 AUTOTUNE_SCHEMA = 1
 CANDIDATE_ABI = "native-w6a8-30-v5"
 CANDIDATE_POLICY = "hybrid-all-families-through-m512-v2"
@@ -102,6 +121,8 @@ class AutotuneResult:
 
 
 _STATE_LOCK = threading.Lock()
+# Fast shape lookup also remembers cache-only misses without disk access.
+_AUTOTUNE_READY: set[tuple[int, int, int, int, torch.dtype]] = set()
 _KEY_LOCKS: dict[str, threading.Lock] = {}
 _DECISIONS: dict[tuple[int, str], W6A8Config] = {}
 _LIBRARY_FINGERPRINT: str | None = None
@@ -887,3 +908,61 @@ def ensure_w6a8_tuned(
 def cache_directory() -> Path:
     """Return the directory used for persistent native autotune entries."""
     return _cache_root()
+
+
+def _autotune_process_key(
+    device: torch.device, m: int, n: int, k: int, out_dtype: torch.dtype
+) -> tuple[int, int, int, int, torch.dtype]:
+    device_index = (
+        device.index if device.index is not None else torch.cuda.current_device()
+    )
+    return (device_index, m, n, k, out_dtype)
+
+
+def _needs_w6a8_autotune(
+    device: torch.device,
+    m: int,
+    n: int,
+    k: int,
+    out_dtype: torch.dtype,
+) -> bool:
+    if not is_autotune_enabled() or not can_autotune_now():
+        return False
+    # In deployment cache-only mode, exact built-in shapes may still have a
+    # machine-local cached override. A miss will return to that built-in path
+    # without profiling, so it is safe (and useful) to check the cache.
+    if (
+        is_tuned_shape(m, n, k)
+        and not should_tune_exact_shapes()
+        and not is_autotune_cache_only()
+    ):
+        return False
+    key = _autotune_process_key(device, m, n, k, out_dtype)
+    with _STATE_LOCK:
+        return key not in _AUTOTUNE_READY
+
+
+def _ensure_w6a8_autotuned(
+    a: torch.Tensor,
+    b: torch.Tensor,
+    sfa: torch.Tensor,
+    sfb: torch.Tensor,
+    m: int,
+    n: int,
+    k: int,
+    *,
+    out_dtype: torch.dtype,
+    force: bool = False,
+) -> W6A8Config | None:
+    cache_only = is_autotune_cache_only()
+    config = ensure_w6a8_tuned(
+        a, b, sfa, sfb, m, n, k, out_dtype=out_dtype, force=force
+    )
+    # Cache-only misses deliberately return None. Remember that result for the
+    # process so an eager-prefill shape does not repeatedly touch the cache on
+    # every request; deployment caches are expected to be immutable in-process.
+    if config is not None or (cache_only and can_autotune_now()):
+        key = _autotune_process_key(a.device, m, n, k, out_dtype)
+        with _STATE_LOCK:
+            _AUTOTUNE_READY.add(key)
+    return config

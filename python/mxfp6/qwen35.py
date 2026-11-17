@@ -6,10 +6,9 @@ from dataclasses import dataclass
 
 import torch
 
-from .ops import (
+from .moe import (
     grouped_gemm_w6a8_out,
     moe_reduce_out,
-    quantize_mxfp8_logical,
     qwen35_grouped_w1_silu_mxfp8_out,
     qwen35_route_mxfp8_out,
     qwen35_router_quant_out,
@@ -19,6 +18,8 @@ from .ops import (
     route_mxfp8_out,
     silu_and_mul_mxfp8_grouped,
 )
+
+from .quantization import quantize_mxfp8_logical
 
 _HIDDEN_SIZE = 2048
 _INTERMEDIATE_SIZE = 256

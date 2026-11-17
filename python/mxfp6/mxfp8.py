@@ -6,7 +6,7 @@ import torch
 
 from ._loader import load_mxfp8_library as load_library
 from ._workspace import WorkspaceAPI
-from .ops import (
+from .quantization import (
     MXFP8Tensor,
     quantize_activation,
     quantize_mxfp8,
@@ -56,7 +56,7 @@ def _operands(a, b):
         raise TypeError("a and b must be MXFP8Tensor instances")
     if a.k != b.k or a.device != b.device:
         raise ValueError("a and b must have matching K and CUDA device")
-    return a.dequantized_values(), b.dequantized_values(), a.scales, b.scales
+    return a.as_float8(), b.as_float8(), a.scales, b.scales
 
 
 def _config(config):
@@ -100,7 +100,7 @@ def gemm_from_float(
 
     load_quantizer()
     load_library()
-    return torch.ops.mxfp8_sm120.gemm_from_float(a, b.dequantized_values(), b.scales, use_pdl)
+    return torch.ops.mxfp8_sm120.gemm_from_float(a, b.as_float8(), b.scales, use_pdl)
 
 
 def gemm(

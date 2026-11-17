@@ -1010,6 +1010,200 @@ std::string w6a8_config_abi_cuda(at::Tensor const& anchor) {
 // Native W6A8 dispatcher. The persistent B operand remains packed E3M2 while
 // transient A is byte-addressable E4M3. Exact entries are profiler winners;
 // the fallback uses Stream-K only for a visibly under-filled final wave.
+// Selection is independent of tensor/workspace execution. Keep candidate IDs
+// stable: persisted autotune entries use the same launcher as this policy.
+W6A8LaunchConfig select_w6a8_config(int64_t m, int64_t n, int64_t k,
+                                  int sm_count) {
+  bool const target_nk = is_target_nk(n, k);
+  // Keeping logical M in the tensor-core N dimension avoids wasting a 64- or
+  // 128-row activation tile in decode and very-small-prefill workloads.
+  if (target_nk && m == 1) {
+    if (n == 8192 && k == 5120) {
+      return {1, 4, static_cast<int64_t>(RasterOrder::Heuristic)};
+    }
+    if (n == 5120 && k == 3072) {
+      return {2, 1, static_cast<int64_t>(RasterOrder::AlongM)};
+    }
+    if (n == 7168 && k == 5120) {
+      return {0, 1, static_cast<int64_t>(RasterOrder::Heuristic)};
+    }
+    if (n == 17408 && k == 5120) {
+      return {0, 1, static_cast<int64_t>(RasterOrder::AlongM)};
+    }
+    if (stream_k_enabled()) {
+      return {3, 2, static_cast<int64_t>(RasterOrder::AlongM)};
+    }
+    return {1, 2, static_cast<int64_t>(RasterOrder::AlongM)};
+  }
+
+  if (target_nk && m == 16) {
+    if (n == 8192 && k == 5120) {
+      return {29, 2, static_cast<int64_t>(RasterOrder::AlongN)};
+    }
+    if (n == 5120 && k == 3072) {
+      return {29, 2, static_cast<int64_t>(RasterOrder::AlongN)};
+    }
+    if (n == 7168 && k == 5120) {
+      return {29, 1, static_cast<int64_t>(RasterOrder::AlongM)};
+    }
+    if (n == 17408 && k == 5120) {
+      return {4, 1, static_cast<int64_t>(RasterOrder::AlongM)};
+    }
+    if (n == 5120 && k == 8704) {
+      return {29, 2, static_cast<int64_t>(RasterOrder::AlongN)};
+    }
+  }
+
+  if (target_nk && m == 24) {
+    if ((n == 5120 && k == 3072) || (n == 5120 && k == 8704)) {
+      return {17, 1, static_cast<int64_t>(RasterOrder::AlongM)};
+    }
+    if ((n == 8192 && k == 5120) || (n == 7168 && k == 5120)) {
+      return {25, 1, static_cast<int64_t>(RasterOrder::AlongM)};
+    }
+    if (n == 17408 && k == 5120) {
+      return {25, 1, static_cast<int64_t>(RasterOrder::AlongN)};
+    }
+  }
+
+  if (target_nk && m == 32) {
+    if (n == 8192 && k == 5120) {
+      return {25, 1, static_cast<int64_t>(RasterOrder::AlongM)};
+    }
+    if (n == 5120 && k == 3072) {
+      return {23, 2, static_cast<int64_t>(RasterOrder::AlongM)};
+    }
+    if (n == 7168 && k == 5120) {
+      return {25, 1, static_cast<int64_t>(RasterOrder::AlongM)};
+    }
+    if (n == 17408 && k == 5120) {
+      return {25, 1, static_cast<int64_t>(RasterOrder::Heuristic)};
+    }
+    return {17, 1, static_cast<int64_t>(RasterOrder::Heuristic)};
+  }
+
+  if (target_nk && m == 40 && n == 5120 && k == 3072) {
+    return {18, 1, static_cast<int64_t>(RasterOrder::AlongM)};
+  }
+
+  if (target_nk && m == 48 && n == 5120 && k == 3072) {
+    return {20, 4, static_cast<int64_t>(RasterOrder::AlongN)};
+  }
+
+  if (target_nk && m == 64) {
+    if (n == 5120 && k == 3072) {
+      return {8, 1, static_cast<int64_t>(RasterOrder::AlongM)};
+    }
+    return {7, n == 5120 && k == 8704 ? 8 : 2, static_cast<int64_t>(RasterOrder::AlongM)};
+  }
+
+  if (target_nk && m == 96) {
+    if (n == 17408 && k == 5120) {
+      return {10, 4, static_cast<int64_t>(RasterOrder::AlongM)};
+    }
+    return {11, n == 8192 ? 2 : 1, static_cast<int64_t>(RasterOrder::AlongM)};
+  }
+
+  if (target_nk && m == 512) {
+    if (n == 8192 && k == 5120) {
+      return {12, 4, static_cast<int64_t>(RasterOrder::AlongM)};
+    }
+    if (n == 5120 && k == 3072) {
+      return {14, 8, static_cast<int64_t>(RasterOrder::AlongM)};
+    }
+    if (n == 7168 && k == 5120) {
+      return {16, 1, static_cast<int64_t>(RasterOrder::AlongN)};
+    }
+    if (n == 17408 && k == 5120) {
+      return {16, 8, static_cast<int64_t>(RasterOrder::AlongN)};
+    }
+    return {12, 1, static_cast<int64_t>(RasterOrder::AlongM)};
+  }
+
+  if (target_nk && m == 1024) {
+    if (n == 8192 && k == 5120) {
+      return {16, 1, static_cast<int64_t>(RasterOrder::AlongM)};
+    }
+    if (n == 7168 && k == 5120) {
+      return {12, 4, static_cast<int64_t>(RasterOrder::AlongM)};
+    }
+    if (n == 17408 && k == 5120) {
+      return {16, 1, static_cast<int64_t>(RasterOrder::AlongM)};
+    }
+    return {12, 1, static_cast<int64_t>(RasterOrder::AlongM)};
+  }
+
+  if (target_nk && m == 2048) {
+    if ((n == 8192 && k == 5120) || (n == 7168 && k == 5120)) {
+      return {16, n == 7168 ? 2 : 1, static_cast<int64_t>(RasterOrder::AlongM)};
+    }
+    if (n == 17408 && k == 5120) {
+      return {12, 1, static_cast<int64_t>(RasterOrder::AlongN)};
+    }
+    return {13, 1, static_cast<int64_t>(RasterOrder::AlongM)};
+  }
+
+  if (target_nk && m == 4096) {
+    if (n == 8192 && k == 5120) {
+      return {15, 1, static_cast<int64_t>(RasterOrder::AlongM)};
+    }
+    if (n == 5120 && k == 3072) {
+      return {14, 2, static_cast<int64_t>(RasterOrder::AlongM)};
+    }
+    if (n == 7168 && k == 5120) {
+      return {13, 1, static_cast<int64_t>(RasterOrder::AlongM)};
+    }
+    if (n == 17408 && k == 5120) {
+      return {12, 1, static_cast<int64_t>(RasterOrder::AlongN)};
+    }
+    return {14, 1, static_cast<int64_t>(RasterOrder::AlongM)};
+  }
+
+  if (target_nk && m == 8192) {
+    if (n == 7168 && k == 5120) {
+      return {12, 1, static_cast<int64_t>(RasterOrder::AlongN)};
+    }
+    if (n == 5120 && k == 8704) {
+      if (current_output_dtype == at::kHalf) {
+        return {12, 1, static_cast<int64_t>(RasterOrder::AlongM)};
+      }
+      return {16, 1, static_cast<int64_t>(RasterOrder::AlongN)};
+    }
+    return {14, 1, static_cast<int64_t>((n == 5120 && k == 3072)
+               ? RasterOrder::AlongM
+               : RasterOrder::AlongN)};
+  }
+
+  if (use_eager_prefill_64x128(m, n, k, sm_count)) {
+    return {10, 1, static_cast<int64_t>(RasterOrder::Heuristic)};
+  }
+
+  if (use_eager_prefill_stream_k(m, n, k, sm_count)) {
+    return {16, 1, static_cast<int64_t>(RasterOrder::Heuristic)};
+  }
+
+  if (m <= 8) {
+    return {1, 4, static_cast<int64_t>(RasterOrder::Heuristic)};
+  }
+  if (m <= 16) {
+    return {0, 2, static_cast<int64_t>(RasterOrder::Heuristic)};
+  }
+  if (m <= 64) {
+    return {7, 2, static_cast<int64_t>(RasterOrder::Heuristic)};
+  }
+  if (m <= 128) {
+    return {11, 2, static_cast<int64_t>(RasterOrder::Heuristic)};
+  }
+
+  int64_t const tiles = round_up(m, 128) / 128 * (round_up(n, 128) / 128);
+  int64_t const tail = tiles % sm_count;
+  bool const underfilled_tail = k >= 2048 &&
+      ((tiles < sm_count) ||
+       (tiles <= 4LL * sm_count && tail > 0 && tail < sm_count / 2));
+  return {underfilled_tail ? 16
+                       : 12, underfilled_tail ? 1 : 2, static_cast<int64_t>(RasterOrder::Heuristic)};
+}
+
 at::Tensor launch_w6a8_policy(at::Tensor const& a,
                               at::Tensor const& b,
                               at::Tensor const& sfa,
@@ -1021,324 +1215,14 @@ at::Tensor launch_w6a8_policy(at::Tensor const& a,
                               int device_index,
                               int sm_count,
                               bool use_pdl) {
-  namespace normal = mxfp6_gemm::normal;
-  namespace swapped = mxfp6_gemm::swapped;
-  bool const target_nk = is_target_nk(n, k);
-
-  W6A8LaunchConfig override_config{};
-  if (find_w6a8_override(
-          device_index, m, n, k, current_output_dtype, override_config)) {
-    return launch_w6a8_config(
-        a, b, sfa, sfb, m, n, k, alpha, device_index, sm_count,
-        override_config.config_id, override_config.swizzle,
-        override_config.raster_order, use_pdl);
+  W6A8LaunchConfig config{};
+  if (!find_w6a8_override(
+          device_index, m, n, k, current_output_dtype, config)) {
+    config = select_w6a8_config(m, n, k, sm_count);
   }
-
-  // Keeping logical M in the tensor-core N dimension avoids wasting a 64- or
-  // 128-row activation tile in decode and very-small-prefill workloads.
-  if (target_nk && m == 1) {
-    if (n == 8192 && k == 5120) {
-      return launch_swapped<swapped::KernelW6A8_128x8Stage4StaticCooperative>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          4, RasterOrder::Heuristic, 1, sm_count, use_pdl);
-    }
-    if (n == 5120 && k == 3072) {
-      return launch_swapped<swapped::KernelW6A8_128x8Stage5StaticCooperative>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          1, RasterOrder::AlongM, 1, sm_count, use_pdl);
-    }
-    if (n == 7168 && k == 5120) {
-      return launch_swapped<swapped::KernelW6A8_128x8StaticCooperative>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          1, RasterOrder::Heuristic, 1, sm_count, use_pdl);
-    }
-    if (n == 17408 && k == 5120) {
-      return launch_swapped<swapped::KernelW6A8_128x8StaticCooperative>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          1, RasterOrder::AlongM, 1, sm_count, use_pdl);
-    }
-    if (stream_k_enabled()) {
-      return launch_swapped<swapped::KernelW6A8_128x8StreamK>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          2, RasterOrder::AlongM, 1, sm_count, use_pdl);
-    }
-    return launch_swapped<
-        swapped::KernelW6A8_128x8Stage4StaticCooperative>(
-        a, b, sfa, sfb, m, n, k, alpha, device_index,
-        2, RasterOrder::AlongM, 1, sm_count, use_pdl);
-  }
-
-  if (target_nk && m == 16) {
-    if (n == 8192 && k == 5120) {
-      return launch_swapped<
-          swapped::KernelW6A8_64x16x128Stage3StaticPingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          2, RasterOrder::AlongN, 1, sm_count, use_pdl);
-    }
-    if (n == 5120 && k == 3072) {
-      return launch_swapped<
-          swapped::KernelW6A8_64x16x128Stage3StaticPingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          2, RasterOrder::AlongN, 1, sm_count, use_pdl);
-    }
-    if (n == 7168 && k == 5120) {
-      return launch_swapped<
-          swapped::KernelW6A8_64x16x128Stage3StaticPingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          1, RasterOrder::AlongM, 1, sm_count, use_pdl);
-    }
-    if (n == 17408 && k == 5120) {
-      return launch_swapped<swapped::KernelW6A8_128x16Stage4StaticCooperative>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          1, RasterOrder::AlongM, 1, sm_count, use_pdl);
-    }
-    if (n == 5120 && k == 8704) {
-      return launch_swapped<
-          swapped::KernelW6A8_64x16x128Stage3StaticPingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          2, RasterOrder::AlongN, 1, sm_count, use_pdl);
-    }
-    return launch_swapped<swapped::KernelW6A8_64x16x256StaticPingpong>(
-        a, b, sfa, sfb, m, n, k, alpha, device_index,
-        2, RasterOrder::AlongM, 1, sm_count, use_pdl);
-  }
-
-  if (target_nk && m == 24) {
-    if ((n == 5120 && k == 3072) || (n == 5120 && k == 8704)) {
-      return launch_swapped<swapped::KernelW6A8_64x32x128Pingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          1, RasterOrder::AlongM, 1, 0, use_pdl);
-    }
-    if ((n == 8192 && k == 5120) || (n == 7168 && k == 5120)) {
-      return launch_swapped<swapped::KernelW6A8_128x32Cooperative>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          1, RasterOrder::AlongM, 1, 0, use_pdl);
-    }
-    if (n == 17408 && k == 5120) {
-      return launch_swapped<swapped::KernelW6A8_128x32Cooperative>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          1, RasterOrder::AlongN, 1, 0, use_pdl);
-    }
-  }
-
-  if (target_nk && m == 32) {
-    if (n == 8192 && k == 5120) {
-      return launch_swapped<swapped::KernelW6A8_128x32Cooperative>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          1, RasterOrder::AlongM, 1, 0, use_pdl);
-    }
-    if (n == 5120 && k == 3072) {
-      return launch_swapped<swapped::KernelW6A8_64x32x256StaticPingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          2, RasterOrder::AlongM, 1, sm_count, use_pdl);
-    }
-    if (n == 7168 && k == 5120) {
-      return launch_swapped<swapped::KernelW6A8_128x32Cooperative>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          1, RasterOrder::AlongM, 1, 0, use_pdl);
-    }
-    if (n == 17408 && k == 5120) {
-      return launch_swapped<swapped::KernelW6A8_128x32Cooperative>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          1, RasterOrder::Heuristic, 1, 0, use_pdl);
-    }
-    return launch_swapped<swapped::KernelW6A8_64x32x128Pingpong>(
-        a, b, sfa, sfb, m, n, k, alpha, device_index,
-        1, RasterOrder::Heuristic, 1, 0, use_pdl);
-  }
-
-  if (target_nk && m == 40 && n == 5120 && k == 3072) {
-    return launch_swapped<swapped::KernelW6A8_64x32x128Stage3Pingpong>(
-        a, b, sfa, sfb, m, n, k, alpha, device_index,
-        1, RasterOrder::AlongM, 1, 0, use_pdl);
-  }
-
-  if (target_nk && m == 48 && n == 5120 && k == 3072) {
-    return launch_swapped<
-        swapped::KernelW6A8_64x32x128Stage3StaticPingpong>(
-        a, b, sfa, sfb, m, n, k, alpha, device_index,
-        4, RasterOrder::AlongN, 1, sm_count, use_pdl);
-  }
-
-  if (target_nk && m == 64) {
-    if (n == 5120 && k == 3072) {
-      return launch_normal<normal::KernelW6A8_64x64x128Stage4StaticPingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          1, RasterOrder::AlongM, 1, sm_count, use_pdl);
-    }
-    return launch_normal<normal::KernelW6A8_64x64x128StaticPingpong>(
-        a, b, sfa, sfb, m, n, k, alpha, device_index,
-        n == 5120 && k == 8704 ? 8 : 2,
-        RasterOrder::AlongM, 1, sm_count, use_pdl);
-  }
-
-  if (target_nk && m == 96) {
-    if (n == 17408 && k == 5120) {
-      return launch_normal<normal::KernelW6A8_64x128x128Pingpong>(
-          a, b, sfa, sfb, m, n, k, alpha, device_index,
-          4, RasterOrder::AlongM, 1, 0, use_pdl);
-    }
-    return launch_normal<normal::KernelW6A8_64x128x128StaticPingpong>(
-        a, b, sfa, sfb, m, n, k, alpha, device_index,
-        n == 8192 ? 2 : 1, RasterOrder::AlongM, 1, sm_count, use_pdl);
-  }
-
-  if (target_nk && m == 512) {
-    if (n == 8192 && k == 5120) {
-      return launch_w6a8_128(a, b, sfa, sfb, m, n, k, alpha,
-          device_index, sm_count, W6A8Kernel128::Pingpong,
-          4, RasterOrder::AlongM, use_pdl);
-    }
-    if (n == 5120 && k == 3072) {
-      return launch_w6a8_128(a, b, sfa, sfb, m, n, k, alpha,
-          device_index, sm_count, W6A8Kernel128::StaticPingpong,
-          8, RasterOrder::AlongM, use_pdl);
-    }
-    if (n == 7168 && k == 5120) {
-      return launch_w6a8_128(a, b, sfa, sfb, m, n, k, alpha,
-          device_index, sm_count, W6A8Kernel128::StreamK,
-          1, RasterOrder::AlongN, use_pdl);
-    }
-    if (n == 17408 && k == 5120) {
-      return launch_w6a8_128(a, b, sfa, sfb, m, n, k, alpha,
-          device_index, sm_count, W6A8Kernel128::StreamK,
-          8, RasterOrder::AlongN, use_pdl);
-    }
-    return launch_w6a8_128(a, b, sfa, sfb, m, n, k, alpha,
-        device_index, sm_count, W6A8Kernel128::Pingpong,
-        1, RasterOrder::AlongM, use_pdl);
-  }
-
-  if (target_nk && m == 1024) {
-    if (n == 8192 && k == 5120) {
-      return launch_w6a8_128(a, b, sfa, sfb, m, n, k, alpha,
-          device_index, sm_count, W6A8Kernel128::StreamK,
-          1, RasterOrder::AlongM, use_pdl);
-    }
-    if (n == 7168 && k == 5120) {
-      return launch_w6a8_128(a, b, sfa, sfb, m, n, k, alpha,
-          device_index, sm_count, W6A8Kernel128::Pingpong,
-          4, RasterOrder::AlongM, use_pdl);
-    }
-    if (n == 17408 && k == 5120) {
-      return launch_w6a8_128(a, b, sfa, sfb, m, n, k, alpha,
-          device_index, sm_count, W6A8Kernel128::StreamK,
-          1, RasterOrder::AlongM, use_pdl);
-    }
-    return launch_w6a8_128(a, b, sfa, sfb, m, n, k, alpha,
-        device_index, sm_count, W6A8Kernel128::Pingpong,
-        1, RasterOrder::AlongM, use_pdl);
-  }
-
-  if (target_nk && m == 2048) {
-    if ((n == 8192 && k == 5120) || (n == 7168 && k == 5120)) {
-      return launch_w6a8_128(a, b, sfa, sfb, m, n, k, alpha,
-          device_index, sm_count, W6A8Kernel128::StreamK,
-          n == 7168 ? 2 : 1, RasterOrder::AlongM, use_pdl);
-    }
-    if (n == 17408 && k == 5120) {
-      return launch_w6a8_128(a, b, sfa, sfb, m, n, k, alpha,
-          device_index, sm_count, W6A8Kernel128::Pingpong,
-          1, RasterOrder::AlongN, use_pdl);
-    }
-    return launch_w6a8_128(a, b, sfa, sfb, m, n, k, alpha,
-        device_index, sm_count, W6A8Kernel128::Cooperative,
-        1, RasterOrder::AlongM, use_pdl);
-  }
-
-  if (target_nk && m == 4096) {
-    if (n == 8192 && k == 5120) {
-      return launch_w6a8_128(a, b, sfa, sfb, m, n, k, alpha,
-          device_index, sm_count, W6A8Kernel128::StaticCooperative,
-          1, RasterOrder::AlongM, use_pdl);
-    }
-    if (n == 5120 && k == 3072) {
-      return launch_w6a8_128(a, b, sfa, sfb, m, n, k, alpha,
-          device_index, sm_count, W6A8Kernel128::StaticPingpong,
-          2, RasterOrder::AlongM, use_pdl);
-    }
-    if (n == 7168 && k == 5120) {
-      return launch_w6a8_128(a, b, sfa, sfb, m, n, k, alpha,
-          device_index, sm_count, W6A8Kernel128::Cooperative,
-          1, RasterOrder::AlongM, use_pdl);
-    }
-    if (n == 17408 && k == 5120) {
-      return launch_w6a8_128(a, b, sfa, sfb, m, n, k, alpha,
-          device_index, sm_count, W6A8Kernel128::Pingpong,
-          1, RasterOrder::AlongN, use_pdl);
-    }
-    return launch_w6a8_128(a, b, sfa, sfb, m, n, k, alpha,
-        device_index, sm_count, W6A8Kernel128::StaticPingpong,
-        1, RasterOrder::AlongM, use_pdl);
-  }
-
-  if (target_nk && m == 8192) {
-    if (n == 7168 && k == 5120) {
-      return launch_w6a8_128(a, b, sfa, sfb, m, n, k, alpha,
-          device_index, sm_count, W6A8Kernel128::Pingpong,
-          1, RasterOrder::AlongN, use_pdl);
-    }
-    if (n == 5120 && k == 8704) {
-      if (current_output_dtype == at::kHalf) {
-        return launch_w6a8_128(a, b, sfa, sfb, m, n, k, alpha,
-            device_index, sm_count, W6A8Kernel128::Pingpong,
-            1, RasterOrder::AlongM, use_pdl);
-      }
-      return launch_w6a8_128(a, b, sfa, sfb, m, n, k, alpha,
-          device_index, sm_count, W6A8Kernel128::StreamK,
-          1, RasterOrder::AlongN, use_pdl);
-    }
-    return launch_w6a8_128(a, b, sfa, sfb, m, n, k, alpha,
-        device_index, sm_count, W6A8Kernel128::StaticPingpong,
-        1, (n == 5120 && k == 3072)
-               ? RasterOrder::AlongM
-               : RasterOrder::AlongN,
-        use_pdl);
-  }
-
-  if (use_eager_prefill_64x128(m, n, k, sm_count)) {
-    return launch_normal<normal::KernelW6A8_64x128x128Pingpong>(
-        a, b, sfa, sfb, m, n, k, alpha, device_index,
-        1, RasterOrder::Heuristic, 1, 0, use_pdl);
-  }
-
-  if (use_eager_prefill_stream_k(m, n, k, sm_count)) {
-    return launch_w6a8_128(
-        a, b, sfa, sfb, m, n, k, alpha, device_index, sm_count,
-        W6A8Kernel128::StreamK, 1, RasterOrder::Heuristic, use_pdl);
-  }
-
-  if (m <= 8) {
-    return launch_swapped<swapped::KernelW6A8_128x8Stage4StaticCooperative>(
-        a, b, sfa, sfb, m, n, k, alpha, device_index,
-        4, RasterOrder::Heuristic, 1, sm_count, use_pdl);
-  }
-  if (m <= 16) {
-    return launch_swapped<swapped::KernelW6A8_128x8StaticCooperative>(
-        a, b, sfa, sfb, m, n, k, alpha, device_index,
-        2, RasterOrder::Heuristic, 1, sm_count, use_pdl);
-  }
-  if (m <= 64) {
-    return launch_normal<normal::KernelW6A8_64x64x128StaticPingpong>(
-        a, b, sfa, sfb, m, n, k, alpha, device_index,
-        2, RasterOrder::Heuristic, 1, sm_count, use_pdl);
-  }
-  if (m <= 128) {
-    return launch_normal<normal::KernelW6A8_64x128x128StaticPingpong>(
-        a, b, sfa, sfb, m, n, k, alpha, device_index,
-        2, RasterOrder::Heuristic, 1, sm_count, use_pdl);
-  }
-
-  int64_t const tiles = round_up(m, 128) / 128 * (round_up(n, 128) / 128);
-  int64_t const tail = tiles % sm_count;
-  bool const underfilled_tail = k >= 2048 &&
-      ((tiles < sm_count) ||
-       (tiles <= 4LL * sm_count && tail > 0 && tail < sm_count / 2));
-  return launch_w6a8_128(a, b, sfa, sfb, m, n, k, alpha,
-      device_index, sm_count,
-      underfilled_tail ? W6A8Kernel128::StreamK
-                       : W6A8Kernel128::Pingpong,
-      underfilled_tail ? 1 : 2, RasterOrder::Heuristic, use_pdl);
+  return launch_w6a8_config(
+      a, b, sfa, sfb, m, n, k, alpha, device_index, sm_count,
+      config.config_id, config.swizzle, config.raster_order, use_pdl);
 }
 
 at::Tensor gemm_cuda_impl(at::Tensor const& a,
