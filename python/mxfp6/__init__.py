@@ -1,6 +1,7 @@
 """Native W6A8 GEMM with packed MXFP6 weights for NVIDIA SM120 GPUs."""
 
 from ._loader import load_library
+from ._w6a8_prepared import prepare_w6a8
 from .autotune import (
     W6A8Config,
     cache_directory as autotune_cache_directory,
@@ -116,6 +117,7 @@ __all__ = [
     "is_stream_k_enabled",
     "is_tuned_shape",
     "load_library",
+    "prepare_w6a8",
     "moe_reduce_array_out",
     "moe_reduce_out",
     "moe_reduce_tp2_out",

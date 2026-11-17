@@ -2,3 +2,6 @@
 	path = third_party/cutlass
 	url = https://github.com/NVIDIA/cutlass.git
 	shallow = true
+[submodule "third_party/deepjit"]
+	path = third_party/deepjit
+	url = https://github.com/deepseek-ai/DeepJIT.git
