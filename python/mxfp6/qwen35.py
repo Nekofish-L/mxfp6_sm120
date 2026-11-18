@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 import torch
 
+from ._loader import load_library
 from .ops import (
     grouped_gemm_w6a8_out,
     moe_reduce_out,
@@ -239,6 +240,32 @@ def qwen35_grouped_gemm_out(
         workspace.scale_offsets,
         tile_n=-11,
         use_pdl=True,
+    )
+
+
+def qwen35_compact_gemm_out(
+    workspace: Qwen35GroupedWorkspace,
+    hidden: torch.Tensor,
+    router_logits: torch.Tensor,
+    w1: torch.Tensor,
+    w1_scales: torch.Tensor,
+    w2: torch.Tensor,
+    w2_scales: torch.Tensor,
+) -> None:
+    """Route 97–160 Qwen3.5-35B-A3B TP2 token rows and write routed W2 output.
+
+    Use a workspace from ``Qwen35GroupedWorkspace.from_storage``. The router
+    uses renormalized FP32 softmax top-8 over 256 BF16 expert logits per row.
+    Pass only the routed experts in each packed weight and scale tensor.
+    """
+    load_library()
+    torch.ops.mxfp6.qwen35_compact_gemm_out(
+        workspace.quantized, workspace.input_scales, workspace.packed_input_scales,
+        workspace.topk_weights, workspace.topk_ids, workspace.permuted,
+        workspace.grouped_input_scales, workspace.expert_cursors,
+        workspace.expert_offsets, workspace.scale_offsets, workspace.inverse_permutation,
+        workspace.source_tokens, workspace.activated, workspace.activated_scales,
+        workspace.routed_output, hidden, router_logits, w1, w1_scales, w2, w2_scales,
     )
 
 
