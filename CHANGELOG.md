@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Added `qwen35_compact_gemm_out` for the Qwen3.5-35B-A3B TP2 routed
+  experts at 97–160 token rows. It uses the generic router's FP32 softmax
+  reduction order, schedules W1 by nonempty eight-row tiles, and writes the
+  grouped W2 result into the existing Qwen3.5 workspace.
+
 ## 0.3.1 - 2026-11-16
 
 ### Changed

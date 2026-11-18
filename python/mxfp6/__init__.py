@@ -70,6 +70,7 @@ from .ops import (
 from .qwen35 import (
     Qwen35GroupedWorkspace,
     Qwen35MoeB1Workspace,
+    qwen35_compact_gemm_out,
     qwen35_grouped_gemm_out,
     qwen35_grouped_moe_logits_out,
     qwen35_grouped_moe_out,
@@ -132,6 +133,7 @@ __all__ = [
     "quantize_mxfp8_logical",
     "qwen35_route_mxfp8_out",
     "qwen35_grouped_w1_silu_mxfp8_out",
+    "qwen35_compact_gemm_out",
     "qwen35_grouped_gemm_out",
     "qwen35_grouped_moe_logits_out",
     "qwen35_grouped_moe_out",

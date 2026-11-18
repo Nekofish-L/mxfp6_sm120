@@ -617,7 +617,7 @@ __device__ __forceinline__ int64_t grouped_scale_offset(
       k_group % kGroupsPerAtom;
 }
 
-template <bool Route>
+template <bool Route, bool Compact = false>
 __global__ __launch_bounds__(kThreads, 2)
 void topk_quant_kernel(
     __nv_bfloat16 const* hidden,
@@ -708,7 +708,8 @@ void topk_quant_kernel(
     int expert_ids[8];
 #pragma unroll
     for (int load = 0; load < 4; ++load) {
-      int const column = lane * 2 + load * 64;
+      // The generic 256-expert router sums eight adjacent logits per lane.
+      int const column = Compact ? lane * 8 + load * 2 : lane * 2 + load * 64;
       probabilities[load * 2] = __bfloat162float(
           routed_logits[token * kRoutedExperts + column]);
       probabilities[load * 2 + 1] = __bfloat162float(
@@ -884,10 +885,10 @@ void topk_quant_kernel(
       scale_offsets[thread] = scale_offset;
       expert_cursors[thread] =
           static_cast<int32_t>(row_offset);
-      grouped_metadata.write_work_tiles(
-          thread,
-          static_cast<int>(rows),
-          &work_tile_cursor);
+      if constexpr (!Compact) {
+        grouped_metadata.write_work_tiles(
+            thread, static_cast<int>(rows), &work_tile_cursor);
+      }
       if (thread == kRoutedExperts - 1) {
         expert_offsets[kRoutedExperts] =
             prior_rows + row_prefix;
@@ -895,12 +896,12 @@ void topk_quant_kernel(
             prior_scale_rows + scale_prefix;
       }
       __syncthreads();
-      if (thread == 0 && grouped_metadata.work_tile_count != nullptr) {
+      if (!Compact && thread == 0 && grouped_metadata.work_tile_count != nullptr) {
         *grouped_metadata.work_tile_count = work_tile_cursor;
       }
     }
     cooperative_groups::this_grid().sync();
-    if (token == 0) {
+    if (!Compact && token == 0) {
       grouped_metadata.write(thread);
     }
 
@@ -917,7 +918,7 @@ void topk_quant_kernel(
     }
     destination = __shfl_sync(
         0xffffffffu, destination, 0);
-    if (source_tokens != nullptr) {
+    if (Compact || source_tokens != nullptr) {
       if (lane == 0) {
         source_tokens[destination] = token;
       }
@@ -2328,7 +2329,7 @@ void qwen35_w1_splitk_kernel(
 #endif
 }
 
-template <bool UsePdl, bool Wide, bool Indirect, class TmaLoadA>
+template <bool UsePdl, bool Wide, bool Indirect, class TmaLoadA, bool Compact = false>
 __global__ __launch_bounds__(
     Wide ? kGroupedFusedThreads : kGroupedFusedNarrowThreads, 2)
 void grouped_w1_silu_mxfp8_kernel(
@@ -2343,7 +2344,8 @@ void grouped_w1_silu_mxfp8_kernel(
     uint8_t* output_scales,
     int num_experts,
     int32_t const* source_tokens,
-    Qwen35GroupedMetadataDevice grouped_metadata) {
+    Qwen35GroupedMetadataDevice grouped_metadata,
+    int2 const* compact_tiles) {
 #if defined(__CUDA_ARCH_FEAT_SM120_ALL)
   using FusedMainloop = std::conditional_t<
       Wide, GroupedFusedMainloop, GroupedFusedNarrowMainloop>;
@@ -2385,11 +2387,22 @@ void grouped_w1_silu_mxfp8_kernel(
   constexpr uint32_t kTmaTransactionBytes =
       kFusedTileM * kGroupedFusedTileK * 3 / 4;
 
-  int const expert = static_cast<int>(blockIdx.y);
+  int const task = static_cast<int>(blockIdx.y);
+  int expert = task;
+  int first_row = 0;
+  if constexpr (Compact) {
+    if (task >= compact_tiles[0].x) {
+      cutlass::arch::launch_dependent_grids();
+      return;
+    }
+    int2 const tile = compact_tiles[1 + task];
+    expert = tile.x;
+    first_row = tile.y;
+  }
   int64_t const row_start = expert_offsets[expert];
   int const rows = static_cast<int>(
       expert_offsets[expert + 1] - row_start);
-  if (blockIdx.x == 0 && threadIdx.x == 0) {
+  if (!Compact && blockIdx.x == 0 && threadIdx.x == 0) {
     grouped_metadata.write(expert);
   }
   if (expert >= num_experts || rows <= 0) {
@@ -2472,8 +2485,9 @@ void grouped_w1_silu_mxfp8_kernel(
   __syncthreads();
 
   constexpr int kRowTilesPerCta = 1;
-  for (int row_base = 0;
-       row_base < rows;
+  int const row_limit = Compact ? min(rows, first_row + kTileN) : rows;
+  for (int row_base = first_row;
+       row_base < row_limit;
        row_base += kTileN * kRowTilesPerCta) {
     float accum0[kRowTilesPerCta]{};
     float accum1[kRowTilesPerCta]{};
@@ -3851,7 +3865,40 @@ void launch_silu_mxfp8(
           k);
 }
 
-template <bool Wide, bool Indirect>
+// One CTA scans the number of eight-row W1 tiles owned by each expert.
+// The first entry stores the total. Each subsequent entry names one tile.
+__global__ void prepare_compact_w1_tiles(int64_t const* offsets, int2* tiles) {
+  constexpr int kWarps = qwen35_router::kRoutedExperts / 32;
+  __shared__ int warp_totals[kWarps];
+  int const expert = threadIdx.x;
+  int const lane = expert % 32;
+  int const warp = expert / 32;
+  int const count = static_cast<int>(
+      (offsets[expert + 1] - offsets[expert] + kTileN - 1) / kTileN);
+  int prefix = count;
+  for (int offset = 1; offset < 32; offset *= 2) {
+    int prior = __shfl_up_sync(0xffffffffu, prefix, offset);
+    if (lane >= offset) prefix += prior;
+  }
+  if (lane == 31) warp_totals[warp] = prefix;
+  __syncthreads();
+  if (warp == 0) {
+    int total = lane < kWarps ? warp_totals[lane] : 0;
+    for (int offset = 1; offset < 32; offset *= 2) {
+      int prior = __shfl_up_sync(0xffffffffu, total, offset);
+      if (lane >= offset) total += prior;
+    }
+    if (lane < kWarps) warp_totals[lane] = total;
+  }
+  __syncthreads();
+  int const start = prefix - count + (warp == 0 ? 0 : warp_totals[warp - 1]);
+  if (expert == 0) tiles[0] = make_int2(warp_totals[kWarps - 1], 0);
+  for (int row = 0; row < count; ++row) {
+    tiles[1 + start + row] = make_int2(expert, row * kTileN);
+  }
+}
+
+template <bool Wide, bool Indirect, bool Compact = false>
 void launch_grouped_w1_silu_mxfp8_impl(
     at::Tensor& output,
     at::Tensor& output_scales,
@@ -3864,7 +3911,8 @@ void launch_grouped_w1_silu_mxfp8_impl(
     int32_t const* source_tokens,
     bool use_pdl,
     cudaStream_t stream,
-    Qwen35GroupedMetadataDevice grouped_metadata = {}) {
+    Qwen35GroupedMetadataDevice grouped_metadata = {},
+    int2* compact_tiles = nullptr) {
   using FusedSharedStorage = std::conditional_t<
       Wide, GroupedFusedSharedStorage,
       GroupedFusedNarrowSharedStorage>;
@@ -3883,10 +3931,15 @@ void launch_grouped_w1_silu_mxfp8_impl(
       Wide ? kGroupedFusedTileM : kGroupedFusedNarrowTileM;
   constexpr int kHidden = 2048;
   constexpr int kGateUp = 512;
-  dim3 const grid(
-      256 / kFusedPairsPerBlock,
-      static_cast<unsigned>(weight.size(0)),
-      1);
+  int grid_y = static_cast<int>(weight.size(0));
+  if constexpr (Compact) {
+    // sum(ceil(rows_e / kTileN)) <= ceil(total_rows / kTileN) + experts
+    grid_y += static_cast<int>((output.size(0) + kTileN - 1) / kTileN);
+    prepare_compact_w1_tiles<<<1, qwen35_router::kRoutedExperts, 0, stream>>>(
+        expert_offsets.data_ptr<int64_t>(), compact_tiles);
+    C10_CUDA_KERNEL_LAUNCH_CHECK();
+  }
+  dim3 const grid(256 / kFusedPairsPerBlock, grid_y, 1);
   auto const* activation_ptr =
       static_cast<uint8_t const*>(activation.data_ptr());
   auto const* activation_scales_ptr =
@@ -3922,7 +3975,7 @@ void launch_grouped_w1_silu_mxfp8_impl(
           cute::Int<kFusedTileM>{},
           cute::Int<kGroupedFusedTileK>{}),
       cute::_1{});
-  if (use_pdl) {
+  if (Compact || use_pdl) {
     cudaLaunchConfig_t config{};
     config.gridDim = grid;
     config.blockDim = dim3(kFusedThreads);
@@ -3936,7 +3989,7 @@ void launch_grouped_w1_silu_mxfp8_impl(
     C10_CUDA_CHECK(cudaLaunchKernelEx(
         &config,
         grouped_w1_silu_mxfp8_kernel<
-            true, Wide, Indirect, decltype(tma_load_a)>,
+            true, Wide, Indirect, decltype(tma_load_a), Compact>,
         activation_ptr,
         activation_scales_ptr,
         weight_ptr,
@@ -3948,7 +4001,7 @@ void launch_grouped_w1_silu_mxfp8_impl(
         output_scales_ptr,
         num_experts,
         source_tokens,
-        grouped_metadata));
+        grouped_metadata, compact_tiles));
   } else {
     grouped_w1_silu_mxfp8_kernel<
         false, Wide, Indirect, decltype(tma_load_a)>
@@ -3967,7 +4020,7 @@ void launch_grouped_w1_silu_mxfp8_impl(
             output_scales_ptr,
             num_experts,
             source_tokens,
-            grouped_metadata);
+            grouped_metadata, nullptr);
   }
 }
 
@@ -9777,6 +9830,7 @@ void qwen35_topk_quant_out_cuda(
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
 
+template <bool Compact>
 void qwen35_topk_quant_route_out_cuda(
     at::Tensor& quantized,
     at::Tensor& logical_scales,
@@ -9992,7 +10046,7 @@ void qwen35_topk_quant_route_out_cuda(
   C10_CUDA_CHECK(
       cudaOccupancyMaxActiveBlocksPerMultiprocessor(
           &active_blocks,
-          qwen35_router::topk_quant_kernel<true>,
+          qwen35_router::topk_quant_kernel<true, Compact>,
           qwen35_router::kThreads,
           0));
   TORCH_CHECK(
@@ -10043,7 +10097,7 @@ void qwen35_topk_quant_route_out_cuda(
   config.numAttrs = 1;
   C10_CUDA_CHECK(cudaLaunchKernelEx(
       &config,
-      qwen35_router::topk_quant_kernel<true>,
+      qwen35_router::topk_quant_kernel<true, Compact>,
       hidden_ptr,
       logits_ptr,
       quantized_ptr,
@@ -10069,6 +10123,78 @@ void qwen35_topk_quant_route_out_cuda(
         *grouped_metadata,
         true);
   }
+}
+
+void qwen35_compact_gemm_out_cuda(
+    at::Tensor& quantized, at::Tensor& logical_scales, at::Tensor& dense_scales,
+    at::Tensor& topk_weights, at::Tensor& topk_ids, at::Tensor& permuted,
+    at::Tensor& grouped_scales, at::Tensor& expert_cursors,
+    at::Tensor& expert_offsets, at::Tensor& scale_offsets,
+    at::Tensor& inverse_permutation, at::Tensor& source_tokens,
+    at::Tensor& activated, at::Tensor& activated_scales, at::Tensor& routed_output,
+    at::Tensor const& hidden, at::Tensor const& router_logits,
+    at::Tensor const& w1, at::Tensor const& w1_scales,
+    at::Tensor const& w2, at::Tensor const& w2_scales) {
+  TORCH_CHECK(hidden.is_cuda() && hidden.dim() == 2 &&
+                  hidden.size(0) >= 97 && hidden.size(0) <= 160,
+              "Qwen3.5 compact routing requires 97 to 160 token rows");
+  c10::cuda::CUDAGuard device_guard(hidden.device());
+  auto const device = hidden.device();
+  int64_t const tokens = hidden.size(0);
+  int64_t const routes = tokens * qwen35_router::kTopK;
+  constexpr int experts = qwen35_router::kRoutedExperts;
+  check_cuda_byte_tensor(w1, "w1", device);
+  check_cuda_byte_tensor(w1_scales, "w1_scales", device);
+  check_cuda_byte_tensor(w2, "w2", device);
+  check_cuda_byte_tensor(w2_scales, "w2_scales", device);
+  check_cuda_byte_tensor(activated, "activated", device);
+  check_cuda_byte_tensor(activated_scales, "activated_scales", device);
+  TORCH_CHECK(w1.sizes() == at::IntArrayRef({experts, 512, 1536}) &&
+                  w1_scales.numel() >= experts * 512 * 64,
+              "w1 requires packed [256,512,1536] weights and [256,512,64] scales");
+  TORCH_CHECK(w2.sizes() == at::IntArrayRef({experts, 2048, 192}) &&
+                  w2_scales.numel() >= experts * 2048 * 8,
+              "w2 requires packed [256,2048,192] weights and [256,2048,8] scales");
+  TORCH_CHECK(activated.sizes() == at::IntArrayRef({routes, 256}) &&
+                  activated_scales.numel() >= (routes + experts * 127) * 8,
+              "compact W1 requires [M*8,256] values and grouped MXFP8 scale storage");
+  TORCH_CHECK(routed_output.device() == device && routed_output.is_contiguous() &&
+                  routed_output.scalar_type() == at::kBFloat16 &&
+                  routed_output.sizes() == at::IntArrayRef({routes, 2048}),
+              "routed_output must be contiguous CUDA bfloat16 [M*8,2048]");
+  TORCH_CHECK(expert_offsets.dim() == 1 && scale_offsets.dim() == 1,
+              "compact expert and scale offsets must be one-dimensional");
+  for (auto const* tensor : {&hidden, &w1, &w1_scales, &w2, &w2_scales}) {
+    TORCH_CHECK(reinterpret_cast<uintptr_t>(tensor->data_ptr()) % 16 == 0,
+                "compact hidden, weights and weight scales require 16-byte alignment");
+  }
+  for (auto* tensor : {&quantized, &dense_scales, &activated, &activated_scales,
+                       &routed_output}) {
+    TORCH_CHECK(reinterpret_cast<uintptr_t>(tensor->data_ptr()) % 16 == 0,
+                "compact packed workspace tensors require 16-byte alignment");
+  }
+
+  // Indirect W1 reads only the first M rows of the permuted arena (quantized).
+  // Its remaining bytes hold the W1 tile map through graph capture and replay.
+  int64_t const prefix_bytes = tokens * qwen35_router::kHidden;
+  int64_t const max_tiles = (routes + direct_moe::kTileN - 1) / direct_moe::kTileN + experts;
+  TORCH_CHECK(permuted.numel() >= prefix_bytes + (1 + max_tiles) * sizeof(int2) &&
+                  reinterpret_cast<uintptr_t>(permuted.data_ptr()) % alignof(int2) == 0,
+              "permuted arena lacks aligned storage for the compact W1 tile map");
+  auto* compact_tiles = reinterpret_cast<int2*>(
+      static_cast<uint8_t*>(permuted.data_ptr()) + prefix_bytes);
+  qwen35_topk_quant_route_out_cuda<true>(
+      quantized, logical_scales, dense_scales, topk_weights, topk_ids,
+      permuted, grouped_scales, expert_cursors, expert_offsets, scale_offsets,
+      inverse_permutation, hidden, router_logits, std::nullopt, std::nullopt,
+      std::nullopt, source_tokens, true);
+  auto stream = c10::cuda::getCurrentCUDAStream(hidden.get_device());
+  direct_moe::launch_grouped_w1_silu_mxfp8_impl<true, true, true>(
+      activated, activated_scales, quantized, dense_scales, w1, w1_scales,
+      expert_offsets, scale_offsets, source_tokens.data_ptr<int32_t>(), true,
+      stream.stream(), {}, compact_tiles);
+  grouped_gemm_w6a8_out_cuda(routed_output, activated, activated_scales, w2,
+                             w2_scales, expert_offsets, scale_offsets, 0, true);
 }
 
 }  // namespace mxfp6_gemm::torch_ext
@@ -10153,6 +10279,15 @@ TORCH_LIBRARY_FRAGMENT(mxfp6, m) {
       "Tensor routed_logits, Tensor(l!)? grouped_output=None, "
       "Tensor? weight=None, Tensor? weight_scales=None, "
       "Tensor(m!)? source_tokens=None, bool renormalize=False) -> ()");
+  m.def(
+      "qwen35_compact_gemm_out("
+      "Tensor(a!) quantized, Tensor(b!) logical_scales, Tensor(c!) dense_scales, "
+      "Tensor(d!) topk_weights, Tensor(e!) topk_ids, Tensor(a!) permuted, "
+      "Tensor(c!) grouped_scales, Tensor(f!) expert_cursors, Tensor(g!) expert_offsets, "
+      "Tensor(h!) scale_offsets, Tensor(i!) inverse_permutation, Tensor(j!) source_tokens, "
+      "Tensor(k!) activated, Tensor(l!) activated_scales, Tensor(m!) routed_output, "
+      "Tensor hidden, Tensor router_logits, Tensor w1, Tensor w1_scales, "
+      "Tensor w2, Tensor w2_scales) -> ()");
   m.def(
       "qwen35_w1_splitk_silu_mxfp8_out("
       "Tensor(a!) output, Tensor(b!) output_scales, "
@@ -10245,7 +10380,10 @@ TORCH_LIBRARY_IMPL(mxfp6, CUDA, m) {
   m.impl(
       "qwen35_topk_quant_route_out",
       &mxfp6_gemm::torch_ext::
-          qwen35_topk_quant_route_out_cuda);
+          qwen35_topk_quant_route_out_cuda<false>);
+  m.impl(
+      "qwen35_compact_gemm_out",
+      &mxfp6_gemm::torch_ext::qwen35_compact_gemm_out_cuda);
   m.impl(
       "qwen35_w1_splitk_silu_mxfp8_out",
       &mxfp6_gemm::torch_ext::
