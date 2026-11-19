@@ -1,10 +1,27 @@
 # Model serving performance
 
-vLLM 0.33.0 / Torch 2.14.0+cu130
-
 RTX 5090 · 3,000 input / 1,000 output tokens · output tokens/s.
 
-FP32 recurrent state is the default. The tables identify optional state formats and the reference used for each comparison.
+## vLLM 0.34 throughput
+
+2B and 4B run on one GPU. The 27B and 35B models use two GPUs (TP2).
+
+| Model / profile | SSM | Concurrency | vLLM 0.33 | vLLM 0.34 | Change |
+|---|---|---:|---:|---:|---:|
+| Qwen3.5-2B MXFP8 | FP32 | c16 | 5,157.45 | 5,161.78 | +0.08% |
+| Qwen3.5-2B MXFP8 | FP32 | c64 | 9,840.45 | 9,865.12 | +0.25% |
+| Qwen3.5-4B MXFP8 | FP32 | c16 | 2,684.51 | 2,777.18 | +3.45% |
+| Qwen3.5-4B MXFP8 | FP32 | c64 | 4,796.72 | 4,933.82 | +2.86% |
+| Qwen3.5-4B block-FP8 | FP32 | c32 | 3,008.32 | 3,064.28 | +1.86% |
+| Qwen3.8-27B Dense MXFP6 FULL | FP16 | c32 | 1,727.78 | 1,726.29 | -0.09% |
+| Qwen3.5-35B-A3B MXFP6 | FP16 | c32 | 3,362.91 | 3,354.01 | -0.26% |
+| Qwen3.5-35B-A3B MXFP6 compact | FP32 | c128 | 4,902.56 | 4,915.76 | +0.27% |
+
+[Precision and KV capacity](https://github.com/troycheng/vllm-mach/blob/v0.4.0/docs/installation.md#vllm-034-qualification) · [Final 2B measurements](https://github.com/troycheng/vllm-mach/blob/v0.4.0/docs/data/vllm034-2b-followup.json) · [Migration measurements](https://github.com/troycheng/vllm-mach/blob/v0.4.0/docs/data/vllm034-qualification.json) · [27B precision with 400-token blocks](https://github.com/troycheng/vllm-mach/blob/v0.4.0/docs/data/vllm034-dense-400-gold.json)
+
+## vLLM 0.33.0 concurrency curves
+
+These runs use PyTorch 2.14.0+cu130. FP32 recurrent state is the default.
 
 | Model / profile | GPUs | Measured concurrency |
 |---|---:|---|

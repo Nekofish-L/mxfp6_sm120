@@ -1,6 +1,6 @@
 # Measurement data and protocol
 
-The current report covers vLLM 0.33, Torch 2.14 and Triton 3.8 on RTX 5090. All serving charts use 3,000 input and 1,000 output tokens; rates are output tokens/s.
+This report covers vLLM 0.33, Torch 2.14 and Triton 3.8 on RTX 5090. All serving charts use 3,000 input and 1,000 output tokens. Rates are output tokens/s.
 
 ## Model records
 
@@ -37,4 +37,4 @@ Stock FP8/NVFP4 measurements use vLLM 0.33 and the frozen historical BF16 anchor
 
 ## Earlier configurations
 
-[Dense head OFF](dense_default.json), [MoE head OFF](moe_default.json), [original 2B FP32 points](two_fp32_original.json) and [final 2B c24](two_fp32_c24_final.json) retain earlier configuration and per-point records. The [historical vLLM 0.29 report](https://github.com/troycheng/vllm-mach/blob/main/docs/performance-vllm029.md) contains the original FP8/NVFP4 comparisons.
+[Dense head OFF](dense_default.json), [MoE head OFF](moe_default.json), [original 2B FP32 points](two_fp32_original.json) and [final 2B c24](two_fp32_c24_final.json) retain earlier configuration and per-point records. The [historical vLLM 0.29 report](https://github.com/troycheng/vllm-mach/blob/v0.4.0/docs/performance-vllm029.md) contains the original FP8/NVFP4 comparisons.
