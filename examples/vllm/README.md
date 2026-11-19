@@ -72,10 +72,10 @@ docker run --rm --name mxfp6-q35 --gpus all --ipc=host --network host \
   --compilation-config '{"cudagraph_mode":"FULL","cudagraph_capture_sizes":[1,2,4,8,16,24,32],"pass_config":{"fuse_allreduce_rms":true}}'
 ```
 
-Both commands preserve the measured TP2 execution profile: the listed CUDA
+Both commands use the measured vLLM v0.28.0 TP2 execution profile: the listed CUDA
 Graph buckets through batch 32, fused GDN where a validated registry row exists,
 FlashInfer TRT-LLM AllReduce/RMSNorm on local consumer Blackwell, and the
-current Dense/MoE MXFP6 dispatch.
+native Dense/MoE MXFP6 dispatch.
 
 Wait for `GET /health` to return HTTP 200 before sending requests. A successful
 startup log should show `Mxfp6Sm120LinearKernel`, `Using FlashInfer GDN prefill
@@ -91,4 +91,4 @@ several minutes. The named cache volume makes later starts reuse those artifacts
 
 ## Validation
 
-The [v0.28 integration receipt](../../benchmarks/results/vllm_v028_public_reproducer_validation.json) records tested TP2 loads, native execution and request contracts. Use [vLLM Mach](https://github.com/troycheng/vllm-mach) for current serving profiles and [model performance](../../docs/performance.md) for the current results.
+The [v0.28 integration receipt](../../benchmarks/results/vllm_v028_public_reproducer_validation.json) records tested TP2 loads, native execution and request contracts. For vLLM 0.34.0 or 0.33.0, use the [Mach 0.4.0 model setup guides](https://github.com/troycheng/vllm-mach/blob/v0.4.0/docs/README.md#model-setup).

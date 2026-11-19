@@ -2,30 +2,13 @@
 
 ## Source build
 
-Clone the repository and pinned CUTLASS submodule:
-
-```bash
-git clone --recurse-submodules https://github.com/Nekofish-L/mxfp6_sm120.git
-cd mxfp6_sm120
-```
-
-Toolchain, ABI and platform requirements are listed below.
-
-For an existing clone:
+Follow the [installation commands](../README.md#install) to build the released revision. In an existing clone, initialize the pinned CUTLASS submodule first.
 
 ```bash
 git submodule update --init third_party/cutlass
 ```
 
-Build a wheel against the active PyTorch ABI:
-
-```bash
-./scripts/build_wheel.sh
-python3 -m pip install --no-deps dist/mxfp6_sm120-*.whl
-```
-
-The wheel build applies the required runtime CUTLASS patch idempotently. Use
-`MAX_JOBS=1` on memory-constrained systems.
+The release source distribution also includes the CUTLASS headers. The wheel script applies the runtime CUTLASS patches idempotently. `MAX_JOBS` defaults to 2. Use `MAX_JOBS=1` on memory-constrained systems.
 
 ### Wheel build identity
 
@@ -124,16 +107,16 @@ benchmark/integration consumers, not package dependencies.
 | Python | 3.10 or newer. |
 | Build tools | CMake 3.24+ and a host compiler with C++20 support; both C++ and CUDA sources compile in C++20 mode. |
 | CUTLASS | Pinned submodule commit `e6233cbac5d7c7a865c19c91cd684ceece19513c` plus the checked-in runtime patches. |
-| Distribution | Source wheel only. No cross-PyTorch or cross-CUDA binary compatibility is promised. |
+| Distribution | The release wheel requires its recorded Torch/CUDA/CXX ABI. Build from source for another supported runtime. |
 
 The build intentionally rejects an uninitialized or mismatched CUTLASS
 checkout. The Python API checks CUDA placement, dtype, contiguity, shape and
 SM120 capability before dispatch.
 
 
-### Qualified 0.3 build
+### Qualified 0.3.2 wheel
 
-On November 10, 2026, a Linux x86_64 / CPython 3.12.3 wheel was built with Torch 2.14.0+cu130, Torch CUDA 13.0, CXX11 ABI enabled, GCC 13.3.0, NVCC 13.0.88 and CMake 4.1.0. Its wheel RECORD and build identity match both packaged DSOs. Device-code inspection confirmed SM120 targets and unchanged executable device math relative to the previously tested target build. Source builds use the active Torch runtime. See [serving performance](performance.md) for the serving measurements and their runtime versions.
+The [0.3.2 release wheel](https://github.com/Nekofish-L/mxfp6_sm120/releases/tag/v0.3.2) was built for Linux x86-64, CPython 3.12.3 and SM120a with Torch 2.14.0+cu130, CXX11 ABI enabled, GCC 13.3.0 and NVCC 13.0.88. Both packaged library hashes match the wheel's build identity. The compact MoE operator passed eager and changing-input CUDA Graph tests at 97 and 160 token rows.
 
 ### Upgrade policy
 
@@ -144,7 +127,7 @@ the source commit.
 
 ## Runtime consumers
 
-The standalone package has no vLLM or SGLang dependency and does not provide a general model checkpoint loader. [vLLM Mach](https://github.com/troycheng/vllm-mach) is the serving integration for current model profiles. [`examples/vllm`](../examples/vllm/README.md) retains a separate vLLM v0.28.0 TP2 reproducer for the validated Qwen3.5-27B and 35B-A3B Quark layouts.
+The standalone package has no vLLM or SGLang dependency. [Mach 0.4.0](https://github.com/troycheng/vllm-mach/blob/v0.4.0/docs/installation.md#runtime-versions) pins native 0.3.2 and provides model serving on vLLM 0.34.0 and 0.33.0. [`examples/vllm`](../examples/vllm/README.md) reproduces the earlier vLLM v0.28.0 TP2 integration for the Qwen3.5-27B and 35B-A3B Quark layouts.
 
 | Public reproducer path | vLLM v0.28 interface | Package responsibility |
 |---|---|---|

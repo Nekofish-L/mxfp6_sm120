@@ -50,7 +50,7 @@ on the same SM120 device, distinct output storage, and exact weight/scale sizes.
 Nonfinite quantizer input is unsupported; input finiteness is a caller contract
 and is not checked with a device synchronization on each launch.
 
-Build from source using the installation workflow in `CONTRIBUTING.md`. All
+Install the package using the [installation guide](../README.md#install). All
 kernel families and `mxfp8_sm120::dual_gemm_out` are linked into `mxfp8_torch`,
 which the normal package loader loads. No separate extension or runtime adapter
 is required. The quantizer lazily imports the package's Triton dependency.
@@ -59,7 +59,6 @@ projection widths in `mxfp8_dual_small.cu`; `mxfp8_dual_pipereg.cu` handles
 M33–128. Tensor validation lives in `mxfp8_dual_extension.cu`, and both kernels
 reuse the scale/layout helpers and TMA descriptor builder in
 `include/mxfp8_gemm/dual.cuh`. The public variant names remain unchanged.
-Build from `main` for the current dual-activation APIs.
 
 On SM120, run `pytest -q tests/test_mxfp8_dual.py`. Tests use random inputs,
 an independent exponent/scale oracle, eager execution and changing-input,

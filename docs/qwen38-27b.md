@@ -1,6 +1,6 @@
 # Qwen3.8-27B quantization fidelity and capacity
 
-This RTX 5090 snapshot compares official FP8, native MXFP6 W6A8 and NVFP4 W4A4 against the public BF16 model. MXFP6 and NVFP4 quantize the same 400 matrices and retain a BF16 lm_head. The [current Mach performance report](performance.md#qwen38-27b) contains the serving throughput comparison.
+This RTX 5090 snapshot compares official FP8, native MXFP6 W6A8 and NVFP4 W4A4 against the public BF16 model. MXFP6 and NVFP4 quantize the same 400 matrices and retain a BF16 lm_head. See the [vLLM 0.33 serving curves](performance.md#qwen38-27b) for throughput and the [vLLM 0.34 Dense FULL results](https://github.com/troycheng/vllm-mach/blob/v0.4.0/docs/data/vllm034-dense-400-gold.json) for the fixed-gold log probability checks at M4 and M32 with 400-token attention blocks.
 
 ## BF16 token-logprob fidelity
 

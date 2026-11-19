@@ -14,43 +14,54 @@ The package provides Dense GEMM, Qwen3.5 routed MoE, activation producers and CU
 <!-- PERFORMANCE:BEGIN -->
 ## Serving performance
 
-**vLLM 0.33.0 · RTX 5090 · 3,000 input / 1,000 output tokens · output tokens/s.**
+RTX 5090 · 3,000 input / 1,000 output tokens · output tokens/s.
 
-| Model / profile | GPUs | Measured concurrency |
-|---|---:|---|
-| [Qwen3.5-2B · MXFP8](docs/performance.md#qwen35-2b) | 1 | c4, c16, c24, c32, c48, c64 |
-| [Qwen3.5-4B · MXFP8](docs/performance.md#qwen35-4b) | 1 | c4, c16, c24, c32, c48, c64 |
-| [Qwen3.5-4B · block-FP8](docs/performance.md#qwen35-4b-block-fp8) | 1 | c4, c16, c32, c64 |
-| [Qwen3.8-27B Dense · MXFP6](docs/performance.md#qwen38-27b) | 2 | c4, c16, c24, c32 |
-| [Qwen3.5-35B-A3B MoE · MXFP6](docs/performance.md#qwen35-35b-a3b) | 2 | c4, c16, c24, c32 |
+### vLLM 0.34 throughput
+
+2B and 4B run on one GPU. The 27B and 35B models use two GPUs (TP2).
+
+| Model / profile | SSM | Concurrency | vLLM 0.33 | vLLM 0.34 | Change |
+|---|---|---:|---:|---:|---:|
+| Qwen3.5-2B MXFP8 | FP32 | c16 | 5,157.45 | 5,161.78 | +0.08% |
+| Qwen3.5-2B MXFP8 | FP32 | c64 | 9,840.45 | 9,865.12 | +0.25% |
+| Qwen3.5-4B MXFP8 | FP32 | c16 | 2,684.51 | 2,777.18 | +3.45% |
+| Qwen3.5-4B MXFP8 | FP32 | c64 | 4,796.72 | 4,933.82 | +2.86% |
+| Qwen3.5-4B block-FP8 | FP32 | c32 | 3,008.32 | 3,064.28 | +1.86% |
+| Qwen3.8-27B Dense MXFP6 FULL | FP16 | c32 | 1,727.78 | 1,726.29 | -0.09% |
+| Qwen3.5-35B-A3B MXFP6 | FP16 | c32 | 3,362.91 | 3,354.01 | -0.26% |
+| Qwen3.5-35B-A3B MXFP6 compact | FP32 | c128 | 4,902.56 | 4,915.76 | +0.27% |
+
+[Measurements and precision](docs/performance.md#vllm-034-throughput)
+
+### vLLM 0.33.0 concurrency curves
 
 FP32 recurrent state is the default. The performance report includes optional BF16/FP16 state configurations and precision against BF16.
 
-### Qwen3.5-2B · MXFP8
+#### Qwen3.5-2B · MXFP8
 
 ![Qwen3.5-2B throughput](docs/assets/qwen35-2b-vllm033-throughput.svg)
 
 [Data and precision](docs/performance.md#qwen35-2b) · [Run this profile](https://github.com/troycheng/vllm-mach/blob/main/docs/mxfp8-2b-champion.md)
 
-### Qwen3.5-4B · MXFP8
+#### Qwen3.5-4B · MXFP8
 
 ![Qwen3.5-4B throughput](docs/assets/qwen35-4b-vllm033-throughput.svg)
 
 [Data and precision](docs/performance.md#qwen35-4b) · [Run this profile](https://github.com/troycheng/vllm-mach/blob/main/docs/mxfp8-champion.md)
 
-### Qwen3.5-4B · block-FP8
+#### Qwen3.5-4B · block-FP8
 
 ![Qwen3.5-4B block-FP8 throughput](docs/assets/qwen35-4b-block-fp8-vllm033-throughput.svg)
 
 [Data and precision](docs/performance.md#qwen35-4b-block-fp8) · [Run this profile](https://github.com/troycheng/vllm-mach/blob/main/docs/fp8-profile.md)
 
-### Qwen3.8-27B Dense · MXFP6
+#### Qwen3.8-27B Dense · MXFP6
 
 ![Qwen3.8-27B Dense throughput](docs/assets/qwen38-27b-vllm033-throughput.svg)
 
 [Data and precision](docs/performance.md#qwen38-27b) · [Run this profile](https://github.com/troycheng/vllm-mach/blob/main/docs/installation.md)
 
-### Qwen3.5-35B-A3B MoE · MXFP6
+#### Qwen3.5-35B-A3B MoE · MXFP6
 
 ![Qwen3.5-35B-A3B MoE throughput](docs/assets/qwen35-35b-a3b-vllm033-throughput.svg)
 
@@ -62,19 +73,23 @@ FP32 recurrent state is the default. The performance report includes optional BF
 
 ## Install
 
-Requirements: Linux, SM120, Python 3.10+, CUDA Toolkit 12.8+, CUDA-enabled PyTorch with FP8 dtype support, CMake 3.24+ and a host compiler with C++20 support. Install PyTorch and Triton first, then build against the runtime PyTorch ABI:
+The [0.3.2 release](https://github.com/Nekofish-L/mxfp6_sm120/releases/tag/v0.3.2) provides a wheel for Linux x86-64, CPython 3.12, SM120 and PyTorch 2.14.0+cu130 with the CXX11 ABI enabled. Install PyTorch and Triton first, then install the downloaded wheel.
 
 ```bash
-git clone --recurse-submodules https://github.com/Nekofish-L/mxfp6_sm120.git
+python3 -m pip install --no-deps mxfp6_sm120-0.3.2-cp312-cp312-linux_x86_64.whl
+```
+
+For other supported PyTorch runtimes, [check the build requirements](docs/development.md#supported-boundary), then build from source against the PyTorch ABI you will run.
+
+```bash
+git clone --branch v0.3.2 --recurse-submodules https://github.com/Nekofish-L/mxfp6_sm120.git
 cd mxfp6_sm120
 python3 -m pip install 'setuptools>=77' wheel
 bash scripts/build_wheel.sh
 python3 -m pip install --no-deps dist/mxfp6_sm120-*.whl
 ```
 
-For an existing clone, run `git submodule update --init third_party/cutlass`. The wheel script applies the checked-in CUTLASS runtime patches and builds both extensions. `MAX_JOBS` defaults to 2. See [development and compatibility](docs/development.md) for ABI, build and upgrade policies.
-
-See [Mach runtime versions](https://github.com/troycheng/vllm-mach/blob/main/docs/installation.md#runtime-versions) for the matching serving stack and pinned native source revision.
+The wheel script applies the CUTLASS runtime patches and builds both native extensions. See the [source build guide](docs/development.md#source-build) for build options and the [wheel identity](docs/development.md#wheel-build-identity) for ABI checks.
 
 ## Python API
 
@@ -110,7 +125,7 @@ The [API guides](docs/README.md#operators) cover CUDA Graph setup, concurrent st
 
 ## Serving integration
 
-Use [Mach's installation and launch guides](https://github.com/troycheng/vllm-mach) for current model profiles and dependency revisions. The library supplies operators and layouts; Mach owns model admission, scheduling and serving configuration.
+Use [Mach 0.4.0's installation and launch guide](https://github.com/troycheng/vllm-mach/blob/v0.4.0/docs/installation.md) for vLLM 0.34.0 and 0.33.0. The [runtime versions](https://github.com/troycheng/vllm-mach/blob/v0.4.0/docs/installation.md#runtime-versions) include the native 0.3.2 source pin. Mach owns model admission, scheduling and serving configuration.
 
 The [vLLM v0.28 TP2 example](examples/vllm/README.md) is a separate version-locked reproducer for Qwen3.5-27B and Qwen3.5-35B-A3B. The example includes build, launch and native-execution checks.
 

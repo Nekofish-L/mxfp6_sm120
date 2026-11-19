@@ -5,9 +5,7 @@ vLLM reproducer from the original Hugging Face weights. The conversion is
 data-free: it quantizes model weights directly and does not require a calibration
 dataset.
 
-The recipes are model-scoped. They reproduce the tested Quark/OCP-MX layouts for
-Qwen3.5-27B and Qwen3.5-35B-A3B; they are not a general MXFP6 checkpoint format.
-There is currently no public Qwen3.8-27B recipe.
+The recipes reproduce the tested Quark/OCP-MX layouts for Qwen3.5-27B and Qwen3.5-35B-A3B. For Qwen3.8-27B, see the [public MXFP6 checkpoint and Mach launch command](https://github.com/troycheng/vllm-mach/blob/v0.4.0/docs/installation.md#qwen38-27b-dense).
 
 ## Install the pinned converter
 
@@ -157,13 +155,6 @@ docker logs "$MXFP6_CONTAINER" 2>&1 \
 
 A fallback to MXFP6 emulation, unsupported-layout error, failed CUDA Graph
 capture or failed generation request is not a successful native reproduction.
-
-## Current scope
-
-These instructions intentionally cover only the two layouts that were converted
-and served end to end. Qwen3.8-27B has published project measurements but does
-not yet have a public conversion recipe, so it is not included in this community
-checkpoint workflow.
 
 ## Checkpoint representation and ABI
 
