@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.3.2 - 2026-11-19
+
+### Added
 
 - Added `qwen35_compact_gemm_out` for the Qwen3.5-35B-A3B TP2 routed
   experts at 97–160 token rows. It uses the generic router's FP32 softmax

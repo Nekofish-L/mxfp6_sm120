@@ -6,7 +6,7 @@ on:
       tag:
         description: GitHub release tag containing the distributions
         required: true
-        default: v0.3.1
+        default: v0.3.2
         type: string
 
 permissions:
